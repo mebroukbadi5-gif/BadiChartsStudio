@@ -2252,27 +2252,41 @@ def _save_candles_json(asset, source_label="fetch"):
         return None
 
 async def print_full_asset_list_once(timeout: float = 15.0):
-    """v17: يجلب قائمة العملات الكاملة (طريقة pyquotex الرسمية:
-    42["instruments/get"] -> 451-["instruments/list"]) ويطبع الجدول الكامل
-    فوراً بعد الاتصال وقبل أي إخراج حي — حتى لا يطمسها تحديث الجدول المتجدد
-    (سبب اختفائها سابقاً) — ويحفظ لقطة qx_assets_payouts.json بجانب السكربت."""
+    """v19: يجلب قائمة العملات من الخادم فور نجاح الدخول وقبل جلب الشموع
+    بنفس طريقة pyquotex الرسمية المستخدمة في السكربت المرجعي:
+      1) إن وصلت instruments مسبقاً مع الاتصال (get_all_assets داخل connect)
+         → استخدامها مباشرة بدون أي طلب إضافي (الأسرع).
+      2) وإلا: await CLIENT.get_all_assets() ثم إعادتا محاولة
+         42["instruments/get"] → 451-["instruments/list"].
+    يطبع الجدول الكامل ويحفظ qx_assets_payouts.json، وعند الفشل يُطبع
+    تحذير ظاهر (لا صامت) وستعيد مراقبة الدفع المحاولة تلقائياً."""
     global _ASSET_LIST_PRINTED
     try:
         if CLIENT is None or CLIENT.api is None:
-            logmsg("[asset_list] client not ready — asset list skipped")
+            print(f"{Colors.RED}  [asset_list] client not ready — table skipped{Colors.RESET}")
             return
-        entries = []
-        try:
-            await fetch_instruments_now(timeout=timeout)
-            entries = _instruments_snapshot()
-        except Exception as e:
-            logmsg(f"[asset_list] instruments fetch failed: {e}")
+        # (1) القائمة وصلت مع الاتصال؟ استخدمها مباشرة (نفس نتيجة get_all_assets)
+        if not (CLIENT.api.instruments and len(CLIENT.api.instruments) > 0):
+            # (2) نفس طريقة السكربت المرجعي: get_all_assets (pyquotex الرسمية)
+            try:
+                await CLIENT.get_all_assets()
+            except Exception as e:
+                logmsg(f"[asset_list] get_all_assets failed: {e}")
+        # (3) إعادتا محاولة للطلب المباشر إن كانت القائمة لا تزال فارغة
+        for _attempt in (1, 2):
+            if CLIENT.api.instruments and len(CLIENT.api.instruments) > 0:
+                break
+            try:
+                await fetch_instruments_now(timeout=timeout)
+            except Exception as e:
+                logmsg(f"[asset_list] instruments fetch attempt {_attempt} failed: {e}")
+        entries = _instruments_snapshot()
         if entries:
             _save_assets_payout_file(entries)
             _print_payout_table(entries)
             _ASSET_LIST_PRINTED = True
         else:
-            logmsg("[asset_list] empty instruments list — table skipped")
+            print(f"{Colors.RED}  [asset_list] تعذر جلب قائمة العملات من الخادم الآن — ستعيد مراقبة الدفع المحاولة تلقائياً{Colors.RESET}")
     except Exception as e:
         log_exception("print_full_asset_list_once", e)
 
@@ -4999,13 +5013,21 @@ if __name__ == "__main__":
     except Exception:
         pass
 
-    # v17: طباعة قائمة العملات الكاملة فور نجاح الاتصال — استدعاء حاجز (blocking)
-    # قبل أي إخراج حي حتى لا يطمسها تحديث الجدول المتجدد (سبب اختفائها سابقاً)
+    # v19: طباعة قائمة العملات من الخادم فور نجاح الدخول وقبل جلب الشموع
+    # (طلب المستخدم: القائمة قبل جلب الشموع — نفس طريقة السكربت المرجعي
+    #  CLIENT.get_all_assets() ثم 42["instruments/get"]) — استدعاء حاجز
+    # (blocking) والفشل يُطبع ظاهراً لا صامتاً.
     try:
         _fut_list = asyncio.run_coroutine_threadsafe(print_full_asset_list_once(), ASYNC_LOOP)
-        _fut_list.result(timeout=30)
+        _fut_list.result(timeout=60)
     except Exception as _e_list:
-        logmsg(f"[asset_list] failed to print asset list: {_e_list}")
+        print(f"{Colors.RED}  [asset_list] failed: {_e_list}{Colors.RESET}")
+    if not _ASSET_LIST_PRINTED:
+        print(f"{Colors.YELLOW}  [asset_list] لم تُطبع القائمة بعد — ستحاول مراقبة الدفع جلبها تلقائياً خلال لحظات{Colors.RESET}")
+    # v19: بدء مراقبة الدفع/الحالة فوراً بعد الدخول (كانت تبدأ بعد اكتمال حلقة
+    # جلب الشموع كلها — نقلتها إلى هنا بناءً على طلب المستخدم حتى تُطبع
+    # القائمة وتُحدَّث أثناء البث لا بعده)
+    asyncio.run_coroutine_threadsafe(asset_payout_monitor(), ASYNC_LOOP)
 
     total_assets = len(ASSET_LIST)
 
@@ -5356,8 +5378,7 @@ if __name__ == "__main__":
     asyncio.run_coroutine_threadsafe(auto_reconnect(), ASYNC_LOOP)
     asyncio.run_coroutine_threadsafe(keepalive_loop(), ASYNC_LOOP)
     asyncio.run_coroutine_threadsafe(stale_message_watchdog(), ASYNC_LOOP)
-    # ===== ASSETS / PAYOUT / OPEN-CLOSED MONITOR (طريقة pyquotex الرسمية) =====
-    asyncio.run_coroutine_threadsafe(asset_payout_monitor(), ASYNC_LOOP)
+    # v19: بدء asset_payout_monitor نُقل إلى ما بعد الدخول مباشرة (قبل SECTION 1)
     # v10.0: DISABLED background refetchers per user request:
     #   - mt4_gap_filler(): re-filled candle gaps every GAP_FILL_REFRESH_INTERVAL (300s).
     #     The user wants the bridge/gap-filling to happen DURING the initial fetch only
