@@ -511,41 +511,8 @@ svg{vertical-align:middle;flex-shrink:0}
 .am-tog.on{background:var(--accent);border-color:var(--accent);color:#fff}
 .am-tog:hover{border-color:var(--accent)}
 
-/* Chart Colors modal (user request) */
-#colorsModal{z-index:100}
-#colorsModal .modal-card{width:420px;max-width:94vw;max-height:88vh;overflow-y:auto}
-.colors-section{margin-bottom:14px}
-.colors-section h4{font-size:12px;font-weight:800;color:var(--accent-t);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)}
-.color-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:5px 0}
-.color-row label{font-size:12px;color:var(--text);font-weight:600;flex:1;min-width:0}
-.color-row .color-input-wrap{display:flex;align-items:center;gap:6px;flex-shrink:0}
-.color-row input[type="color"]{width:34px;height:28px;border:1px solid var(--border2);border-radius:6px;background:var(--panel3);cursor:pointer;padding:2px;flex-shrink:0}
-.color-row input[type="color"]::-webkit-color-swatch-wrapper{padding:0}
-.color-row input[type="color"]::-webkit-color-swatch{border:none;border-radius:4px}
-.color-row input[type="color"]::-moz-color-swatch{border:none;border-radius:4px}
-.color-row .hex-input{width:78px;padding:4px 6px;border-radius:6px;border:1px solid var(--border2);background:var(--panel3);color:var(--text);font:11px/1 ui-monospace,monospace;outline:none;text-transform:lowercase}
-.color-row .hex-input:focus{border-color:var(--acc-bd);box-shadow:0 0 0 2px var(--acc-soft)}
-.color-row .reset-one{display:grid;width:22px;height:22px;place-items:center;border-radius:5px;border:1px solid var(--border2);background:var(--panel3);color:var(--t-dim);cursor:pointer;flex-shrink:0;transition:.15s}
-.color-row .reset-one:hover{color:var(--err);border-color:var(--err)}
-.color-row .reset-one svg{width:11px;height:11px}
-.colors-actions{display:flex;gap:8px;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)}
-.colors-actions .grow{flex:1}
-.colors-btn{padding:8px 20px;border-radius:9px;font-size:12.5px;font-weight:700;cursor:pointer;transition:.15s;border:1px solid transparent}
-.colors-btn.primary{background:linear-gradient(90deg,var(--accent),var(--accent-h));color:#fff}
-.colors-btn.primary:hover{filter:brightness(1.12)}
-.colors-btn.ghost{background:var(--panel3);border-color:var(--border2);color:var(--t-mid)}
-.colors-btn.ghost:hover{color:var(--text);border-color:var(--acc-bd)}
-.colors-btn.danger{background:var(--panel3);border-color:var(--border2);color:var(--t-mid)}
-.colors-btn.danger:hover{color:var(--err);border-color:var(--err)}
-.ind-color-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 0;font-size:11.5px}
-.ind-color-row label{color:var(--text);font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ind-color-row input[type="color"]{width:30px;height:24px;border:1px solid var(--border2);border-radius:5px;background:var(--panel3);cursor:pointer;padding:2px;flex-shrink:0}
-.ind-color-row input[type="color"]::-webkit-color-swatch-wrapper{padding:0}
-.ind-color-row input[type="color"]::-webkit-color-swatch{border:none;border-radius:3px}
-.ind-color-row .ind-reset{display:grid;width:20px;height:20px;place-items:center;border-radius:4px;border:1px solid var(--border2);background:var(--panel3);color:var(--t-dim);cursor:pointer;flex-shrink:0}
-.ind-color-row .ind-reset:hover{color:var(--err);border-color:var(--err)}
-.ind-color-row .ind-reset svg{width:10px;height:10px}
-.colors-empty{font-size:11px;color:var(--t-dim3);padding:6px 0;text-align:center}
+/* Chart-color pickers (the ⚙ settings card on the chart + the desktop settings panel)
+   are the ONLY places chart colors are edited — the side panel is gone (user request). */
 </style>
 </head>
 <body>
@@ -558,8 +525,6 @@ svg{vertical-align:middle;flex-shrink:0}
   <header class="topbar">
     <div class="tfs" id="tfGroup"></div>
           <button id="tfArrow" class="tf-arrow" title="Hide/show the timeframes"></button>
-    <!-- Chart colors button (user request): opens the chart colors panel -->
-    <button id="colorsBtn" class="ibtn" title="Chart colors" aria-label="Chart colors"></button>
     <span class="grow"></span>
     <button id="webTg" class="ibtn wide" title="Telegram bot — signals, results and history" aria-label="Open the Telegram bot page"></button>
     <!-- Indicators button right next to the editor button (user request) -->
@@ -709,41 +674,8 @@ svg{vertical-align:middle;flex-shrink:0}
 </div>
 
 
-<!-- Chart Colors modal (user request) -->
-<div id="colorsModal" class="modal" hidden>
-  <div class="modal-card" role="dialog" aria-modal="true" aria-label="Chart colors">
-    <div class="wz-head">
-      <h3 id="colorsTitle">Chart Colors</h3>
-      <span class="grow"></span>
-      <button id="colorsClose" class="wz-x" title="Close" aria-label="Close"></button>
-    </div>
-    <div class="wz-bar" style="margin-bottom:14px"><span style="width:100%"></span></div>
-    <div class="colors-section">
-      <h4 id="csCandles">Candle Colors</h4>
-      <div class="color-row"><label id="clBull">Bullish candle (up)</label><div class="color-input-wrap"><input type="color" id="ccBull" data-key="bull"><input type="text" class="hex-input" id="ccBullHex" maxlength="7" spellcheck="false"><button class="reset-one" data-reset="bull" title="Reset"></button></div></div>
-      <div class="color-row"><label id="clBear">Bearish candle (down)</label><div class="color-input-wrap"><input type="color" id="ccBear" data-key="bear"><input type="text" class="hex-input" id="ccBearHex" maxlength="7" spellcheck="false"><button class="reset-one" data-reset="bear" title="Reset"></button></div></div>
-      <div class="color-row"><label id="clBullVol">Bullish volume</label><div class="color-input-wrap"><input type="color" id="ccBullVol" data-key="bullVol"><input type="text" class="hex-input" id="ccBullVolHex" maxlength="7" spellcheck="false"><button class="reset-one" data-reset="bullVol" title="Reset"></button></div></div>
-      <div class="color-row"><label id="clBearVol">Bearish volume</label><div class="color-input-wrap"><input type="color" id="ccBearVol" data-key="bearVol"><input type="text" class="hex-input" id="ccBearVolHex" maxlength="7" spellcheck="false"><button class="reset-one" data-reset="bearVol" title="Reset"></button></div></div>
-    </div>
-    <div class="colors-section">
-      <h4 id="csChart">Chart Appearance</h4>
-      <div class="color-row"><label id="clBg">Background</label><div class="color-input-wrap"><input type="color" id="ccBg" data-key="bg"><input type="text" class="hex-input" id="ccBgHex" maxlength="7" spellcheck="false"><button class="reset-one" data-reset="bg" title="Reset"></button></div></div>
-      <div class="color-row"><label id="clGrid">Grid lines</label><div class="color-input-wrap"><input type="color" id="ccGrid" data-key="grid"><input type="text" class="hex-input" id="ccGridHex" maxlength="7" spellcheck="false"><button class="reset-one" data-reset="grid" title="Reset"></button></div></div>
-      <div class="color-row"><label id="clAxisText">Axis text</label><div class="color-input-wrap"><input type="color" id="ccAxisText" data-key="axisText"><input type="text" class="hex-input" id="ccAxisTextHex" maxlength="7" spellcheck="false"><button class="reset-one" data-reset="axisText" title="Reset"></button></div></div>
-      <div class="color-row"><label id="clCrosshair">Crosshair</label><div class="color-input-wrap"><input type="color" id="ccCrosshair" data-key="crosshair"><input type="text" class="hex-input" id="ccCrosshairHex" maxlength="7" spellcheck="false"><button class="reset-one" data-reset="crosshair" title="Reset"></button></div></div>
-      <div class="color-row"><label id="clDrawing">Drawing tools</label><div class="color-input-wrap"><input type="color" id="ccDrawing" data-key="drawing"><input type="text" class="hex-input" id="ccDrawingHex" maxlength="7" spellcheck="false"><button class="reset-one" data-reset="drawing" title="Reset"></button></div></div>
-    </div>
-    <div class="colors-section">
-      <h4 id="csIndicators">Indicator Colors</h4>
-      <div id="indColorList" style="max-height:200px;overflow-y:auto"><p class="colors-empty" id="indColorEmpty">No indicators on the chart</p></div>
-    </div>
-    <div class="colors-actions">
-      <button id="colorsResetAll" class="colors-btn danger" type="button">Reset all to theme</button>
-      <span class="grow"></span>
-      <button id="colorsDone" class="colors-btn primary" type="button">Done</button>
-    </div>
-  </div>
-</div>
+<!-- Chart colors: NO side panel (user request) — candle/background/grid/border colors
+     live ONLY in the main settings card: the desktop ⚙ panel and the on-chart ⚙ card. -->
 
 <noscript>This application requires JavaScript to be enabled in the browser.</noscript>
 <script>
@@ -1608,92 +1540,12 @@ function resetIndicatorColor(id) {
   } catch (e) {}
 }
 
-function renderIndicatorColorList() {
-  var box = $("indColorList");
-  if (!box) return;
-  var items = [];
-  panes.forEach(function (p) {
-    var ch = p && p.chart;
-    if (!ch || !ch.indicatorStates || !ch.indicatorStates.forEach) return;
-    ch.indicatorStates.forEach(function (st, id) {
-      if (!st || !st.def) return;
-      var label = st.def.label || id;
-      var color = getIndicatorColor(id);
-      items.push({ id: id, label: label, color: color });
-    });
-  });
-  var ar = window.__BADI_LANG__ === "ar";
-  if (items.length === 0) {
-    box.innerHTML = '<p class="colors-empty">' + (ar ? "لا توجد مؤشرات على الشارت" : "No indicators on the chart") + "</p>";
-    return;
-  }
-  box.innerHTML = items.map(function (it) {
-    return '<div class="ind-color-row" data-ind="' + esc(it.id) + '">'
-      + '<label title="' + esc(it.label) + '">' + esc(it.label) + "</label>"
-      + '<input type="color" value="' + esc(it.color) + '" data-ind-color="' + esc(it.id) + '">'
-      + '<button class="ind-reset" data-ind-reset="' + esc(it.id) + '" title="' + (ar ? "إعادة" : "Reset") + '">'
-      + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 9-9"/><path d="M3 4v5h5"/></svg>'
-      + "</button></div>";
-  }).join("");
-  box.querySelectorAll("[data-ind-color]").forEach(function (inp) {
-    inp.addEventListener("input", function () { setIndicatorColor(inp.dataset.indColor, inp.value); });
-  });
-  box.querySelectorAll("[data-ind-reset]").forEach(function (btn) {
-    btn.addEventListener("click", function () { resetIndicatorColor(btn.dataset.indReset); renderIndicatorColorList(); });
-  });
-}
-
-function populateChartColorFields() {
-  var KEYS = ["bull", "bear", "bullVol", "bearVol", "bg", "grid", "axisText", "crosshair", "drawing"];
-  KEYS.forEach(function (key) {
-    var cap = key.charAt(0).toUpperCase() + key.slice(1);
-    var colorInput = $("cc" + cap);
-    var hexInput = $("cc" + cap + "Hex");
-    if (!colorInput || !hexInput) return;
-    var val = chartColors[key] || "";
-    if (val) {
-      colorInput.value = val;
-      hexInput.value = val;
-    } else {
-      var appTheme = window.__BADI_APP_THEME__ || {};
-      var c = appTheme.c || {};
-      var themeColor = "#38bdf8";
-      if (key === "bull") themeColor = c.good || "#22C55E";
-      else if (key === "bear") themeColor = c.bad || "#EF4444";
-      else if (key === "bullVol") themeColor = c.good || "#22C55E";
-      else if (key === "bearVol") themeColor = c.bad || "#EF4444";
-      else if (key === "bg") themeColor = c.bg || "#000000";
-      else if (key === "grid") themeColor = c.border || "#1F1F23";
-      else if (key === "axisText") themeColor = c.sub || "#8A9099";
-      else if (key === "crosshair") themeColor = c.sub || "#8A9099";
-      else if (key === "drawing") themeColor = c.accent || "#3B8BFF";
-      colorInput.value = themeColor;
-      hexInput.value = "";
-      hexInput.placeholder = themeColor;
-    }
-  });
-}
-
-function openColorsModal() {
-  loadChartColors();
-  populateChartColorFields();
-  renderIndicatorColorList();
-  var m = $("colorsModal");
-  if (m) m.hidden = false;
-}
-
-function closeColorsModal() {
-  var m = $("colorsModal");
-  if (m) m.hidden = true;
-}
-
 function resetOneChartColor(key) {
   if (chartColors[key]) {
     delete chartColors[key];
     saveChartColors();
   }
   applyChartColors();
-  populateChartColorFields();
 }
 
 function resetAllChartColors() {
@@ -1710,42 +1562,9 @@ function resetAllChartColors() {
     });
     if (window.__badiRefitIndicatorLabels) window.__badiRefitIndicatorLabels();
   } catch (e) {}
-  populateChartColorFields();
-  renderIndicatorColorList();
 }
 
 function isValidHex(s) { return /^#[0-9a-fA-F]{6}$/.test(s); }
-
-function wireChartColorField(key) {
-  var cap = key.charAt(0).toUpperCase() + key.slice(1);
-  var colorInput = $("cc" + cap);
-  var hexInput = $("cc" + cap + "Hex");
-  var resetBtn = document.querySelector('[data-reset="' + key + '"]');
-  if (!colorInput) return;
-  colorInput.addEventListener("input", function () {
-    if (hexInput) hexInput.value = colorInput.value;
-    chartColors[key] = colorInput.value;
-    saveChartColors();
-    applyChartColors();
-  });
-  if (hexInput) {
-    hexInput.addEventListener("input", function () {
-      var v = hexInput.value.trim();
-      if (v && v[0] !== "#") v = "#" + v;
-      if (isValidHex(v)) {
-        colorInput.value = v;
-        chartColors[key] = v;
-        saveChartColors();
-        applyChartColors();
-      }
-    });
-    hexInput.addEventListener("blur", function () { populateChartColorFields(); });
-  }
-  if (resetBtn) {
-    resetBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 9-9"/><path d="M3 4v5h5"/></svg>';
-    resetBtn.addEventListener("click", function () { resetOneChartColor(key); });
-  }
-}
 
 
 function renderAll() {
@@ -2433,72 +2252,210 @@ function setupChart(ch, p) {
     if (hasExtra) { try { this._applySettingsCard(id, extra); } catch (e) {} }
     return r;
   };
-  /* Real color picker for the card's color fields: the library only CYCLES 7
-     preset colors on click — the app's own color fields (the __-prefixed ones)
-     open a native <input type=color> with a live swatch preview instead. */
+  /* FREE color editor for the card's color fields (user request: colors must be
+     chosen freely — ANY of the 16.7 million colors, never a fixed preset list):
+     a pure-HTML HSV picker — saturation/brightness square + full rainbow hue
+     strip + hex box. Every move applies LIVE: chart-wide fields go through the
+     same chartColors + applyChartColors() pipeline the desktop settings panel
+     uses; the indicator color goes through setIndicatorColor(). Escape undoes. */
   ch._openBadiColorEditor = function (f) {
     try {
       if (typeof document === "undefined" || !this.settingsCard) return;
       this._closeFieldEditor(false);
-      const input = document.createElement("input");
-      input.type = "color";
-      input.value = /^#[0-9a-fA-F]{6}$/.test(String(f.value)) ? f.value : "#38bdf8";
-      input.setAttribute("data-badi-field-editor", "1");
-      const sc = this.settingsCard;
+      const self = this, sc = this.settingsCard;
       const idx = sc.fields.indexOf(f);
       const fy = sc.y + 36 + Math.max(0, idx) * 30;
       const hostRect = this.canvas.getBoundingClientRect();
-      const stl = input.style;
-      stl.position = "fixed";
-      stl.left = (hostRect.left + sc.x + 90) + "px";
-      stl.top = (hostRect.top + fy) + "px";
-      stl.width = Math.max(40, sc.w - 100) + "px";
-      stl.height = "20px";
-      stl.boxSizing = "border-box";
-      stl.zIndex = "2147483000";
-      stl.margin = "0";
-      stl.border = "none";
-      stl.padding = "0";
-      stl.background = "transparent";
-      const self = this;
+      const startVal = /^#[0-9a-fA-F]{6}$/.test(String(f.value)) ? f.value : "#22C55E";
+
+      /* ── color math: hex ⇄ HSV (no dependencies) ── */
+      function hexToHsv(hex) {
+        const n = parseInt(hex.slice(1), 16);
+        const r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+        const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+        let h = 0;
+        if (d > 0) {
+          if (mx === r) h = ((g - b) / d) % 6;
+          else if (mx === g) h = (b - r) / d + 2;
+          else h = (r - g) / d + 4;
+        }
+        if (h < 0) h += 6;
+        return { h: h / 6, s: mx === 0 ? 0 : d / mx, v: mx };
+      }
+      function hsvToHex(h, s, v) {
+        const i = Math.floor(h * 6), fr = h * 6 - i;
+        const p = v * (1 - s), q = v * (1 - fr * s), t = v * (1 - (1 - fr) * s);
+        let r, g, b;
+        switch (i % 6) {
+          case 0: r = v; g = t; b = p; break;
+          case 1: r = q; g = v; b = p; break;
+          case 2: r = p; g = v; b = t; break;
+          case 3: r = p; g = q; b = v; break;
+          case 4: r = t; g = p; b = v; break;
+          default: r = v; g = p; b = q;
+        }
+        const hx = (x) => ("0" + Math.round(x * 255).toString(16)).slice(-2);
+        return "#" + hx(r) + hx(g) + hx(b);
+      }
+      let HSV = hexToHsv(startVal);
+
+      /* ── the popover shell ── */
+      const pop = document.createElement("div");
+      pop.setAttribute("data-badi-field-editor", "1");
+      pop.style.cssText = "position:fixed;z-index:2147483000;width:224px;padding:10px;box-sizing:border-box;"
+        + "border-radius:12px;background:#141419;border:1px solid #2A2A33;"
+        + "box-shadow:0 16px 34px -14px rgba(0,0,0,.7);"
+        + "font:600 11px/1.3 inherit;color:#E8E8EE;direction:ltr;user-select:none;-webkit-user-select:none;";
+      pop.value = startVal;   /* the library may read .value on close — kept in sync below */
+
+      /* saturation (→) / brightness (↑) square */
+      const sv = document.createElement("div");
+      sv.style.cssText = "position:relative;width:100%;height:132px;border-radius:8px;overflow:hidden;"
+        + "cursor:crosshair;border:1px solid #2A2A33;box-sizing:border-box;";
+      const svBase = document.createElement("div");
+      svBase.style.cssText = "position:absolute;inset:0;";
+      const svWhite = document.createElement("div");
+      svWhite.style.cssText = "position:absolute;inset:0;background:linear-gradient(to right,#FFFFFF,rgba(255,255,255,0));";
+      const svBlack = document.createElement("div");
+      svBlack.style.cssText = "position:absolute;inset:0;background:linear-gradient(to top,#000000,rgba(0,0,0,0));";
+      const svCur = document.createElement("div");
+      svCur.style.cssText = "position:absolute;width:14px;height:14px;border-radius:50%;border:2px solid #FFFFFF;"
+        + "box-shadow:0 0 0 1px rgba(0,0,0,.85), inset 0 0 0 1px rgba(0,0,0,.45);"
+        + "transform:translate(-50%,-50%);pointer-events:none;";
+      sv.appendChild(svBase); sv.appendChild(svWhite); sv.appendChild(svBlack); sv.appendChild(svCur);
+
+      /* hue strip — the full rainbow */
+      const hue = document.createElement("div");
+      hue.style.cssText = "position:relative;width:100%;height:14px;margin-top:10px;border-radius:7px;"
+        + "cursor:crosshair;border:1px solid #2A2A33;box-sizing:border-box;"
+        + "background:linear-gradient(to right,#FF0000,#FFFF00,#00FF00,#00FFFF,#0000FF,#FF00FF,#FF0000);";
+      const hueCur = document.createElement("div");
+      hueCur.style.cssText = "position:absolute;top:50%;width:10px;height:16px;border-radius:5px;"
+        + "border:2px solid #FFFFFF;box-shadow:0 0 0 1px rgba(0,0,0,.85);transform:translate(-50%,-50%);pointer-events:none;";
+      hue.appendChild(hueCur);
+
+      /* bottom row: live swatch (the box wears the chosen color itself) + hex box */
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex;align-items:center;gap:8px;margin-top:10px;";
+      const swatch = document.createElement("div");
+      swatch.style.cssText = "width:30px;height:24px;border-radius:6px;border:1px solid #2A2A33;flex-shrink:0;";
+      const hex = document.createElement("input");
+      hex.type = "text"; hex.maxLength = 7; hex.spellcheck = false; hex.value = startVal;
+      hex.style.cssText = "flex:1;min-width:0;box-sizing:border-box;padding:5px 8px;border-radius:7px;"
+        + "border:1px solid #2A2A33;background:#0D0D11;color:#E8E8EE;"
+        + "font:600 12px/1 ui-monospace,monospace;outline:none;user-select:text;-webkit-user-select:text;";
+      row.appendChild(swatch); row.appendChild(hex);
+      pop.appendChild(sv); pop.appendChild(hue); pop.appendChild(row);
+
+      /* ── paint state → visuals + LIVE chart apply (candles recolor instantly) ── */
       let done = false;
-      const startVal = f.value;
-      /* Live apply (user request): the CHART candles change color the moment the
-         picker value moves — not only after Save. Chart-wide fields go through the
-         same chartColors + applyChartColors() pipeline the app settings panel uses;
-         the indicator color goes through setIndicatorColor(). Escape undoes. */
-      const liveApply = function (val) {
-        try {
-          if (f.__badiCk && typeof val === "string" && /^#[0-9a-fA-F]{6}$/.test(val.trim())) {
-            chartColors[f.__badiCk] = val.trim();
+      function paint(apply) {
+        const val = hsvToHex(HSV.h, HSV.s, HSV.v);
+        svBase.style.background = "hsl(" + Math.round(HSV.h * 360) + ",100%,50%)";
+        svCur.style.left = (HSV.s * 100) + "%";
+        svCur.style.top = ((1 - HSV.v) * 100) + "%";
+        hueCur.style.left = (HSV.h * 100) + "%";
+        swatch.style.background = val;
+        pop.value = val;
+        if (hex.value.toLowerCase() !== val.toLowerCase()) hex.value = val;
+        f.value = val;                    /* live preview inside the card */
+        if (apply !== false) {
+          if (f.__badiCk) {               /* chart-wide color → the shared pipeline */
+            chartColors[f.__badiCk] = val;
             saveChartColors();
             applyChartColors();
-          } else if (f.key === "__color" && typeof val === "string" && val.trim()) {
-            setIndicatorColor(self.settingsCard ? self.settingsCard.id : "", val.trim());
+          } else if (f.key === "__color") {
+            setIndicatorColor(self.settingsCard ? self.settingsCard.id : "", val);
           }
-        } catch (e) {}
-      };
-      input.addEventListener("input", function () {
-        f.value = input.value;          /* live preview inside the card */
-        liveApply(input.value);         /* live preview ON THE CHART (candles recolor now) */
+        }
         self.invalidate();
+      }
+      paint(false);
+
+      /* ── drag handling (removed again on close — no leaks) ── */
+      const cleanup = [];
+      function bindDrag(el, fn) {
+        let on = false;
+        const move = function (ev) {
+          if (!on) return;
+          const r = el.getBoundingClientRect();
+          fn((ev.clientX - r.left) / Math.max(1, r.width), (ev.clientY - r.top) / Math.max(1, r.height));
+          ev.preventDefault();
+        };
+        const up = function () { on = false; };
+        el.addEventListener("mousedown", function (ev) { on = true; move(ev); ev.preventDefault(); ev.stopPropagation(); });
+        window.addEventListener("mousemove", move);
+        window.addEventListener("mouseup", up);
+        cleanup.push(function () { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); });
+      }
+      bindDrag(sv, function (nx, ny) {
+        HSV.s = Math.max(0, Math.min(1, nx));
+        HSV.v = 1 - Math.max(0, Math.min(1, ny));
+        paint(true);
       });
-      input.addEventListener("keydown", function (ev) {
-        ev.stopPropagation();
-        if (ev.key === "Enter") { ev.preventDefault(); done = true; self._closeFieldEditor(); }
-        else if (ev.key === "Escape") {
-          ev.preventDefault(); f.value = startVal; done = true;
-          liveApply(startVal);          /* undo the live chart change too */
-          self._closeFieldEditor();
+      bindDrag(hue, function (nx) {
+        HSV.h = Math.max(0, Math.min(1, nx));
+        paint(true);
+      });
+
+      /* ── close (idempotent — the library may close it too) ── */
+      function onKey(ev) {
+        if (ev.key === "Escape") {
+          ev.preventDefault(); ev.stopPropagation();
+          HSV = hexToHsv(startVal);
+          paint(true);                    /* undo the live chart change too */
+          close();
+        } else if (ev.key === "Enter") {
+          ev.preventDefault(); ev.stopPropagation();
+          close();
+        }
+      }
+      function onOutside(ev) {
+        if (!pop.parentNode) return;
+        if (pop.contains(ev.target)) return;
+        close();
+      }
+      function close() {
+        if (done) return;
+        done = true;
+        while (cleanup.length) { try { cleanup.pop()(); } catch (e) {} }
+        try { document.removeEventListener("mousedown", onOutside); } catch (e) {}
+        try { document.removeEventListener("keydown", onKey, true); } catch (e) {}
+        try { mo.disconnect(); } catch (e) {}
+        if (pop.parentNode) pop.parentNode.removeChild(pop);
+        if (self._fieldEditor === pop) self._fieldEditor = null;
+      }
+      const mo = new MutationObserver(function () {
+        if (!pop.parentNode) close();     /* the library removed it → release listeners */
+      });
+      pop.addEventListener("mousedown", function (ev) { ev.stopPropagation(); });
+      hex.addEventListener("input", function () {
+        let v = hex.value.trim();
+        if (v && v.charAt(0) !== "#") v = "#" + v;
+        if (/^#[0-9a-fA-F]{6}$/.test(v)) {
+          HSV = hexToHsv(v);
+          paint(true);
         }
       });
-      input.addEventListener("blur", function () {
-        if (!done) { done = true; self._closeFieldEditor(); }
+      hex.addEventListener("keydown", function (ev) {
+        ev.stopPropagation();
+        if (ev.key === "Enter") { ev.preventDefault(); close(); }
+        else if (ev.key === "Escape") { ev.preventDefault(); HSV = hexToHsv(startVal); paint(true); close(); }
       });
-      document.body.appendChild(input);
-      this._fieldEditor = input;
-      input.focus();
-      try { if (typeof input.showPicker === "function") input.showPicker(); } catch (e) {}
+      document.addEventListener("mousedown", onOutside);
+      document.addEventListener("keydown", onKey, true);
+      mo.observe(document.body, { childList: true });
+
+      /* ── place the popover next to the clicked field, inside the window ── */
+      const PW = 224, PH = 244;
+      let px = hostRect.left + sc.x + sc.w + 8;
+      if (px + PW > window.innerWidth - 8) px = Math.max(8, hostRect.left + sc.x - PW - 8);
+      let py = Math.max(8, Math.min(hostRect.top + fy, window.innerHeight - PH - 8));
+      pop.style.left = px + "px";
+      pop.style.top = py + "px";
+      document.body.appendChild(pop);
+      this._fieldEditor = pop;
+      hex.focus();
       this.invalidate();
     } catch (e) {}
   };
@@ -2831,10 +2788,6 @@ function buildStatic() {
   if (beIco) beIco.innerHTML = icon("lock", 13);
   if (biIco) biIco.innerHTML = icon("dl", 13);
   if (bieIco) bieIco.innerHTML = icon("dl", 13);
-  var cbIco = $("colorsBtn");
-  if (cbIco) {
-    cbIco.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>';
-  }
   $("webTg").innerHTML = icon("send", 14) + '<span class="btxt">Bot Telegram</span>';
   $("webLogout").innerHTML = icon("logout", 15);
   /* Hide buttons inside the card header + show button on the chart toolbar */
@@ -3531,24 +3484,6 @@ function bindEvents() {
   window.addEventListener("resize", applyEdW);
   document.addEventListener("visibilitychange", function () { if (document.hidden) saveFiles(files); });
   window.addEventListener("beforeunload", function () { saveFiles(files); });
-
-  /* Chart Colors modal events (user request) */
-  $("colorsBtn").addEventListener("click", openColorsModal);
-  $("colorsClose").addEventListener("click", closeColorsModal);
-  $("colorsDone").addEventListener("click", closeColorsModal);
-  $("colorsResetAll").addEventListener("click", function () {
-    if (window.confirm(window.__BADI_LANG__ === "ar"
-      ? "هل تريد إعادة ضبط كل الألوان إلى ألوان المظهر الافتراضية؟"
-      : "Reset all colors to the default theme colors?")) {
-      resetAllChartColors();
-    }
-  });
-  $("colorsModal").addEventListener("click", function (e) {
-    if (e.target === $("colorsModal")) closeColorsModal();
-  });
-  ["bull", "bear", "bullVol", "bearVol", "bg", "grid", "axisText", "crosshair", "drawing"].forEach(function (key) {
-    wireChartColorField(key);
-  });
 }
 function clampW(v) {
   const max = Math.floor(window.innerWidth * 0.62);
@@ -3615,7 +3550,6 @@ function boot() {
   applyEdW();
   bindEvents();
   startStatusBar();
-  updateColorsModalLang();   /* Set colors modal labels based on language */
   if (window.BadiCharts) {
     try { initPanes(); }
     catch (e) { showLibError("Error initializing the chart: " + ((e && e.message) || e)); }
@@ -3627,28 +3561,6 @@ function boot() {
   setInterval(liveTick, 1000);
 }
 
-/* Update the colors modal labels based on the app language (user request) */
-function updateColorsModalLang() {
-  var ar = window.__BADI_LANG__ === "ar";
-  var set = function (id, txt) { var el = $(id); if (el) el.textContent = txt; };
-  set("colorsTitle", ar ? "ألوان الشارت" : "Chart Colors");
-  set("csCandles", ar ? "ألوان الشموع" : "Candle Colors");
-  set("csChart", ar ? "مظهر الشارت" : "Chart Appearance");
-  set("csIndicators", ar ? "ألوان المؤشرات" : "Indicator Colors");
-  set("clBull", ar ? "الشمعة الصاعدة (صعود)" : "Bullish candle (up)");
-  set("clBear", ar ? "الشمعة الهابطة (هبوط)" : "Bearish candle (down)");
-  set("clBullVol", ar ? "حجم الصعود" : "Bullish volume");
-  set("clBearVol", ar ? "حجم الهبوط" : "Bearish volume");
-  set("clBg", ar ? "الخلفية" : "Background");
-  set("clGrid", ar ? "خطوط الشبكة" : "Grid lines");
-  set("clAxisText", ar ? "نص المحور" : "Axis text");
-  set("clCrosshair", ar ? "المؤشر المتقاطع" : "Crosshair");
-  set("clDrawing", ar ? "أدوات الرسم" : "Drawing tools");
-  var resetBtn = $("colorsResetAll");
-  if (resetBtn) resetBtn.textContent = ar ? "إعادة الكل للمظهر" : "Reset all to theme";
-  var doneBtn = $("colorsDone");
-  if (doneBtn) doneBtn.textContent = ar ? "تم" : "Done";
-}
 document.addEventListener("DOMContentLoaded", boot);
 </script>
 </body>
@@ -3764,8 +3676,10 @@ T = {
         "otherSett": "Other settings", "darkMode": "Dark mode", "langLbl": "Language", "sndLbl": "Signal sounds",
         "sbLbl": "Status bar", "cdLbl": "Candle countdown",
         "chartCols": "Chart colors", "cBull": "Bull candles", "cBear": "Bear candles", "cBg": "Background",
+        "cBullVol": "Bull volume", "cBearVol": "Bear volume", "cAxisText": "Axis text",
+        "cCross": "Crosshair", "cDraw": "Drawing tools",
         "cGrid": "Grid", "cBord": "Borders", "cResetAll": "Reset all", "cTheme": "theme",
-        "cHint": "Tap a color or type a hex code — the chart updates live.",
+        "cHint": "Pick ANY color freely — drag the picker or type a hex code — the chart updates live.",
         "badiSect": "Encrypted indicators (BADI)", "keyFp": "Key fingerprint:",
         "notifT": "Notifications", "notifEmpty": "No notifications yet",
         "notifHint": "Notifications from your paid indicators appear here — the developer sends them from his own server (updates, subscription reminders). No files can ever pass through this channel.",
@@ -3843,8 +3757,10 @@ T = {
         "otherSett": "إعدادات أخرى", "darkMode": "الوضع الليلي", "langLbl": "اللغة", "sndLbl": "أصوات الإشارات",
         "sbLbl": "شريط الحالة", "cdLbl": "العد التنازلي على الشارت",
         "chartCols": "ألوان الشارت", "cBull": "الشموع الصاعدة", "cBear": "الشموع الهابطة", "cBg": "الخلفية",
+        "cBullVol": "حجم الصعود", "cBearVol": "حجم الهبوط", "cAxisText": "نص المحور",
+        "cCross": "المؤشر المتقاطع", "cDraw": "أدوات الرسم",
         "cGrid": "الشبكة", "cBord": "الحدود", "cResetAll": "إعادة الكل", "cTheme": "الثيم",
-        "cHint": "اختر لونًا أو اكتب كود hex — يتحدّث الشارت فورًا.",
+        "cHint": "اختر أي لون بحرية — اسحب المنتقي أو اكتب كود hex — يتحدّث الشارت فورًا.",
         "badiSect": "المؤشرات المشفرة (BADI)", "keyFp": "بصمة المفتاح:",
         "notifT": "الإشعارات", "notifEmpty": "لا توجد إشعارات بعد",
         "notifHint": "تظهر هنا إشعارات المؤشرات المدفوعة — المبرمج يرسلها من خادمه (تحديثات، تذكير بالاشتراك). لا يمكن لأي ملف أن يمر عبر هذه القناة إطلاقًا.",
@@ -3994,8 +3910,10 @@ T = {
         "sbLbl": 'স্ট্যাটাস বার',
         "cdLbl": 'ক্যান্ডেল কাউন্টডাউন',
         "chartCols": 'চার্ট রং', "cBull": 'বুল ক্যান্ডেল', "cBear": 'বেয়ার ক্যান্ডেল', "cBg": 'ব্যাকগ্রাউন্ড',
+        "cBullVol": 'বুল ভলিউম', "cBearVol": 'বেয়ার ভলিউম', "cAxisText": 'অ্যাক্সিস টেক্সট',
+        "cCross": 'ক্রসহেয়ার', "cDraw": 'ড্রয়িং টুলস',
         "cGrid": 'গ্রিড', "cBord": 'বর্ডার', "cResetAll": 'সব রিসেট', "cTheme": 'থিম',
-        "cHint": 'একটি রং নির্বাচন করুন বা হেক্স কোড লিখুন — চার্ট সাথে সাথে আপডেট হবে।',
+        "cHint": 'যেকোনো রং স্বাধীনভাবে বেছে নিন — পিকার টানুন বা হেক্স কোড লিখুন — চার্ট সাথে সাথে আপডেট হবে।',
         "badiSect": 'এনক্রিপ্টেড ইন্ডিকেটর (BADI)',
         "keyFp": 'কী ফিঙ্গারপ্রিন্ট:',
         "notifT": 'নোটিফিকেশন',
@@ -4169,8 +4087,10 @@ T = {
         "sbLbl": 'स्टेटस बार',
         "cdLbl": 'कैंडल काउंटडाउन',
         "chartCols": 'चार्ट रंग', "cBull": 'बुल कैंडल', "cBear": 'बेयर कैंडल', "cBg": 'बैकग्राउंड',
+        "cBullVol": 'बुल वॉल्यूम', "cBearVol": 'बेयर वॉल्यूम', "cAxisText": 'एक्सिस टेक्स्ट',
+        "cCross": 'क्रॉसहेयर', "cDraw": 'ड्रॉइंग टूल्स',
         "cGrid": 'ग्रिड', "cBord": 'बॉर्डर', "cResetAll": 'सब रीसेट', "cTheme": 'थीम',
-        "cHint": 'रंग चुनें या हेक्स कोड टाइप करें — चार्ट तुरंत अपडेट होगा।',
+        "cHint": 'कोई भी रंग स्वतंत्र रूप से चुनें — पिकर खींचें या हेक्स कोड टाइप करें — चार्ट तुरंत अपडेट होगा।',
         "badiSect": 'एन्क्रिप्टेड इंडिकेटर (BADI)',
         "keyFp": 'की फ़िंगरप्रिंट:',
         "notifT": 'सूचनाएं',
@@ -4344,8 +4264,10 @@ T = {
         "sbLbl": 'Barra de estado',
         "cdLbl": 'Cuenta regresiva de vela',
         "chartCols": 'Colores del gráfico', "cBull": 'Velas alcistas', "cBear": 'Velas bajistas', "cBg": 'Fondo',
+        "cBullVol": 'Volumen alcista', "cBearVol": 'Volumen bajista', "cAxisText": 'Texto del eje',
+        "cCross": 'Cruceta', "cDraw": 'Herramientas de dibujo',
         "cGrid": 'Cuadrícula', "cBord": 'Bordes', "cResetAll": 'Restablecer todo', "cTheme": 'tema',
-        "cHint": 'Elige un color o escribe un código hex — el gráfico se actualiza al instante.',
+        "cHint": 'Elige cualquier color libremente — arrastra el selector o escribe un código hex — el gráfico se actualiza al instante.',
         "badiSect": 'Indicadores cifrados (BADI)',
         "keyFp": 'Huella de la clave:',
         "notifT": 'Notificaciones',
@@ -4519,8 +4441,10 @@ T = {
         "sbLbl": 'اسٹیٹس بار',
         "cdLbl": 'کینڈل کاؤنٹ ڈاؤن',
         "chartCols": 'چارٹ کے رنگ', "cBull": 'بل کینڈل', "cBear": 'بئر کینڈل', "cBg": 'بیک گراؤنڈ',
+        "cBullVol": 'بل والیوم', "cBearVol": 'بئر والیوم', "cAxisText": 'ایکسس ٹیکسٹ',
+        "cCross": 'کراس ہیئر', "cDraw": 'ڈرائنگ ٹولز',
         "cGrid": 'گرڈ', "cBord": 'بارڈر', "cResetAll": 'سب ری سیٹ', "cTheme": 'تھیم',
-        "cHint": 'ایک رنگ منتخب کریں یا ہیکس کوڈ لکھیں — چارٹ فوراً اپ ڈیٹ ہو جائے گا۔',
+        "cHint": 'کوئی بھی رنگ آزادی سے چنیں — پکر کو کھینچیں یا ہیکس کوڈ لکھیں — چارٹ فوراً اپ ڈیٹ ہو جائے گا۔',
         "badiSect": 'مرموز شدہ انڈیکیٹرز (BADI)',
         "keyFp": 'کی فنگرپرنٹ:',
         "notifT": 'اطلاعات',
@@ -11380,6 +11304,11 @@ ApplicationWindow {
             CCRow { Layout.fillWidth: true; ck: "bg"; cLbl: backend.s.cBg; def: backend.c.bg }
             CCRow { Layout.fillWidth: true; ck: "grid"; cLbl: backend.s.cGrid; def: backend.c.border }
             CCRow { Layout.fillWidth: true; ck: "axisBorder"; cLbl: backend.s.cBord; def: backend.c.border }
+            CCRow { Layout.fillWidth: true; ck: "bullVol"; cLbl: backend.s.cBullVol; def: backend.c.good }
+            CCRow { Layout.fillWidth: true; ck: "bearVol"; cLbl: backend.s.cBearVol; def: backend.c.bad }
+            CCRow { Layout.fillWidth: true; ck: "axisText"; cLbl: backend.s.cAxisText; def: backend.c.sub }
+            CCRow { Layout.fillWidth: true; ck: "crosshair"; cLbl: backend.s.cCross; def: backend.c.sub }
+            CCRow { Layout.fillWidth: true; ck: "drawing"; cLbl: backend.s.cDraw; def: backend.c.accent }
             /* ───── BADI: the encryption key stays inside the app — only its fingerprint is shown here ───── */
             Rectangle { Layout.fillWidth: true; height: 1; color: backend.c.border }
             Label { text: backend.s.badiSect; font.pixelSize: 13; font.bold: true; color: backend.c.fg }
@@ -11414,8 +11343,11 @@ ApplicationWindow {
         }
     }
 
-    /* Themed color picker for the chart colors (user request): preset swatches + hex input,
-       pure QML so it follows the dark/light theme — every pick applies to the chart live. */
+    /* Themed FREE color picker for the chart colors (user request: colors must be
+       chosen freely — ANY of the 16.7 million colors, not a fixed preset list):
+       a saturation/brightness square + a full rainbow hue strip + a hex box.
+       Pure QML so it follows the dark/light theme — every move applies to the
+       chart live through win.setChartColorLocal. */
     Popup {
         id: ccPop
         parent: Overlay.overlay
@@ -11428,18 +11360,45 @@ ApplicationWindow {
         property string pLbl: ""
         property string pCur: "#22C55E"
         property string pDef: "#22C55E"
+        property real pHue: 0.33
+        property real pSat: 0.75
+        property real pVal: 0.77
+        property bool pSync: false
         function openFor(key, lbl, cur, def) {
             pKey = key; pLbl = lbl; pCur = cur; pDef = def
-            hexF.text = ""
+            syncHsv(cur)
+            pSync = true
+            hexF.text = String(cur).toUpperCase()
+            pSync = false
             open()
         }
-        function applyColor(v) {
-            var s = String(v || "").trim()
+        function hsvToHex(h, s, v) {
+            var c = Qt.hsva(h, s, v, 1)
+            function hx(x) { var t = Math.round(x * 255).toString(16); return t.length < 2 ? "0" + t : t }
+            return "#" + hx(c.r) + hx(c.g) + hx(c.b)
+        }
+        function syncHsv(str) {
+            var c = Qt.color(String(str || "#000000"))
+            pHue = (c.hsvHue >= 0) ? c.hsvHue : 0
+            pSat = c.hsvSaturation
+            pVal = c.hsvValue
+        }
+        function applyHex(str) {
+            var s = String(str || "").trim()
             if (s.charAt(0) !== "#") s = "#" + s
             if (!/^#[0-9a-fA-F]{6}$/.test(s)) return false
             pCur = s
+            syncHsv(s)
             win.setChartColorLocal(pKey, s)
             return true
+        }
+        function pushHsv() {
+            var s = hsvToHex(pHue, pSat, pVal)
+            pCur = s
+            pSync = true
+            hexF.text = s
+            pSync = false
+            win.setChartColorLocal(pKey, s)
         }
         background: Rectangle {
             radius: 14; color: backend.c.card
@@ -11457,21 +11416,87 @@ ApplicationWindow {
                 Label { text: ccPop.pLbl; font.pixelSize: 13; font.bold: true; color: backend.c.fg; Layout.fillWidth: true }
                 IBtn { iconName: "x"; onClicked: ccPop.close() }
             }
-            Grid {
-                columns: 8; spacing: 6
-                Layout.alignment: Qt.AlignHCenter
-                Repeater {
-                    model: ["#22C55E", "#16A34A", "#10B981", "#84CC16", "#EAB308", "#F59E0B", "#F97316", "#EF4444",
-                            "#DC2626", "#EC4899", "#A855F7", "#8B5CF6", "#3B6CF5", "#3B8BFF", "#14B8F5", "#0EA5E9",
-                            "#06B6D4", "#FFFFFF", "#C7CDD8", "#8A9099", "#5B6B80", "#3F4654", "#1F1F23", "#0A0A0A"]
-                    delegate: Rectangle {
-                        width: 30; height: 30; radius: 7
-                        color: modelData
-                        border.width: ccPop.pCur.toUpperCase() === modelData ? 2 : 1
-                        border.color: ccPop.pCur.toUpperCase() === modelData ? backend.c.accent : backend.c.border
-                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                                    onClicked: ccPop.applyColor(modelData) }
+            /* Saturation (→) / brightness (↑) square — drag anywhere inside it */
+            Item {
+                id: svBox
+                Layout.fillWidth: true
+                Layout.preferredHeight: 150
+                clip: true
+                Rectangle { anchors.fill: parent; color: Qt.hsva(ccPop.pHue, 1, 1, 1) }
+                Rectangle {
+                    anchors.fill: parent
+                    gradient: Gradient {
+                        orientation: Gradient.Horizontal
+                        GradientStop { position: 0; color: "#FFFFFF" }
+                        GradientStop { position: 1; color: Qt.rgba(1, 1, 1, 0) }
                     }
+                }
+                Rectangle {
+                    anchors.fill: parent
+                    gradient: Gradient {
+                        GradientStop { position: 0; color: Qt.rgba(0, 0, 0, 0) }
+                        GradientStop { position: 1; color: "#000000" }
+                    }
+                }
+                Rectangle {
+                    width: 16; height: 16; radius: 8
+                    x: ccPop.pSat * svBox.width - width / 2
+                    y: (1 - ccPop.pVal) * svBox.height - height / 2
+                    color: "transparent"
+                    border.width: 2; border.color: "#FFFFFF"
+                    Rectangle { anchors.fill: parent; anchors.margins: 3; radius: 5
+                                color: "transparent"; border.width: 1; border.color: "#000000" }
+                }
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.CrossCursor
+                    preventStealing: true
+                    function grab(m) {
+                        ccPop.pSat = Math.max(0, Math.min(1, m.x / Math.max(1, svBox.width)))
+                        ccPop.pVal = 1 - Math.max(0, Math.min(1, m.y / Math.max(1, svBox.height)))
+                        ccPop.pushHsv()
+                    }
+                    onPressed: function (m) { grab(m) }
+                    onPositionChanged: function (m) { if (pressed) grab(m) }
+                }
+            }
+            /* Hue strip — the full rainbow, every hue reachable */
+            Item {
+                id: hueBox
+                Layout.fillWidth: true
+                Layout.preferredHeight: 16
+                Rectangle {
+                    anchors.fill: parent
+                    radius: 8
+                    gradient: Gradient {
+                        GradientStop { position: 0.0; color: "#FF0000" }
+                        GradientStop { position: 0.167; color: "#FFFF00" }
+                        GradientStop { position: 0.333; color: "#00FF00" }
+                        GradientStop { position: 0.5; color: "#00FFFF" }
+                        GradientStop { position: 0.667; color: "#0000FF" }
+                        GradientStop { position: 0.833; color: "#FF00FF" }
+                        GradientStop { position: 1.0; color: "#FF0000" }
+                    }
+                }
+                Rectangle {
+                    width: 12; height: 20; radius: 6
+                    x: ccPop.pHue * (hueBox.width - width)
+                    anchors.verticalCenter: parent.verticalCenter
+                    color: "transparent"
+                    border.width: 2; border.color: "#FFFFFF"
+                    Rectangle { anchors.fill: parent; anchors.margins: 3; radius: 4
+                                color: "transparent"; border.width: 1; border.color: "#000000" }
+                }
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    preventStealing: true
+                    function grab(m) {
+                        ccPop.pHue = Math.max(0, Math.min(1, m.x / Math.max(1, hueBox.width)))
+                        ccPop.pushHsv()
+                    }
+                    onPressed: function (m) { grab(m) }
+                    onPositionChanged: function (m) { if (pressed) grab(m) }
                 }
             }
             RowLayout {
@@ -11482,9 +11507,9 @@ ApplicationWindow {
                     placeholderText: "#RRGGBB"
                     font.family: "monospace"
                     font.pixelSize: 12
-                    onTextChanged: ccPop.applyColor(text)
+                    onTextChanged: if (!ccPop.pSync) ccPop.applyHex(text)
                 }
-                IBtn { iconName: "check"; onClicked: if (ccPop.applyColor(hexF.text)) ccPop.close() }
+                IBtn { iconName: "check"; onClicked: if (ccPop.applyHex(hexF.text)) ccPop.close() }
             }
             Label {
                 text: backend.s.cHint
