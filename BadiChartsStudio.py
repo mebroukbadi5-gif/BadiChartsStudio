@@ -22,6 +22,9 @@
 #  (or BadiChartsStudio_readable.py — exactly the same result)
 #
 #  Latest updates (v2.17.1):
+#   • The white strip right of the price axis is gone for good — root cause fixed: the chart
+#     canvas stays CSS-driven so it always follows its container; opening the app in a smaller
+#     window and maximizing it no longer freezes the chart at its first size (owner report)
 #   • Editor UI now follows the app theme: the editor strip (Run/New/Save bar), the file tabs,
 #     the empty-editor box and the new-file wizard card use theme variables instead of fixed
 #     dark colors — switching dark/light recolors the whole editor area instantly
@@ -1737,6 +1740,17 @@ function addPane() {
        runs exactly as shipped with its own defaults — the page passes only the on/off state from Settings */
     countdown: { enabled: !!(window.__BADI_UI__ && window.__BADI_UI__.cd) }
   });
+  /* Keep the canvas CSS-driven (root cause of the white strip right of the axis):
+     the library's v2.16.0 pin path misreads a CSS-sized canvas — getComputedStyle
+     returns px, so it treats width:100% as "not CSS-sized" and pins
+     canvas.style.width to the FIRST measured pixel width. Maximizing the window
+     afterwards leaves the canvas frozen at the old size and a white strip appears
+     right of the price axis (owner report). Restoring the inline 100% keeps the
+     pin path from ever running again, the canvas always follows its container,
+     and the library's own ResizeObserver keeps chart.W in sync. */
+  cv.style.width = "100%";
+  cv.style.height = "100%";
+  try { window.dispatchEvent(new Event("resize")); } catch (e) {}
   const p = { el: el, head: el.querySelector(".pane-head"), cv: cv, chart: chart, asset: name, tf: "1m", dataArr: [], tick: 0 };
   /* Go-to-live-edge arrow (user request): hidden while the chart hugs the live candle,
      shown as soon as the view is panned/zoomed away from it — one click snaps back */
