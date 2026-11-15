@@ -1,47 +1,57 @@
 # -*- coding: utf-8 -*-
 # ==========================================================================
-#  BadiCharts Studio — FULL SOURCE  (الكود كامل وظاهر وواضح)
+#  BadiCharts Studio — FULL SOURCE  (complete, visible, self-explanatory code)
 #
-#  منذ التحديث v2.9.0 أصبح الحجم غير مهم — BadiChartsStudio.py و
-#  BadiChartsStudio_readable.py هما نفس الكود بالضبط (نسختان متطابقتان)،
-#  مرتّب على ثلاثة أجزاء:
+#  Since the v2.9.0 update the file size no longer matters — BadiChartsStudio.py and
+#  BadiChartsStudio_readable.py are exactly the same code (two identical copies),
+#  organized into three parts:
 #
 #    PART 1 — THE WEB PAGE (studio.html)
-#             صفحة الاستوديو كاملة: HTML + CSS + JavaScript
-#             (الشارت، محرر الأكواد، المؤشرات، أدوات الرسم، نافذة التسمية)
+#             The complete studio page: HTML + CSS + JavaScript
+#             (chart, code editor, indicators, drawing tools, label dialog)
 #
-#    PART 2 — BADI-CHARTS-V2 v2.13.0 CHART LIBRARY (badi-chart.js)
-#             مكتبة رسم الشموع (كود خارجي ثابت من صانع المكتبة —
-#             تُترك مضغوطة فقط لأنها لا تحتاج تعديلاً وتوفّر ~130KB)
+#    PART 2 — CHART LIBRARY: loaded directly from the official CDN link (owner request)
+#             https://cdn.jsdelivr.net/gh/salahbadi19/BADI-CHARTS-V2@v2.17.1/chart.js
+#             a <script> tag in the page points straight to the link — no embedded code
 #
 #    PART 3 — THE DESKTOP APP (Python + QML)
-#             التطبيق نفسه: نافذة سطح المكتب، شاشة الدخول، محرك بايثون
-#             للمؤشرات، إشارات تلجرام، الثيمات، وجسر الاتصال بالصفحة
+#             The app itself: desktop window, login screen, Python engine
+#             for indicators, Telegram signals, themes, and the bridge to the page
 #
-#  التشغيل:  pip install PySide6   ثم   python BadiChartsStudio.py
-#  (أو BadiChartsStudio_readable.py — نفس النتيجة تماماً)
+#  Run:  pip install PySide6   then   python BadiChartsStudio.py
+#  (or BadiChartsStudio_readable.py — exactly the same result)
 #
-#  أحدث الدفعات (v2.13.0):
-#   • المكتبة المدمجة ترقّيت إلى BADI-CHARTS-V2 v2.13.0 (نفس الواجهة، بلا كسور)
-#   • لوحة الإشارات بتبويبين: الإشارات (الجارية الآن) + السجل (المنتهية بنتيجتها)
-#   • المؤشر المشفر (.badi) يعمل داخليًا فقط: لا يُفتح في المحرر، لا يُحفظ،
-#     وبطاقته على الشارت بلا زر تعديل — وإشاراته تعمل كأي مؤشر
-#   • حماية أقوى: ماسح أنماط ممنوعة (شبكة/تخزين/أجزاء التطبيق الداخلية) يرفض
-#     أي كود مشفر يحاول المرور على ملفات التطبيق + فحص QuickJS معزول
-#     بحدود ذاكرة ووقت — الكود الخطير يتوقف داخله ولا يلمس ملفات الجهاز أبدًا
-#   • المفتاح 256-بت مدموج في الكود، ثابت للجميع، لا يُنسخ ولا يُحفظ ولا يُعرض
-#   • معرّف مستخدم ثابت BADI-XXXX-XXXX-XXXX في الشريط السفلي (انقر لنسخه):
-#     عشوائي لكل مستخدم، محفوظ بعمق في مواقع مخفية موقّعة HMAC ومربوطة بالجهاز —
-#     لا يمكن تغييره ولا نقله إلى جهاز أو تطبيق آخر
-#   • ترخيص المؤشر المشفر بالمعرّف: البائع يضع معرّف المشتري في حوار التشفير
-#     فيُدمج داخل الملف المشفر — لا يعمل المؤشر إلا على الجهاز المطابق
-#   • زر فتح مجلد التطبيق بجوار زر المحرر — يضع فيه المستخدم المؤشرات والأدوات
-#   • الإعدادات: منتقي ألوان حرة (نقر المربّع يفتح نافذة الألوان) لكل ألوان الشارت
+#  Latest updates (v2.17.1):
+#   • Editor UI now follows the app theme: the editor strip (Run/New/Save bar), the file tabs,
+#     the empty-editor box and the new-file wizard card use theme variables instead of fixed
+#     dark colors — switching dark/light recolors the whole editor area instantly
+#   • English is the official documentation language: the programming guide file
+#     (BadiCharts_Programming_Guide.js) is fully written in English (owner request)
+#   • Chart library v2.17.1 loads directly from the official CDN link instead of embedding its code (owner request)
+#   • The countdown beside the live candle is the library's own counter, used as-is — the page-side
+#     replacement and its color override were removed (owner request)
+#   • Go-to-live-edge arrow (icon-only): the chart pans/zooms freely so the empty right side stays
+#     after a pan — the arrow appears when the view drifts from the live candle and one click snaps
+#     it back without touching the zoom level
+#   • Signals panel with two tabs: Signals (running now) + History (finished with their result)
+#   • The encrypted indicator (.badi) runs internally only: never opened in the editor, never saved,
+#     and its card on the chart has no edit button — its signals work like any indicator
+#   • Stronger protection: a forbidden-pattern scanner (network/storage/internal app parts) rejects
+#     any encrypted code that tries to touch app files + an isolated QuickJS check
+#     with memory and time limits — dangerous code stops inside it and never touches device files
+#   • The 256-bit key is fused into the code, fixed for everyone, never copied, saved or shown
+#   • Fixed user ID BADI-XXXX-XXXX-XXXX in the bottom bar (click to copy):
+#     random per user, stored deep in hidden HMAC-signed locations and bound to the device —
+#     it cannot be changed or moved to another device or app
+#   • Encrypted-indicator licensing by ID: the seller enters the buyer ID in the encryption dialog
+#     and it is embedded inside the encrypted file — the indicator runs only on the matching device
+#   • Open-app-folder button next to the editor button — the user drops indicators and tools into it
+#   • Settings: free color picker (clicking a swatch opens the color dialog) for every chart color
 # ==========================================================================
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-#  PART 1 — THE WEB PAGE (studio.html) — صفحة الاستوديو كاملة وكودها ظاهر
+#  PART 1 — THE WEB PAGE (studio.html) — the complete studio page with its code in the open
 # ═══════════════════════════════════════════════════════════════════════════
 STUDIO_HTML = r'''<!DOCTYPE html>
 <html lang="en" dir="ltr">
@@ -51,8 +61,8 @@ STUDIO_HTML = r'''<!DOCTYPE html>
 <meta name="color-scheme" content="dark"/>
 <link rel="icon" href="data:,"/>
 <title>Chart Studio — Chart + Indicator Editor & Drawing Tools</title>
-<!-- ═══ BADI-CHARTS-V2 v2.13.0 chart library ═══ -->
-<script src="https://cdn.jsdelivr.net/gh/salahbadi19/BADI-CHARTS-V2@v2.13.0/chart.js"></script>
+<!-- ═══ BADI-CHARTS-V2 v2.17.1 chart library ═══ -->
+<script src="https://cdn.jsdelivr.net/gh/salahbadi19/BADI-CHARTS-V2@v2.17.1/chart.js"></script>
 <!-- ═══ Monaco code editor — lazy-loaded on first editor open (light startup) ═══ -->
 <style>
 :root{
@@ -77,7 +87,7 @@ svg{vertical-align:middle;flex-shrink:0}
 .op70{opacity:.7}
 ::-webkit-scrollbar{width:6px;height:6px}
 ::-webkit-scrollbar-track{background:transparent}
-/* شريط تمرير رقيق وناعم مثل شريط المحرر — بدون حدود سميكة (طلب المستخدم) */
+/* Thin smooth scrollbar like the editor bar — no thick borders (user request) */
 ::-webkit-scrollbar-thumb{background:var(--sbar);border-radius:3px}
 ::-webkit-scrollbar-thumb:hover{background:var(--sbar-h)}
 ::-webkit-scrollbar-corner{background:transparent}
@@ -90,8 +100,8 @@ svg{vertical-align:middle;flex-shrink:0}
 .tf{padding:5px 9px;font-size:11px;font-weight:700;background:var(--panel3);color:#a1a1aa;transition:.15s}
 .tf:hover{background:var(--btn-bg);color:var(--t-bright)}
 .tf.on{background:var(--accent);color:#fff}
-/* سهم إخفاء/إظهار قائمة الفريمات (طلب المستخدم): يطوي القائمة ويُبقي الفريم المضبوط ظاهرًا
-   ليعرف المستخدم أن هذا مكان الفريمات */
+/* Frame-list hide/show arrow (user request): collapses the list and keeps the selected frame visible
+   so the user knows where the frames live */
 .tf-arrow{display:grid;width:22px;height:22px;flex-shrink:0;place-items:center;border-radius:6px;border:1px solid var(--border2);background:var(--panel3);color:var(--t-dim);transition:.15s}
 .tf-arrow:hover{color:var(--t-bright);background:var(--btn-bg)}
 .tf-arrow svg{display:block;width:12px;height:12px;transition:transform .18s}
@@ -125,18 +135,25 @@ svg{vertical-align:middle;flex-shrink:0}
 }
 #chartBar{display:flex;flex-direction:column;height:auto;flex-shrink:0;align-items:stretch;gap:0;background:var(--panel);border-bottom:1px solid var(--border);padding:0 0 4px}
 #chartRow{display:flex;flex:1;min-height:0}
-/* ═══ منطقة الشارت — شارت واحد فقط (تقسيم الشارت أُزيل بطلب المستخدم) ═══ */
+/* ═══ Chart area — a single chart (chart splitting removed by user request) ═══ */
 #gridHost{position:relative;flex:1;min-width:0;min-height:0;display:grid;gap:5px;padding:5px;background:var(--bg)}
 #gridHost[data-n="1"]{grid-template-columns:1fr;grid-template-rows:1fr}
 .pane{position:relative;display:flex;flex-direction:column;min-width:0;min-height:0;border:0;border-radius:9px;overflow:hidden;background:var(--bg);cursor:pointer}
-/* رأس اللوحة (شريط اسم العملة) أُزيل بالكامل — الشارت يملأ اللوحة الآن (طلب المستخدم) */
+/* Panel header (currency-name bar) fully removed — the chart fills the panel now (user request) */
 .pane-tf{font-size:9.5px;font-weight:800;color:var(--accent-t);background:var(--acc-soft);border-radius:6px;padding:1px 6px;flex-shrink:0;direction:ltr}
 .pane-pay{font-size:9.5px;font-weight:800;color:var(--ok);flex-shrink:0}
 .pane-cv{position:relative;flex:1;min-height:0}
 .pane-cv canvas{position:absolute;inset:0;display:block;width:100%;height:100%}
-/* المؤقت التنازلي بجانب الشمعة الحية — أصبح ميزة countdown الأصلية في مكتبة
-   BADI-CHARTS v2.13.0: يُرسم داخل الشارت بإحداثياته نفسها، فيحافظ على مسافته عن
-   الشمعة مهما كان الزوم، بلا عنصر HTML وبلا حلقة requestAnimationFrame خاصة */
+/* Go-to-live-edge arrow — the chart pans/zooms freely (like TradingView) so the empty space on the
+   right is the "future"; this icon-only arrow appears when the view is away from the live candle
+   and snaps it back in one click WITHOUT touching the zoom level (user request) */
+.golive{position:absolute;right:78px;bottom:42px;width:30px;height:30px;border-radius:9999px;display:grid;place-items:center;background:var(--bg);border:1px solid var(--border2);color:var(--t-mid);cursor:pointer;z-index:4;padding:0}
+.golive:hover{border-color:var(--accent);color:var(--accent-t)}
+.golive svg{width:15px;height:15px;display:block}
+.golive[hidden]{display:none}
+/* Countdown next to the live candle — the native countdown feature of the
+   BADI-CHARTS v2.17.1 library, used as-is (owner request): drawn inside the chart with the library's
+   own coordinates and adaptive format, with no HTML element and no page-side override */
 #libLoading{position:absolute;inset:0;display:grid;place-items:center;background:var(--bg);z-index:5}
 .loadbox{display:flex;flex-direction:column;align-items:center;gap:12px}
 .spin{height:32px;width:32px;border-radius:9999px;border:2px solid var(--border2);border-top-color:var(--accent-h);animation:spin 1s linear infinite}
@@ -145,11 +162,11 @@ svg{vertical-align:middle;flex-shrink:0}
 .liberr{display:flex;flex-direction:column;align-items:center;gap:12px;color:var(--t-mid);font-size:13px;text-align:center;padding:0 24px}
 .liberr .retry{width:auto;height:32px;padding:0 18px;border-radius:8px;font-size:13px}
 
-/* ═══ شريط معلومات بسيط تحت الشارت — بدل شريط أدوات الرسم المحذوف ═══ */
+/* ═══ Simple info bar under the chart — replacing the removed drawing-toolbar bar ═══ */
 .chip{border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700;background:var(--acc-soft);color:var(--accent-t)}
 #statusBar{display:flex;height:26px;flex-shrink:0;align-items:center;gap:7px;padding:0 12px;background:var(--panel);border-top:1px solid var(--border);font-size:10.5px;font-weight:600;color:var(--t-dim);user-select:none;white-space:nowrap;overflow:hidden}
 #statusBar .grow{flex:1}
-/* معرّف المستخدم الثابت BADI-XXXX-XXXX-XXXX — انقر لنسخه (طلب المستخدم) */
+/* Fixed user ID BADI-XXXX-XXXX-XXXX — click to copy (user request) */
 #stUid{cursor:pointer;font-weight:800;letter-spacing:.04em;color:#3B8BFF}
 #stUid:hover{text-decoration:underline}
 #stUid.copied{color:var(--ok,#22C55E);text-decoration:none}
@@ -163,21 +180,21 @@ svg{vertical-align:middle;flex-shrink:0}
 /* ═══ Signals — side panel on the RIGHT (history of fired signals, black cards) ═══ */
 #sigPane{width:272px;flex-shrink:0;display:flex;flex-direction:column;background:var(--panel);border-right:1px solid var(--border)}
 #sigHead{display:flex;height:30px;flex-shrink:0;align-items:center;gap:6px;padding:0 10px;font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--t-dim);border-bottom:1px solid var(--border);overflow:hidden}
-/* زر الإخفاء داخل رأس البطاقة — بحد واضح بلون الزر حتى يكون ظاهرًا بوضوح */
+/* Hide button inside the card header — clear border in the button color so it stays clearly visible */
 #sigHead .ibtn{width:22px;height:22px;border-radius:6px;color:var(--accent-h);border-color:var(--acc-bd);background:var(--acc-soft)}
 #sigHead .ibtn:hover{background:var(--acc-bd)}
-/* زر فتح/غلق البطاقة ثابت لا يختفي + شارة العدد الحمراء الصغيرة 1 2 3 (طلب المستخدم) */
+/* Fixed open/close card button that never disappears + small red count badge 1 2 3 (user request) */
 #sigShow{position:relative;flex-shrink:0}
 #sigBadge{position:absolute;top:-4px;inset-inline-end:-4px;min-width:15px;height:15px;border-radius:8px;background:#FF4D5E;color:#fff;font-size:9px;font-weight:800;line-height:15px;text-align:center;padding:0 4px;direction:ltr;font-style:normal;box-shadow:0 1px 4px rgba(0,0,0,.45);pointer-events:none}
 #sigHead .chip{height:15px;padding:0 6px;font-size:9px}
-/* تبويبا لوحة الإشارات: الإشارات (الجارية الآن) + السجل (المنتهية بنتيجتها) — طلب المستخدم */
+/* Signals panel tabs: Signals (running now) + History (finished with their result) — user request */
 .sig-tab{display:inline-flex;height:20px;align-items:center;gap:4px;flex-shrink:1;min-width:0;max-width:122px;padding:0 8px;border-radius:999px;border:1px solid transparent;background:transparent;color:var(--t-dim);font-size:9.5px;font-weight:800;letter-spacing:.04em;cursor:pointer;transition:.15s;text-transform:uppercase;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .sig-tab b{font-size:9px;opacity:.65;font-weight:800}
 .sig-tab:hover{color:var(--t-mid);background:var(--panel3)}
 .sig-tab.on{color:var(--accent-h);background:var(--acc-soft);border-color:var(--acc-bd)}
 #sigList{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;gap:8px;padding:9px}
-/* بطاقة الإشارة — تصميم محسّن: سوداء دائمًا + شريط اتجاه على الحافة،
-   الأخضر #22E08A / الأحمر #FF4D5E كلمسات فقط، حد وظل ملوّنان بلون الاتجاه */
+/* Signal card — refined design: always black + a direction strip on the edge,
+   green #22E08A / red #FF4D5E as accents only, border and shadow tinted with the direction color */
 .sigcard{--sc:#22E08A;--scbg:rgba(34,224,138,.26);position:relative;flex-shrink:0;border-radius:12px;padding:10px 12px 8px 14px;color:#F2F5F3;cursor:pointer;overflow:hidden;
   background:radial-gradient(120% 90% at 100% 0%,var(--scbg) 0%,transparent 55%),linear-gradient(180deg,#10161A 0%,#070A0C 100%);
   border:1px solid #2b3a35;box-shadow:0 10px 24px -14px rgba(0,0,0,.7);transition:transform .12s,border-color .15s;
@@ -206,16 +223,16 @@ svg{vertical-align:middle;flex-shrink:0}
 .sig-row b{font-weight:600;color:#F2F5F3;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:ltr;text-align:right}
 .sig-row .sig-ind{color:#B79CFF;font-weight:700}
 .sig-empty{font-size:10.5px;line-height:17px;color:var(--t-dim3);padding:4px 2px}
-/* إخفاء/إظهار لوحة الإشارات — زر الإخفاء داخل رأس البطاقة
-   وزر الإظهار في شريط أدوات الشارت (بجانب الحذف والملاءمة) حتى لا يغطي
-   أي زر الشارت أو علم العملة، ولا يوجد أي إخفاء قسري حسب عرض النافذة */
+/* Signals panel hide/show — hide button inside the card header
+   and show button on the chart toolbar (next to delete and fit) so it never covers
+   any chart button or currency flag, with no forced hiding based on window width */
 #sigPane.off{display:none}
 
 /* ═══ Editor pane ═══ */
 #editorPane{display:flex;flex-direction:column;min-height:0;flex:1;background:var(--panel2);border-top:1px solid var(--border)}
 @media(min-width:1024px){#editorPane{flex:0 0 auto}}
 #tabsRow{display:flex;height:36px;flex-shrink:0;align-items:center;gap:4px;overflow-x:auto;background:var(--panel);border-bottom:1px solid var(--border);padding:0 8px}
-.tab{display:flex;height:28px;flex-shrink:0;cursor:pointer;align-items:center;gap:6px;border-radius:6px;padding:0 8px;font-size:11px;background:var(--panel3);color:#71717a;transition:.15s;user-select:none;white-space:nowrap}
+.tab{display:flex;height:28px;flex-shrink:0;cursor:pointer;align-items:center;gap:6px;border-radius:6px;padding:0 8px;font-size:11px;background:var(--panel3);color:var(--t-dim);transition:.15s;user-select:none;white-space:nowrap}
 .tab:hover{color:var(--t-mid)}
 .tab.on{background:var(--panel2);color:var(--text);box-shadow:inset 0 -2px 0 0 var(--accent)}
 .dot{width:6px;height:6px;flex-shrink:0;border-radius:9999px;background:var(--t-dim3)}
@@ -234,7 +251,7 @@ svg{vertical-align:middle;flex-shrink:0}
 .tab-add.ed-close{margin-inline-start:auto}
 .tab-add.ed-close:hover{background:rgba(239,68,68,.12);color:var(--err)}
 
-.edbar{position:relative;display:flex;height:36px;flex-shrink:0;align-items:center;gap:6px;background:#10141d;padding:0 8px;border-bottom:1px solid var(--border)}
+.edbar{position:relative;display:flex;height:36px;flex-shrink:0;align-items:center;gap:6px;background:var(--panel);padding:0 8px;border-bottom:1px solid var(--border)}
 .edbar.empty{font-size:11px;color:var(--t-dim);padding:0 12px}
 .rbtn{display:grid;height:28px;width:28px;place-items:center;border-radius:6px;background:rgba(16,185,129,.15);color:var(--ok);box-shadow:inset 0 0 0 1px rgba(16,185,129,.4);transition:.15s}
 .rbtn:hover{background:var(--ok-soft)}
@@ -248,11 +265,11 @@ svg{vertical-align:middle;flex-shrink:0}
 #codeHost{position:relative;flex:1;min-height:0}
 #codeEmpty{display:none;flex:1;place-items:center}
 #codeEmpty.show{display:grid}
-.empty-new{display:flex;flex-direction:column;align-items:center;gap:8px;border:1px dashed var(--border2);border-radius:10px;padding:16px 24px;font-size:12px;color:#71717a;transition:.15s}
+.empty-new{display:flex;flex-direction:column;align-items:center;gap:8px;border:1px dashed var(--border2);border-radius:10px;padding:16px 24px;font-size:12px;color:var(--t-dim);transition:.15s}
 .empty-new:hover{border-color:var(--acc-bd);color:var(--accent-h)}
 .code-ta{width:100%;height:100%;resize:none;background:var(--panel2);color:var(--text);border:0;outline:none;padding:12px;font:13px/20px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;tab-size:2}
 
-/* ═══ Console — يُسحب من رأسه إلى الأعلى ليكبر ويُخفى بزر (طلب المستخدم) ═══ */
+/* ═══ Console — drag its header upward to enlarge, hide/show with a button (user request) ═══ */
 #consoleBox{display:flex;height:84px;flex-shrink:0;flex-direction:column;background:var(--bg);border-top:1px solid var(--border)}
 #consoleBox.min{height:24px!important}
 #consoleBox.min #consoleMsgs{display:none}
@@ -274,7 +291,7 @@ svg{vertical-align:middle;flex-shrink:0}
 
 /* ═══ New file modal ═══ */
 .modal{position:fixed;inset:0;z-index:100;display:grid;place-items:center;background:rgba(0,0,0,.6);backdrop-filter:blur(2px)}
-.modal-card{width:460px;max-width:92vw;background:#11151f;border:1px solid var(--border2);border-radius:14px;padding:20px}
+.modal-card{width:460px;max-width:92vw;background:var(--panel2);border:1px solid var(--border2);border-radius:14px;padding:20px}
 .modal-card h3{font-size:15px;color:var(--text);text-align:left}
 .modal-desc{margin-top:8px;font-size:12px;line-height:20px;color:var(--t-mid);text-align:left}
 .hl{color:var(--accent-h);margin:0 4px;font-size:11px}
@@ -329,21 +346,21 @@ svg{vertical-align:middle;flex-shrink:0}
 .cbtn{display:grid;width:22px;height:22px;flex-shrink:0;place-items:center;border-radius:6px;border:1px solid var(--border2);background:var(--panel3);color:var(--t-dim);transition:.15s}
 .cbtn:hover{color:var(--t-bright);background:var(--btn-bg)}
 .cbtn:disabled{opacity:.35;cursor:default;background:var(--panel3);color:var(--t-dim)}
-/* شريط التمرير المصغر: بعرض الشريط كاملاً تحت أسماء العملات — ممتد حتى أيقونة الحذف */
+/* Mini scrollbar: full strip width under the currency names — stretching to the delete icon */
 .achip{display:inline-flex;height:26px;flex-shrink:0;align-items:center;gap:6px;border-radius:7px;border:1px solid var(--border2);background:var(--panel3);padding:0 4px 0 7px;cursor:pointer;transition:.15s}
 .achip:hover{border-color:var(--acc-bd)}
 .achip.on{border-color:var(--acc-bd);background:var(--acc-soft)}
 .achip b{font-size:11px;letter-spacing:.02em;color:var(--t-bright);white-space:nowrap}
 .achip.on b{color:var(--accent-t)}
 .apay{font-style:normal;font-size:10px;font-weight:800;color:var(--ok);white-space:nowrap}
-/* شارة حالة السوق: مفتوح/مغلوق بجانب نسبة الدفع (طلب المستخدم) — أخضر/أحمر حسب الحالة */
+/* Market status badge: open/closed next to the payout (user request) — green/red by state */
 .amstate{font-style:normal;font-size:9px;font-weight:800;line-height:1;padding:3px 6px;border-radius:6px;flex-shrink:0;white-space:nowrap}
 .amstate.open{color:var(--ok);background:rgba(52,211,153,.14)}
 .amstate.closed{color:var(--err);background:rgba(248,113,113,.14)}
 .amdot{display:inline-block;width:6px;height:6px;border-radius:50%;flex-shrink:0}
 .amdot.open{background:var(--ok)}
 .amdot.closed{background:var(--err)}
-/* علامة × الصغيرة داخل بطاقة العملة — إزالة العملة من الشريط مباشرة من البطاقة نفسها (طلب المستخدم) */
+/* Small × inside the currency card — remove the currency from the strip right from the card itself (user request) */
 .achip .adel{display:grid;width:15px;height:15px;place-items:center;border-radius:4px;color:var(--t-dim2);flex-shrink:0;transition:.15s}
 .achip .adel:hover{color:var(--err);background:rgba(248,113,113,.16)}
 .achip .adel svg{display:block;width:8px;height:8px}
@@ -363,23 +380,24 @@ svg{vertical-align:middle;flex-shrink:0}
 .am-row .aflag{width:24px;height:13px;flex-shrink:0}
 .am-row b{flex:1;min-width:0;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .am-row .apay{font-style:normal;font-size:10px;font-weight:800;color:var(--ok);flex-shrink:0}
-.am-tog{display:grid;width:20px;height:20px;flex-shrink:0;place-items:center;border-radius:6px;border:1px solid var(--border2);color:var(--t-dim)}
+.am-tog{display:grid;width:20px;height:20px;flex-shrink:0;place-items:center;border-radius:6px;border:1px solid var(--border2);color:var(--t-dim);cursor:pointer}
 .am-tog.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.am-tog:hover{border-color:var(--accent)}
 </style>
 </head>
 <body>
 <div id="app">
 
   <!-- ═══ Top bar — timeframes · library · screenshot ‖ telegram · editor · folder · logout
-       زر الوضع الليلي/النهاري في الترويسة العليا للتطبيق فقط (طلب المستخدم)
-       والشموع الحية تعمل مباشرة دائمًا — لا زر لتشغيل/إيقاف البث ═══ -->
+       The dark/light toggle lives only in the desktop app top bar (user request)
+       and live candles always run directly — no play/pause button for the feed ═══ -->
   <header class="topbar">
     <div class="tfs" id="tfGroup"></div>
           <button id="tfArrow" class="tf-arrow" title="Hide/show the timeframes"></button>
     <button id="shotBtn" class="ibtn" title="Screenshot the chart" aria-label="Take a chart screenshot"></button>
     <span class="grow"></span>
     <button id="webTg" class="ibtn wide" title="Telegram bot — signals, results and history" aria-label="Open the Telegram bot page"></button>
-    <!-- زر المؤشرات بجوار زر المحرر مباشرة (طلب المستخدم) -->
+    <!-- Indicators button right next to the editor button (user request) -->
     <button id="indBtn" class="ibtn wide" title="Indicators library" aria-label="Open the indicators library"></button>
     <button id="edToggle" class="ibtn wide" title="Open or close the editor" aria-label="Open or close the editor"></button>
     <button id="dirBtn" class="ibtn wide" title="Open the app folder — drop your indicators and tools here" aria-label="Open the app folder"></button>
@@ -391,9 +409,9 @@ svg{vertical-align:middle;flex-shrink:0}
     <section id="chartPane">
       <div id="chartBar">
         <div class="cbar-top">
-          <!-- طلب المستخدم: زر واحد ثابت لفتح وغلق بطاقة الإشارات لا يختفي أبدًا + شارة حمراء بعدد الإشارات -->
+          <!-- User request: one fixed button to open and close the signals card that never disappears + red badge with the signal count -->
           <button id="sigShow" class="ibtn" title="Open or close the signals panel" aria-label="Open or close the signals panel"><i id="sigBadge" hidden></i></button>
-          <!-- زر فتح قائمة العملات: بجانب السهمين وبحجم زر فتح بطاقة الإشارات (طلب المستخدم) -->
+          <!-- Currency-list open button: next to the two arrows and sized like the signals-card button (user request) -->
           <button id="assetAdd" class="ibtn" title="Add or remove currencies" aria-label="Open the currency list"></button>
           <button id="assetPrev" class="cbtn" title="Scroll the currencies back" aria-label="Scroll back"></button>
           <button id="assetNext" class="cbtn" title="Scroll the currencies forward" aria-label="Scroll forward"></button>
@@ -406,7 +424,7 @@ svg{vertical-align:middle;flex-shrink:0}
         </div>
       </div>
       <div id="chartRow">
-        <!-- ═══ لوحة الإشارات في الجهة اليسرى (طلب المستخدم): تبويبان — الإشارات الحالية + السجل ═══ -->
+        <!-- ═══ Signals panel on the left side (user request): two tabs — current signals + history ═══ -->
         <aside id="sigPane">
           <div id="sigHead">
             <button id="sigTabSig" class="sig-tab on" type="button"></button>
@@ -428,9 +446,9 @@ svg{vertical-align:middle;flex-shrink:0}
           </div>
         </div>
       </div>
-      <!-- ═══ شريط معلومات بسيط تحت الشارت: متصل · المنطقة الزمنية · الوقت · FPS (بدون اسم العملة — طلب المستخدم) ═══ -->
+      <!-- ═══ Simple info bar under the chart: online · timezone · time · FPS (no currency name — user request) ═══ -->
       <div id="statusBar">
-        <span id="stBrand" class="mono">BADI STUDIO v2.13.0</span>
+        <span id="stBrand" class="mono">BADI STUDIO v2.17.1</span>
         <span class="st-sep">·</span>
         <span id="stDot" class="st-dot"></span><span id="stConn">Connected</span>
         <span class="grow"></span>
@@ -453,7 +471,7 @@ svg{vertical-align:middle;flex-shrink:0}
         <button id="runBtn" class="abtn" title="Run and apply to the chart (Ctrl+Enter)" aria-label="Run"></button>
         <button id="edNewBtn" class="abtn" title="Create a new file — you choose the name and the language" aria-label="New file"></button>
         <button id="saveBtn" class="ibtn" title="Save in browser (Ctrl+S)" aria-label="Save"></button>
-        <!-- BADI: تشفير المؤشر الحالي إلى ملف .badi + استيراد مؤشر مشفر — المفتاح يبقى داخل التطبيق -->
+        <!-- BADI: encrypt the current indicator into a .badi file + import an encrypted indicator — the key stays inside the app -->
         <button id="badiEnc" class="ibtn" title="Encrypt the indicator — export a .badi file" aria-label="Export the encrypted indicator"></button>
         <button id="badiImp" class="ibtn" title="Import an encrypted indicator (.badi)" aria-label="Import an encrypted indicator"></button>
         <span id="kindChip" class="kindchip ind"></span>
@@ -524,14 +542,14 @@ svg{vertical-align:middle;flex-shrink:0}
 "use strict";
 /* ═══════════════════════════════════════════════════════════════
    Chart Studio — single self-contained HTML file
-   chart + indicator editor and drawing tools on top of BADI-CHARTS-V2 v2.13.0
+   chart + indicator editor and drawing tools on top of BADI-CHARTS-V2 v2.17.1
    No indicator runs automatically — everything waits for the user to press ▶.
    ═══════════════════════════════════════════════════════════════ */
 
 /* ───────────── Helpers ───────────── */
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-/* رسائل إلى تطبيق سطح المكتب (بوابة الجسر — متاحة في وضع التضمين فقط) */
+/* Messages to the desktop app (bridge gateway — available in embedded mode only) */
 function badiSend(cmd, arg) {
   const f = window.__badiSend;
   if (!f) return;
@@ -1069,16 +1087,16 @@ let editorOpen = false;
 let editorW = 430;
 let tool = "cursor";
 let symbol = "BTCUSDT";       // web-mode default asset key
-let live = true;               /* الشموع الحية متحركة مباشرة دائمًا — بلا زر تشغيل/إيقاف (طلب المستخدم) */
+let live = true;               /* Live candles always animate directly — no play/pause button (user request) */
 let msgs = [];
 let msgSeq = 0;
 const errCounts = new Map();
 let saveTimer = 0;
 
-/* ── Multi-chart state: كل شارت يعمل بنفسه باسم عملته وفريمه ── */
+/* ── Multi-chart state: each chart runs on its own with its currency name and timeframe ── */
 let panes = [];               // {el, head, cv, chart, dataArr, asset, tf, tick}
-/* حالة الواجهة العامة: شريط الحالة السفلي + العد التنازلي بجانب الشمعة الحية —
-   تُدار من لوحة إعدادات سطح المكتب وتُحفظ في localStorage (طلب المستخدم) */
+/* General UI state: bottom status bar + countdown next to the live candle —
+   managed from the desktop settings panel and persisted in localStorage (user request) */
 window.__BADI_UI__ = (function () {
   var sb = true, cd = true;
   try { sb = localStorage.getItem("badiStatusBar") !== "0"; } catch (e) {}
@@ -1197,8 +1215,8 @@ function renderCodeArea() {
 /* ───────────── Render: timeframe, editor toggle ───────────── */
 let tfCollapsed = false;
 function applyTfCollapse() {
-  /* سهم الفريمات (طلب المستخدم): عند الطي تُخفى كل الأزرار ويبقى الفريم المضبوط
-     وحده ظاهرًا ليعرف المستخدم أن هذا مكان الفريمات */
+  /* Frames arrow (user request): when collapsed, all buttons hide and only the selected frame
+     stays visible so the user knows where the frames live */
   const tg = $("tfGroup");
   if (!tg) return;
   const act = aPane() ? aPane().tf : "";
@@ -1291,13 +1309,13 @@ function applyFile(f, activate) {
     log("err", f.fileName + ": " + r.error);
     return false;
   }
-  /* إذا لم يكتب المستخدم render() نرسم الخطوط تلقائيًا — المؤشر يعمل دائمًا
-     (calculate فقط يكفي: ترسم كل سلسلة كخط بلون افتراضي أو لون التعريف) */
+  /* If the user does not write render() we draw the lines automatically — the indicator always works
+     (calculate alone is enough: each series is drawn as a line in a default or declared color) */
   if (typeof r.def.render !== "function" && typeof r.def.calculate === "function")
     r.def.render = defaultLineRender;
   const g = guardDef(f, r.def);
-  /* طلب المستخدم: الصورة المصغرة يجب أن تُظهر المؤشر مرسومًا — نعلّم لحظة أول رسم ناجح
-     ليُلتقط الالتقاط بعد أن يكون المؤشر على الشارت فعلاً لا قبله */
+  /* User request: the thumbnail must show the indicator actually drawn — we mark the moment of the first successful draw
+     so the capture happens after the indicator is really on the chart, not before */
   if (f.kind === "indicator" && typeof g.render === "function") {
     const drawnRender = g.render;
     g.render = function (ctx, v, h, s) {
@@ -1330,30 +1348,30 @@ function runFile(id, activate) {
     ? "▶ Applied indicator " + f.fileName + " to the chart"
     : "▶ Registered tool " + f.fileName + (activate ? " — click the chart to draw" : ""));
   f.enabled = true;
-  /* طلب المستخدم: لا تُلتقط أي لقطة عند التشغيل إطلاقًا — الصورة تُلتقط عند الحفظ فقط */
+  /* User request: no screenshot is ever captured on run — the image is captured on save only */
   editedIds.delete(id); /* the new code is now the displayed one */
   scheduleSave(); renderTabs(); renderRunBtn();
 }
 
-/* ═══ الصورة المصغرة: تُلتقط عند الحفظ فقط (طلب المستخدم) ═══
-   لا أي لقطة قبل الحفظ — لا عند التشغيل ولا عند الحفظ التلقائي أثناء الكتابة.
-   إن كان المؤشر يعمل على الشارت ننتظر أول رسم فعلي له (حتى ~10 ثوانٍ) لتصبح
-   الصورة نظيفة له وحده، وإن لم يكن يعمل تُلتقط فورًا بعد استقرار الحفظ */
+/* ═══ Thumbnail: captured on save only (user request) ═══
+   No capture before saving — not on run and not on autosave while typing.
+   If the indicator runs on the chart we wait for its first real draw (up to ~10 seconds) so the
+   picture is clean and only its own; if it does not run, we capture right after the save settles */
 var __thumbSent = {}, __thumbTries = {};
 function scheduleThumbCapture(fileName, kind, f) {
   try {
     if (!window.__BADI_EMBEDDED) return;
-    if (!fileName || kind === "tool") return;   /* الأدوات لا تحتاج صورة */
+    if (!fileName || kind === "tool") return;   /* Tools need no image */
     const key = String(fileName).toLowerCase();
     if (__thumbSent[key]) return;
     __thumbSent[key] = true;
     const started = Date.now();
     const poll = setInterval(function () {
       try {
-        /* يعمل على الشارت: انتظار أول رسم فعلي — لا يعمل: لقطة فورية بلا انتظار */
+        /* Runs on the chart: wait for the first real draw — does not run: instant capture, no waiting */
         if (f && f.enabled && !(f.__drawnOnce) && Date.now() - started < 10000) return;
         clearInterval(poll);
-        /* مهلة صغيرة حتى يكتمل الإطار على الشارت */
+        /* Small grace period until the frame completes on the chart */
         setTimeout(function () { badiSend("badi-thumb", String(fileName)); }, 400);
       } catch (e) { try { clearInterval(poll); } catch (e2) {} }
     }, 250);
@@ -1422,7 +1440,7 @@ function createFile(kind, name) {
   files.push(f);
   closeNewModal();
   scheduleSave();
-  openFile(f.id);   /* يفتح المحرر على الملف الجديد فورًا بعد إنهاء الخطوات */
+  openFile(f.id);   /* Opens the editor on the new file right after the steps finish */
   if (kind === "tool") {
     log("ok", enabled
       ? "✦ Tool " + f.fileName + " created and activated — click the chart to draw"
@@ -1433,8 +1451,8 @@ function createFile(kind, name) {
 }
 
 function openFile(id) {
-  const f = files.find((x) => x.id === id);   /* findFile هنا غير متاحة — BRIDGE_POST داخل IIFE */
-  if (f && f.kind === "badi") { requestBadiOpen(f); return; }   /* .badi: فك التشفير بدل فتحه في المحرر */
+  const f = files.find((x) => x.id === id);   /* findFile unavailable here — BRIDGE_POST lives inside the IIFE */
+  if (f && f.kind === "badi") { requestBadiOpen(f); return; }   /* .badi: decrypt instead of opening it in the editor */
   activeId = id;
   const wasOpen = editorOpen;
   editorOpen = true;
@@ -1444,12 +1462,12 @@ function openFile(id) {
   if (monacoReady && ed) ed.focus();
 }
 
-/* ═════ BADI: فتح مؤشر مشفر من قائمة BadiCharts — يُفك داخل التطبيق بمفتاحه ═════ */
+/* ═════ BADI: open an encrypted indicator from the BadiCharts list — decrypted inside the app with its key ═════ */
 function requestBadiOpen(f) {
   if (!window.__BADI_EMBEDDED) { log("err", "BADI works inside the desktop app only"); return; }
   const base = String(f.fileName || "").replace(/\.badi$/i, "");
   const twin = files.find((x) => x.kind !== "badi" && String(x.fileName || "").toLowerCase() === (base + ".js").toLowerCase());
-  if (twin) { openFile(twin.id); return; }   /* يوجد ملف أصلي بنفس الاسم — افتح المصدر مباشرة */
+  if (twin) { openFile(twin.id); return; }   /* A source file with the same name exists — open the source directly */
   badiSend("badi-open", f.fileName);
 }
 
@@ -1462,7 +1480,7 @@ function saveNow() {
   saveFiles(files);
   dirtyIds.clear();
   renderTabs();
-  /* لقطة المؤشر عند الحفظ الصريح (طلب المستخدم): حفظ = لقطة، عدم الحفظ = لا لقطة */
+  /* Indicator screenshot on explicit save (user request): save = shot, no save = no shot */
   try {
     const sf = activeFile();
     if (sf && sf.kind !== "tool" && sf.fileName) {
@@ -1621,7 +1639,7 @@ function editorSetCode(code, id) {
   }
 }
 
-/* ═══════════ Multi-chart engine: كل لوحة شارت مستقلة تمامًا ═══════════ */
+/* ═══════════ Multi-chart engine: every chart panel fully independent ═══════════ */
 /** Wire one BadiCharts instance: perf throttle, settings card, delete-sync, shortcuts */
 function setupChart(ch, p) {
   try {
@@ -1706,7 +1724,7 @@ function addPane() {
   el.className = "pane";
   el.dataset.pane = i;
   el.title = "Open this chart — click to select it";
-  /* شريط اسم العملة فوق الشارت أُزيل نهائيًا — المعلومة نفسها موجودة في سطر OHLC تحته (طلب المستخدم) */
+  /* Currency-name bar above the chart finally removed — the same info sits in the OHLC line below (user request) */
   el.innerHTML = '<div class="pane-cv"><canvas></canvas></div>';
   $("gridHost").appendChild(el);
   const cv = el.querySelector("canvas");
@@ -1715,19 +1733,64 @@ function addPane() {
     symbol: { label: cfg.label, priceScale: 100, decimals: cfg.decimals },
     timeframe: { label: "1m", ms: tfMs("1m") },
     theme: window.__BADI_CHART_THEME__ || { drawing: "#38bdf8", drawingActive: "#7dd3fc" },
-    /* العدّ التنازلي الأصلي للمكتبة بجانب الشمعة الحية (طلب المستخدم): رقمان فقط
-       بلا إطار أو خلفية، بإزاحة ثابتة (14px) عن حافة الشمعة مهما كان الزوم */
-    countdown: { enabled: !!(window.__BADI_UI__ && window.__BADI_UI__.cd), format: "ss", fontSize: 13, offsetX: 14, offsetY: 0, color: "#22E08A" }
+    /* The native library countdown next to the live candle (owner request): the library's counter
+       runs exactly as shipped with its own defaults — the page passes only the on/off state from Settings */
+    countdown: { enabled: !!(window.__BADI_UI__ && window.__BADI_UI__.cd) }
   });
   const p = { el: el, head: el.querySelector(".pane-head"), cv: cv, chart: chart, asset: name, tf: "1m", dataArr: [], tick: 0 };
+  /* Go-to-live-edge arrow (user request): hidden while the chart hugs the live candle,
+     shown as soon as the view is panned/zoomed away from it — one click snaps back */
+  const gl = document.createElement("button");
+  gl.className = "golive";
+  gl.hidden = true;
+  gl.title = "Back to the live edge";
+  gl.setAttribute("data-golive", "");
+  gl.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h12"/><path d="M10 7l5 5-5 5"/><path d="M19 5v14"/></svg>';
+  el.querySelector(".pane-cv").appendChild(gl);
+  p.gl = gl;
   setupChart(chart, p);
   chart.start();
   p.dataArr = generateCandles(cfg, p.tf, 620);
   chart.setData(p.dataArr);
   renderPaneHead(i);
   panes.push(p);
+  gl.addEventListener("click", function () { paneGoLive(p); });
   return p;
 }
+
+/* ═══ Go-to-live-edge (user request) ═══
+   The library pans/zooms freely — the empty space on the right of the candles is the "future"
+   area, and after a pan/zoom the last candle stays fixed at that distance from the axis, so the
+   gap never closes by itself. paneGoLive() snaps the view back to the newest candle while keeping
+   the zoom level untouched: it prefers the library's own goToRealtime() when the owner ships one,
+   otherwise it restores the default right offset through the chart's own helpers. */
+function paneGoLive(p) {
+  try {
+    const ch = p && p.chart;
+    if (!ch) return;
+    if (typeof ch.goToRealtime === "function") { ch.goToRealtime(); return; }
+    ch.rightOffset = 4;
+    if (typeof ch.constrainRightOffset === "function") ch.constrainRightOffset();
+    if (typeof ch.invalidateTimeMarks === "function") ch.invalidateTimeMarks();
+    if (typeof ch.autoScale === "function") ch.autoScale();
+    if (typeof ch.invalidate === "function") ch.invalidate();
+  } catch (e) {}
+}
+/* The arrow is visible only when the chart is actually away from the live edge
+   (default position = 4 bars from the right; more than 3 bars of drift shows it —
+   this covers both panning into the past and the empty future space) */
+setInterval(function () {
+  try {
+    (typeof panes !== "undefined" && panes.forEach ? panes : []).forEach(function (p) {
+      try {
+        if (!p || !p.gl || !p.chart) return;
+        const ro = (typeof p.chart.rightOffset === "number") ? p.chart.rightOffset : 0;
+        const away = Math.abs(ro - 4) > 3;
+        if (p.gl.hidden === away) p.gl.hidden = !away;
+      } catch (e) {}
+    });
+  } catch (e) {}
+}, 500);
 
 /** Select a pane — it gets the light border and becomes the editor's target */
 function setPaneActive(i) {
@@ -1766,7 +1829,7 @@ function setPaneAsset(i, name, tfKey) {
 
 function initPanes() {
   const startName = CUR_ASSET || (addedNames()[0] || (BOARD[0] && BOARD[0].name) || "BTC/USDT");
-  /* شارت واحد فقط — تقسيم الشارت أُزيل بالكامل بطلب المستخدم */
+  /* One chart only — chart splitting fully removed by user request */
   while (panes.length < 1) addPane();
   while (panes.length > 1) {
     const p = panes.pop();
@@ -1788,13 +1851,13 @@ let libReady = false;
 
 /* ── Hooks used by the desktop bridge (BRIDGE_POST) ── */
 window.__badiPaneState = function () { return { active: activePane, primary: primaryPane, n: panes.length }; };
-/* يعيد لوحة المحرك نفسها (وليس نسخة) — حتى يُكتب dataArr في اللوحة فعلاً عند setCandles */
+/* Returns the engine panel itself (not a copy) — so dataArr is really written into the panel on setCandles */
 window.__badiPrimary = function () {
   return panes[primaryPane] || panes[0] || null;
 };
 window.__badiPCH = pChart;
 window.__badiShotCanvas = function () { const p = aPane() || panes[0]; return p ? p.cv : null; };
-/* setMarket من محرك بايثون: يميّز اللوحة المغذاية من المحرك ويحدّث اسمها وفريمها والشرائح */
+/* setMarket from the Python engine: marks the engine-fed panel and updates its name, timeframe and slices */
 window.__badiSetMarket = function (m) {
   try {
     CUR_ASSET = String(m.label || CUR_ASSET);
@@ -1815,7 +1878,7 @@ window.__badiSetMarket = function (m) {
     renderAssets();
   } catch (e) {}
 };
-/* حُذف قسم التداول والرصيد (طلب المستخدم) — لم يبقَ إلا سجل الإشارات */
+/* Trading and balance section removed (user request) — only the signals log remains */
 
 function onRemoved(id) {
   const f = files.find((x) => x.id === id && x.kind === "indicator");
@@ -1833,13 +1896,13 @@ function liveTick() {
       p.tick++;
       const last = p.dataArr[p.dataArr.length - 1];
       if (!last) continue;
-      /* شمعة جديدة فقط عند مرور حد الفريم بالتوقيت الحقيقي — كانت تُنشأ بعدد
-         تكات من الإقلاع فتنحرف أوقات الشموع عن حدود الدقيقة ويعلق العدّ على 00 */
+      /* New candle only when the timeframe boundary passes in real time — candles used to be created by
+         tick count since boot, drifting candle times off minute boundaries and sticking the countdown at 00 */
       const tf = Math.max(5, Math.floor(tfMs(p.tf) / 1000));
       const lastT = Math.floor(last.time > 1e11 ? last.time / 1000 : last.time);
       const boundary = nowSec - (nowSec % tf);
       if (lastT < boundary) {
-        /* املأ الفجوة لو تأخرت التكة (نوم/تعليق) — بحد أقصى 500 شمعة */
+        /* Fill the gap if a tick arrived late (sleep/suspend) — capped at 500 candles */
         const gap = Math.min(Math.floor((boundary - lastT) / tf), 500);
         for (let k = 0; k < gap; k++) {
           const nc = newCandleFrom(p.dataArr[p.dataArr.length - 1], tfMs(p.tf), cfg.vol);
@@ -1851,16 +1914,15 @@ function liveTick() {
         p.dataArr[p.dataArr.length - 1] = sc;
         p.chart.update(sc);
       }
-      syncCdColor(p);
     }
   }
   sigLocalResolve();
   sigExpireSweep();
 }
 
-/* ═══ انتهاء بطاقة الإشارة مع انتهاء شمعة الفريم (طلب المستخدم) ═══
-   البطاقة الجارية تختفي من قائمة الإشارات بمجرد انقضاء مدتها —
-   والنتيجة (WIN/LOSS) تُسجَّل في تبويب السجل عند وصولها من المحرك. */
+/* ═══ Signal card ends with the timeframe candle (user request) ═══
+   The running card disappears from the signals list as soon as its duration ends —
+   the result (WIN/LOSS) is recorded in the History tab when it arrives from the engine. */
 function sigExpireSweep() {
   let changed = false;
   const now = Date.now();
@@ -1870,90 +1932,11 @@ function sigExpireSweep() {
   if (changed) renderSignals();
 }
 
-/* ═══ المؤقت التنازلي بجانب الشمعة الحية (طلب المستخدم) ═══
-   نستخدم ميزة countdown الأصلية في المكتبة (v2.13.0): تُرسم داخل الشارت بإحداثياته
-   نفسه — رقمان فقط بلا إطار أو خلفية، بإزاحة ثابتة (14px) عن حافة الشمعة الحية
-   مهما كان الزوم. نعيد تعريف drawCountdown على نموذج المكتبة نفسه بثلاثة إصلاحات:
-   1) المكتبة تمرّر طابع requestAnimationFrame (performance.now) إلى drawCountdown
-      بينما أوقات الشموع بالثواني الحقيقية — فكان العدّ ينقطع ويعود في ثوانٍ خاطئة.
-      نحسب الوقت من Date.now() فيبقى العدّ محاذيًا لحدود الشمعة بالتوقيت الحقيقي.
-   2) المكتبة تخفي الرقم كليًا إذا لم يكن هناك مكان بين الشمعة ومحور السعر (زوم
-      مع الشمعة ملاصقة للمحور) — فكان يبدو وكأنه توقف. البديل: نرسمه فوق الشمعة
-      نفسها (وسطًا أعلى ذيلها) بمسافة واضحة — لا تصادم مع أي شمعة ولا مع المحور.
-   3) لون الرقم = لون اتجاه الشمعة الحية (أخضر/أحمر) — يتحدث مع كل تكة (syncCdColor). */
-(function () {
-  try {
-    if (window.BadiCharts && BadiCharts.prototype) {
-      BadiCharts.prototype.drawCountdown = function () {
-        try {
-          const cd = this._countdown;
-          if (!cd || !cd.enabled) return;
-          const candles = this.sim.candles, N = candles.length;
-          if (N === 0) return;
-          const last = candles[N - 1];
-          if (!last || !last.time) return;
-          const tfMs = this.timeframe.ms || 6e4;
-          const closeSec = last.time + Math.round(tfMs / 1e3);
-          /* وقت الحائط الحقيقي لا طابع الرسم — محاذاة كاملة لحدود الفريم */
-          const nowSec = Math.floor(Date.now() / 1000);
-          let rem = closeSec - nowSec;
-          if (rem < 0) rem = 0;
-          const value = Math.min(99, Math.max(0, rem % 60));   /* رقمان فقط دائمًا */
-          const text = (value < 10 ? "0" : "") + value;
-          const y = this.priceToY(last.close) + (cd.offsetY || 0);
-          if (!isFinite(y) || y < this.priceTop - 6 || y > this.priceBottom + 6) return;
-          const ctx = this.ctx;
-          ctx.save();
-          ctx.font = (cd.fontSize || 11) + "px -apple-system, Segoe UI, Roboto, sans-serif";
-          ctx.fillStyle = cd.color || this.theme.textDim;
-          ctx.textAlign = "left";
-          ctx.textBaseline = "middle";
-          const tw = ctx.measureText(text).width;
-          const off = (cd.offsetX != null) ? cd.offsetX : 6;
-          const slotEdge = this.indexToX(N - 1) + this.barSpacing / 2;
-          /* إزاحة مرنة: تبقى الرقم بجانب الشمعة في العرض الافتراضي (المساحة حتى
-             محور السعر ضيقة عند الزوم الصغير) — وتنتقل فوق الشمعة فقط عند الانحشار */
-          const avail = (this.chartRight - 4) - slotEdge;
-          let x = slotEdge + off;
-          if (!isFinite(x)) { ctx.restore(); return; }
-          if (x + tw > this.chartRight - 4) {
-            if (avail >= tw + 8) {
-              /* يكفي المكان لإزاحة أصغر — اضغطها بدل ترك الشمعة */
-              x = slotEdge + Math.max(6, avail - tw - 2);
-            }
-            if (x + tw > this.chartRight - 4) {
-              /* لا مكان إطلاقًا يمين الشمعة → فوق الشمعة وسطًا أعلى ذيلها */
-              const yTop = this.priceToY(last.high) - (cd.fontSize || 11);
-              if (isFinite(yTop) && yTop - (cd.fontSize || 11) / 2 > this.priceTop + 2) {
-                ctx.textAlign = "center";
-                ctx.fillText(text, Math.round(this.indexToX(N - 1)), Math.round(yTop));
-              }
-              ctx.restore();
-              return;
-            }
-          }
-          if (x < this.chartLeft + 4) { ctx.restore(); return; }
-          ctx.fillText(text, Math.floor(x), Math.floor(y));
-          ctx.restore();
-        } catch (e) {}
-      };
-    }
-  } catch (e) {}
-})();
-/* مزامنة لون العدّ التنازلي مع اتجاه الشمعة الأخيرة (يتحدث مع كل تكة/تغيير ثيم) */
-function syncCdColor(p) {
-  try {
-    const ch = p.chart;
-    if (!ch || !ch._countdown || typeof ch.setCountdown !== "function") return;
-    const arr = (ch.sim && ch.sim.candles && ch.sim.candles.length) ? ch.sim.candles : (p.dataArr || []);
-    const last = arr[arr.length - 1];
-    if (!last) return;
-    const th = window.__BADI_CHART_THEME__ || {};
-    const col = last.close >= last.open ? (th.bull || "#22E08A") : (th.bear || "#FF4D5E");
-    if (ch._countdown.color !== col) ch.setCountdown({ color: col });
-  } catch (e) {}
-}
-
+/* ═══ Countdown next to the live candle (user request) ═══
+   The native countdown of the BADI-CHARTS v2.17.1 library is used as-is: the owner built the counter
+   into the library itself (real Unix time, adaptive format, drawn beside the live candle with the
+   library's own coordinates). The page keeps no replacement and applies no overrides — Settings only
+   toggles it through the official setCountdown API. */
 function showLibError(msg) {
   const box = $("libLoading");
   box.hidden = false;
@@ -1963,7 +1946,7 @@ function showLibError(msg) {
 /* ═══════════ Init & events ═══════════ */
 function buildStatic() {
   $("tfGroup").innerHTML = TF_KEYS.map((k) => '<button class="tf" data-tf="' + k + '">' + k + "</button>").join("");
-  /* سهم إخفاء/إظهار قائمة الفريمات (طلب المستخدم) — الحالة تُحفظ بين الجلسات */
+  /* Frame-list hide/show arrow (user request) — state persisted across sessions */
   const tfAr = $("tfArrow");
   if (tfAr) {
     tfAr.innerHTML = icon("chevron-up", 12);
@@ -1980,10 +1963,10 @@ function buildStatic() {
   $("edCloseBtn").innerHTML = icon("x", 14);
   $("indBtn").innerHTML = icon("arrowsUpDown", 15) + '<span class="btxt">Indicators</span>';
   $("edToggle").innerHTML = icon("code", 15) + '<span class="btxt">Editor</span>';
-  /* زر فتح مجلد التطبيق — بجوار زر المحرر (طلب المستخدم) */
+  /* Open-app-folder button — next to the editor button (user request) */
   const dbIco = $("dirBtn");
   if (dbIco) dbIco.innerHTML = icon("folder", 15) + '<span class="btxt">Folder</span>';
-  /* أيقونات BADI: تشفير المؤشر (قفل) + استيراد مؤشر مشفر (تنزيل) */
+  /* BADI icons: encrypt indicator (lock) + import encrypted indicator (download) */
   const beIco = $("badiEnc"), biIco = $("badiImp"), bieIco = $("badiImpEmpty");
   if (beIco) beIco.innerHTML = icon("lock", 13);
   if (biIco) biIco.innerHTML = icon("dl", 13);
@@ -1991,9 +1974,9 @@ function buildStatic() {
   $("shotBtn").innerHTML = icon("camera", 15);
   $("webTg").innerHTML = icon("send", 14) + '<span class="btxt">Bot Telegram</span>';
   $("webLogout").innerHTML = icon("logout", 15);
-  /* أزرار الإخفاء داخل رأس البطاقة + زر الإظهار في شريط أدوات الشارت */
+  /* Hide buttons inside the card header + show button on the chart toolbar */
   $("sigHide").innerHTML = icon("chevron-left", 14);
-  /* الجرس + شارة العدد — الشارة تُعاد مع الأيقونة لأن innerHTML يمسح الأبناء (طلب المستخدم) */
+  /* Bell + count badge — the badge is re-added with the icon because innerHTML wipes children (user request) */
   $("sigShow").innerHTML = icon("bell", 14) + '<i id="sigBadge" hidden></i>';
   updateSigBadge();
   $("assetAdd").innerHTML = icon("plus", 13);
@@ -2060,7 +2043,7 @@ function wzNext() {
 function openNewModal() {
   wzKind = null;
   setNfLang("js");
-  badiSend("rescan", "1");   /* فحص مجلد BadiCharts قبل إنشاء ملف جديد */
+  badiSend("rescan", "1");   /* Scan the BadiCharts folder before creating a new file */
   $("optIndicator").classList.remove("on");
   $("optTool").classList.remove("on");
   $("nfName").value = "";
@@ -2134,8 +2117,8 @@ function renderAssets() {
   const box = $("assetChips");
   if (!box) return;
   const cur = curAssetLabel();
-  /* بطاقة العملة تنتهي بعلامة × الصغيرة: النقر عليها يزيل العملة من الشريط فورًا —
-     والنقر على باقي البطاقة يفتح شارتها (طلب المستخدم: إعادة × إلى البطاقة نفسها) */
+  /* The currency card ends with the small ×: clicking it removes the currency from the strip instantly —
+     clicking the rest of the card opens its chart (user request: bring × back onto the card itself) */
   box.innerHTML = addedNames().map((n) => {
     const it = BOARD.filter((x) => x.name === n)[0];
     if (!it) return "";
@@ -2171,7 +2154,8 @@ function openAssetChart(name) {
   }
 }
 const pickAsset = openAssetChart;           /* bridge compat alias */
-/* currency list popup (+ button): search box + add/remove rows */
+/* currency list popup (+ button): click a currency row = add it to the bar AND open its chart
+   (user request: both together, not add only) — the small tog icon toggles the strip only */
 function renderAssetMenu() {
   const box = $("amList");
   if (!box) return;
@@ -2181,12 +2165,18 @@ function renderAssetMenu() {
   box.innerHTML = rows.map((it) => {
     const on = addedNames().indexOf(it.name) >= 0;
     const open = (typeof badiMarketOpen === "function") ? badiMarketOpen(it.name) : true;
-    return '<button class="am-row" data-am="' + esc(it.name) + '" title="' + (on ? "Remove from the bar" : "Add to the bar") + '">'
+    /* Clicking the currency itself in the list = both together: it is added to the strip if not there, then its chart opens (user request).
+       The small toggle icon remains for adding/removing the currency from the strip only, without opening the chart. */
+    const rowT = ar ? ("افتح شارت " + it.name + " ويُضاف إلى الشريط") : ("Open the " + it.name + " chart and add it to the bar");
+    const togT = ar ? (on ? "إزالة " + it.name + " من الشريط" : "إضافة " + it.name + " إلى الشريط")
+                    : (on ? "Remove " + it.name + " from the bar" : "Add " + it.name + " to the bar");
+    return '<button class="am-row" data-am="' + esc(it.name) + '" title="' + esc(rowT) + '">'
       + (it.flag ? '<img class="aflag" src="' + it.flag + '" alt="">' : "")
       + "<b>" + esc(it.name) + "</b>"
       + '<i class="apay">' + Number(it.payout || 0) + "%</i>"
       + '<i class="amstate ' + (open ? "open" : "closed") + '">' + (ar ? (open ? "مفتوح" : "مغلوق") : (open ? "Open" : "Closed")) + "</i>"
-      + '<span class="am-tog' + (on ? " on" : "") + '">' + icon(on ? "check" : "plus", 11) + "</span></button>";
+      + '<span class="am-tog' + (on ? " on" : "") + '" data-amtog="' + esc(it.name) + '" title="' + esc(togT) + '">'
+      + icon(on ? "check" : "plus", 11) + "</span></button>";
   }).join("") || '<p class="aempty" style="padding:8px">No currency matches the search</p>';
 }
 function assetMenuOpen() { $("assetMenu").hidden = false; renderAssetMenu(); try { $("amSearch").focus(); } catch (e) {} }
@@ -2225,26 +2215,26 @@ function note(freq, at, dur, o) {
     osc.start(t); osc.stop(t + dur + 0.05);
   });
 }
-/* طلب المستخدم (بعد ما زال يسمع تعارضًا): صوت واحد فقط في كل لحظة + فاصل واضح بين أي صوتين.
-   أي صوت جديد (إشارة أخرى/نتيجة/خسارة) ينتظر انتهاء الصوت السابق كليًا ثم فاصل 350 مللي ثانية قبل أن يبدأ،
-   والجدولة على ساعة AudioContext نفسها بدقة العينات — يستحيل تقاطع صوتين حتى لو وصلا في نفس المللي ثانية،
-   والترتيب دائمًا: إشارة ← نتيجتها ← الإشارة التالية (طابور صارم بلا تجاوز) */
+/* User request (overlap was still audible): exactly one sound at any moment + a clear gap between any two sounds.
+   Any new sound (another signal / result / loss) waits for the previous sound to finish entirely, then a 350 ms gap before it starts,
+   scheduled on the AudioContext clock with sample accuracy — two sounds can never cross even if they arrive in the same millisecond,
+   and the order is always: signal → its result → the next signal (strict queue, no overtaking) */
 let sndBusyUntil = 0;
-const SND_GAP = 0.35;                       /* الفاصل الإلزامي بين نهاية أي صوت وبداية الذي يليه */
+const SND_GAP = 0.35;                       /* Mandatory gap between the end of any sound and the start of the next */
 function sndSlot(dur) {
   const c = audioCtx(); if (!c) return -1;
   const now = c.currentTime;
   const at = sndBusyUntil ? Math.max(0, sndBusyUntil + SND_GAP - now) : 0;
-  if (at > 6) return -1;                    /* الطابور أطول من 6 ثوانٍ — أهمِل النغمة الجديدة بدل التكديس */
+  if (at > 6) return -1;                    /* Queue longer than 6 seconds — drop the new tone instead of stacking */
   sndBusyUntil = now + at + dur;
   return at;
 }
-/* فك قفل الصوت من أول لمسة للمستخدم (سياسة المتصفحات) — مثل ملف المستخدم التجريبي */
+/* Unlock audio on the first user touch (browser policy) — like the demo sample file */
 document.addEventListener("pointerdown", function () { try { audioCtx(); } catch (e) {} }, { once: true });
 /* New signal: BUY = rising two-note chime, SELL = falling two-note chime */
 function playSignal(type) {
   if (!soundOn) return;
-  /* طلب المستخدم: كل إشارة صوتها يُسمع — لا حذف للصوت الثاني، الطابور يفصل الأصوات بفاصل واضح بدل التعارض */
+  /* User request: every signal gets its sound heard — no dropping the second sound; the queue separates sounds with a clear gap instead of clashing */
   const at = sndSlot(0.9);
   if (at < 0) return;
   if (type === "buy") { note(659.25, at, .35); note(987.77, at + .11, .6); }
@@ -2253,7 +2243,7 @@ function playSignal(type) {
 /* Result: WIN = bright rising arpeggio, LOSS = low soft falling tone */
 function playResult(r) {
   if (!soundOn) return;
-  /* الحزمة تشمل ذيل النغمات (osc.stop بعد نهاية المغلف بـ 50 مللي) حتى لا يبدأ الصوت التالي فوق الذيل */
+  /* The packet includes the tone tails (osc.stop 50 ms after the envelope ends) so the next sound does not start over a tail */
   const at = sndSlot(r === "win" ? 1.3 : 1.1);
   if (at < 0) return;
   if (r === "win") {
@@ -2278,10 +2268,10 @@ function toggleSound() {
 }
 
 /* ═════ Signals history — fed by the desktop bridge from the user's indicators ═════
-   بطاقة الديمو: سوداء دائمًا + شارة BUY/SELL + علم الزوج + المدة والمؤشر والتوقيت،
- ونتيجة WIN/LOSS تصل من المحرك بعد انتهاء مدة الفريم. النقر عليها يفتح شارت عملتها */
+   Demo card: always black + BUY/SELL badge + pair flag + duration, indicator and time,
+   and the WIN/LOSS result arrives from the engine after the timeframe ends. Clicking it opens its currency chart */
 var SIGS = [];
-/* تبويب لوحة الإشارات النشط: "sig" = الإشارات الجارية الآن ، "hist" = سجل المنتهية (طلب المستخدم) */
+/* Active signals-panel tab: "sig" = signals running now, "hist" = finished history (user request) */
 var SIG_TAB = "sig";
 function setSigTab(tab) {
   SIG_TAB = (tab === "hist") ? "hist" : "sig";
@@ -2290,7 +2280,7 @@ function setSigTab(tab) {
   if (b) b.classList.toggle("on", SIG_TAB === "hist");
   renderSignals();
 }
-/* تسميات التبويبين بعدد كل قسم — عربية/إنجليزية حسب لغة التطبيق */
+/* Tab labels with the count of each section — Arabic/English following the app language */
 function updateSigTabs() {
   const ar = window.__BADI_LANG__ === "ar";
   let pend = 0, done = 0;
@@ -2299,8 +2289,8 @@ function updateSigTabs() {
   if (a) a.innerHTML = (ar ? "الإشارات" : "Signals") + " <b>" + pend + "</b>";
   if (b) b.innerHTML = (ar ? "السجل" : "History") + " <b>" + done + "</b>";
 }
-/* بطاقة الإشارة قابلة للتصميم من المؤشر نفسه (طلب المستخدم):
-   signal({…, card: "HTML حر"}) أو card:{html, bg, accent, color} — البطاقة غير ثابتة */
+/* Signal card stylable from the indicator itself (user request):
+   signal({…, card: "free HTML"}) or card:{html, bg, accent, color} — the card is not fixed */
 function normSigCard(c) {
   try {
     if (!c) return null;
@@ -2324,7 +2314,7 @@ window.__badiPushSignal = function (s) {
     playSignal(s.dir === "down" ? "sell" : "buy");
   } catch (e) {}
 };
-/* نتيجة الإشارة (WIN/LOSS) تصل من محرك سطح المكتب بعد انتهاء المدة */
+/* The signal result (WIN/LOSS) arrives from the desktop engine after the duration ends */
 window.__badiSigResult = function (r) {
   try {
     for (let i = 0; i < SIGS.length; i++) {
@@ -2359,7 +2349,7 @@ function sigCard(g) {
   const t = new Date(g.at);
   const pad = (n) => String(n).padStart(2, "0");
   const etime = pad(t.getHours()) + ":" + pad(t.getMinutes()) + ":" + pad(t.getSeconds());
-  /* بطاقة مصممة من المؤشر نفسه (طلب المستخدم): card: '<b>…</b>' أو {html, bg, accent, color} */
+  /* Card designed from the indicator itself (user request): card: '<b>…</b>' or {html, bg, accent, color} */
   if (g.card && String(g.card.html || "").trim()) {
     let st = "";
     if (g.card.bg) st += "background:" + g.card.bg + ";";
@@ -2383,7 +2373,7 @@ function sigCard(g) {
     + '<div class="sig-row"><span>' + (window.__BADI_LANG__ === "ar" ? "الدخول" : "Entry") + "</span><b>" + etime + " · " + (isFinite(g.price) ? g.price : "—") + "</b></div>"
     + "</div></article>";
 }
-/* شارة العدد الحمراء على زر فتح/غلق البطاقة — رقم صغير 1 2 3 حسب عدد الإشارات الجارية (طلب المستخدم) */
+/* Red count badge on the open/close card button — small 1 2 3 number by the running signal count (user request) */
 function updateSigBadge() {
   const bd = $("sigBadge");
   if (!bd) return;
@@ -2399,8 +2389,8 @@ function renderSignals() {
   const pend = SIGS.filter((g) => !g.result && !g.expired);
   const done = SIGS.filter((g) => !!g.result);
   const list = SIG_TAB === "sig" ? pend : done;
-  /* حُذف شريط "N signals" من رأس اللوحة — كان نصه يفور خارج إطاره عند تكبر العدد
-     (ملاحظة المستخدم) — والعدد يظهر داخل تبويبي الإشارات/السجل نفسهما */
+  /* Removed the "N signals" strip from the panel header — its text overflowed its frame as the count grew
+     (user note) — the count now shows inside the Signals/History tabs themselves */
   const ar = window.__BADI_LANG__ === "ar";
   const emptyMsg = SIG_TAB === "sig"
     ? (ar ? "الإشارات الجارية من مؤشراتك تظهر هنا — شراء/بيع وعلم الزوج والمدة والمؤشر وتوقيت الدخول. النتيجة (WIN/LOSS) تظهر عند انتهاء المدة وتنتقل للسجل."
@@ -2412,7 +2402,7 @@ function renderSignals() {
     : list.map(sigCard).join("");
 }
 
-/* ═════ قسم التداول حُذف بالكامل (طلب المستخدم) — أُبقي على سجل الإشارات فقط ═════ */
+/* ═════ Trading section fully removed (user request) — only the signals log is kept ═════ */
 
 function bindEvents() {
   /* timeframe buttons apply to the ACTIVE pane (its own timeframe) */
@@ -2425,7 +2415,7 @@ function bindEvents() {
   });
   $("edNewBtn").addEventListener("click", openNewModal);
   $("edCloseBtn").addEventListener("click", closeEditor);
-  /* BADI: التصدير المشفر والاستيراد — التنفيذ الفعلي على جانب سطح المكتب (المفتاح داخل التطبيق) */
+  /* BADI: encrypted export and import — actually executed on the desktop side (the key stays inside the app) */
   function encSend(cmd) {
     if (window.__badiSend) window.__badiSend(cmd, "1");
     else log("info", "BADI works inside the desktop app only");
@@ -2440,13 +2430,14 @@ function bindEvents() {
   $("badiImp").addEventListener("click", function () { encSend("badi-import"); });
   $("badiImpEmpty").addEventListener("click", function () { encSend("badi-import"); });
   $("assetChips").addEventListener("click", function (e) {
-    /* علامة × داخل البطاقة = إزالة العملة من الشريط فقط ولا تفتح الشارت (طلب المستخدم) */
+    /* × inside the card = remove the currency from the strip only and never open the chart (user request) */
     const d = e.target.closest("[data-del]");
     if (d) { toggleAsset(d.dataset.del); return; }
     const c = e.target.closest("[data-asset]");
     if (c) openAssetChart(c.dataset.asset);
   });
-  /* currency list popup: + opener, search box, add/remove rows, click-outside closes */
+  /* currency list popup: + opener, search box, row click = add to the bar + open chart,
+     tog icon = strip only, click-outside closes */
   $("assetAdd").addEventListener("click", function (e) {
     e.stopPropagation();
     if ($("assetMenu").hidden) assetMenuOpen(); else assetMenuClose();
@@ -2455,7 +2446,14 @@ function bindEvents() {
   $("amSearch").addEventListener("input", renderAssetMenu);
   $("amList").addEventListener("click", function (e) {
     const r = e.target.closest("[data-am]");
-    if (r) toggleAsset(r.dataset.am);
+    if (!r) return;
+    const n = r.dataset.am;
+    /* Small toggle icon = add/remove from the strip only, without opening the chart */
+    if (e.target.closest("[data-amtog]")) { toggleAsset(n); return; }
+    /* Clicking the currency itself = both together: added to the strip if missing, then its chart opens immediately (user request) */
+    if (addedNames().indexOf(n) < 0) toggleAsset(n);
+    assetMenuClose();
+    openAssetChart(n);
   });
   document.addEventListener("click", function (e) {
     if (!$("assetMenu").hidden && !e.target.closest("#assetMenu") && !e.target.closest("#assetAdd")) assetMenuClose();
@@ -2467,7 +2465,7 @@ function bindEvents() {
   $("assetNext").addEventListener("click", function () {
     $("assetChips").scrollBy({ left: 220, behavior: "smooth" });
   });
-  /* عجلة الفأرة تمرر شريط العملات أفقيًا — بديل شريط التمرير المصغر المُزال (طلب المستخدم) */
+  /* Mouse wheel scrolls the currency strip horizontally — replacement for the removed mini scrollbar (user request) */
   $("assetChips").addEventListener("wheel", function (ev) {
     if (Math.abs(ev.deltaY) > Math.abs(ev.deltaX)) { this.scrollLeft += ev.deltaY; ev.preventDefault(); }
   }, { passive: false });
@@ -2482,11 +2480,11 @@ function bindEvents() {
   });
   $("edToggle").addEventListener("click", function () {
     editorOpen = !editorOpen;
-    if (editorOpen) badiSend("rescan", "1");   /* فحص مجلد BadiCharts عند فتح المحرر */
+    if (editorOpen) badiSend("rescan", "1");   /* Scan the BadiCharts folder when the editor opens */
     renderEdToggle(); applyEdW();
     window.dispatchEvent(new Event("resize"));
   });
-  /* زر فتح مجلد التطبيق (BadiCharts) — يضع فيه المستخدم المؤشرات والأدوات مباشرة */
+  /* Open-app-folder button (BadiCharts) — the user drops indicators and tools directly into it */
   $("dirBtn").addEventListener("click", function () { badiSend("opendir"); });
   $("fitBtn").addEventListener("click", function () { const ch = aChart(); if (ch) ch.resetView(); });
 
@@ -2500,7 +2498,7 @@ function bindEvents() {
   $("saveBtn").addEventListener("click", saveNow);
   $("delBtn").addEventListener("click", function () { if (activeId) deleteFile(activeId); });
   $("cClear").addEventListener("click", function () { msgs = []; renderConsole(); });
-  /* ═══ الكونسول: سحب الرأس إلى الأعلى لتكبيره + إخفاء/إظهار بزر — الحجم والحالة محفوظان (طلب المستخدم) ═══ */
+  /* ═══ Console: drag the header up to enlarge + hide/show with a button — size and state saved (user request) ═══ */
   let conH = 84, conMin = false;
   try {
     conH = Math.max(30, parseInt(localStorage.getItem("badiConH") || "84", 10) || 84);
@@ -2533,7 +2531,7 @@ function bindEvents() {
     });
     window.addEventListener("mousemove", function (e) {
       if (!drag) return;
-      const dy = drag.y - e.clientY;                /* سحب إلى الأعلى = أكبر */
+      const dy = drag.y - e.clientY;                /* Dragging up = bigger */
       if (drag.wasMin) {
         if (dy > 16) { conMin = false; applyConH(); drag.wasMin = false; drag.h = conH; drag.y = e.clientY; }
         return;
@@ -2545,7 +2543,7 @@ function bindEvents() {
       if (!drag) return;
       const moved = Math.abs(e.clientY - drag.y), wasMin = drag.wasMin;
       drag = null;
-      if (wasMin && moved < 5) conMin = false;      /* نقرة على الرأس المخفي تكفي لإظهاره */
+      if (wasMin && moved < 5) conMin = false;      /* A click on the hidden header is enough to show it */
       applyConH(true);
     });
     head.addEventListener("dblclick", function (e) {
@@ -2555,7 +2553,7 @@ function bindEvents() {
   })();
   applyConH(false);
   $("sigSound").addEventListener("click", toggleSound);
-  /* تبويبا الإشارات/السجل — طلب المستخدم */
+  /* Signals/History tabs — user request */
   $("sigTabSig").addEventListener("click", function () { setSigTab("sig"); });
   $("sigTabHist").addEventListener("click", function () { setSigTab("hist"); });
   $("sigClear").addEventListener("click", function () { SIGS = []; renderSignals(); });
@@ -2595,23 +2593,23 @@ function bindEvents() {
   });
 
 
-  /* side panel show/hide (signals) — الدالة كانت مفقودة فصارت اللوحة ثابتة لا تُخفى (إصلاح طلب المستخدم)
-     وتحديثًا لطلب المستخدم: زر الجرس واحد ثابت لفتح وغلق البطاقة — لم يعد يُخفى عند فتح اللوحة */
+  /* side panel show/hide (signals) — the function was missing so the panel became fixed and unhidable (user-request fix)
+     and per an updated request: one fixed bell button opens and closes the card — no longer hidden when the panel opens */
   function setSigHidden(off) {
     const p = $("sigPane");
     if (p) p.classList.toggle("off", !!off);
     try { localStorage.setItem("badiSigHidden", off ? "1" : "0"); } catch (e) {}
-    /* عرض الشارت تغيّر — أعِد تخطيط الكانفس (المكتبة تسمع لـ window.resize فقط) */
+    /* Chart width changed — re-layout the canvas (the library only listens to window.resize) */
     try { window.dispatchEvent(new Event("resize")); } catch (e) {}
   }
-  window.setSigHidden = setSigHidden;   /* متاحة لجسر سطح المكتب (__badiApp.setSigHidden) */
+  window.setSigHidden = setSigHidden;   /* Exposed for the desktop bridge (__badiApp.setSigHidden) */
   $("sigHide").addEventListener("click", function () { setSigHidden(true); });
-  /* الجرس نفسه يفتح ويغلق البطاقة — يبقى ظاهرًا في الحالتين ولا يختفي عند ظهور الإشارات (طلب المستخدم) */
+  /* The bell itself opens and closes the card — visible in both states, never disappears when signals appear (user request) */
   $("sigShow").addEventListener("click", function () {
     const p = $("sigPane");
     setSigHidden(!p.classList.contains("off"));
   });
-  /* لا تُفتح لوحة الإشارات تلقائيًا عند الإقلاع أبدًا — يفتحها المستخدم من زر الجرس (طلب المستخدم) */
+  /* Never auto-open the signals panel at boot — the user opens it from the bell button (user request) */
   setSigHidden(true);
 
   /* Shortcuts: Ctrl+S save / Ctrl+Enter run */
@@ -2660,11 +2658,11 @@ function clampW(v) {
   return Math.max(300, Math.min(max, v));
 }
 
-/* ───────────── شريط المعلومات البسيط: متصل · المنطقة الزمنية · الوقت · FPS — بدون اسم العملة (طلب المستخدم) ───────────── */
+/* ───────────── Simple info bar: online · timezone · time · FPS — no currency name (user request) ───────────── */
 function startStatusBar() {
   const dot = $("stDot"), conn = $("stConn"), tzEl = $("stTz"),
         clockEl = $("stClock"), fpsEl = $("stFps");
-  /* عدّاد إطارات حقيقي من حلقة الرسم */
+  /* Real frame counter from the render loop */
   let frames = 0, t0 = performance.now();
   (function loop(t) {
     frames++;
@@ -2674,13 +2672,13 @@ function startStatusBar() {
     }
     requestAnimationFrame(loop);
   })(performance.now());
-  /* المنطقة الزمنية المحلية مثل UTC+1 UTC+3 UTC+5:30 */
+  /* Local timezone like UTC+1 UTC+3 UTC+5:30 */
   const offMin = -new Date().getTimezoneOffset();
   const ab = Math.abs(offMin), hh = Math.floor(ab / 60), mm = ab % 60;
   tzEl.textContent = "UTC" + (offMin < 0 ? "-" : "+") + hh + (mm ? ":" + String(mm).padStart(2, "0") : "");
-  /* الحالة والساعة — تحديث نصف ثانية (النص يتبع لغة التطبيق) */
+  /* Status and clock — refresh every half second (the text follows the app language) */
   const ar = function () { return window.__BADI_LANG__ === "ar"; };
-  /* معرّف المستخدم الثابت — انقر لنسخه (طلب المستخدم) */
+  /* Fixed user ID — click to copy (user request) */
   const uidEl = $("stUid");
   if (uidEl) {
     uidEl.title = ar() ? "معرّف المستخدم — انقر للنسخ" : "USER ID — click to copy";
@@ -2713,7 +2711,7 @@ function boot() {
   renderSignals();
   renderSigSound();
   loadState();
-  badiSend("rescan", "1");   /* فحص مجلد BadiCharts عند الإقلاع */
+  badiSend("rescan", "1");   /* Scan the BadiCharts folder at boot */
   renderAll();
   renderEdToggle();
   applyEdW();
@@ -2735,437 +2733,22 @@ document.addEventListener("DOMContentLoaded", boot);
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-#  PART 2 — BADI-CHARTS-V2 v2.13.0 CHART LIBRARY (badi-chart.js)
-#  مكتبة الشارت (خارجية ثابتة — نسخة v2.13.0 مصغّرة: حُذفت التعليقات والمسافات
-#  فقط دون أي تغيير في السلوك، ومضغوطة لتوفير الحجم)
+#  PART 2 — CHART LIBRARY: loaded directly from the official CDN link (owner request)
+#  https://cdn.jsdelivr.net/gh/salahbadi19/BADI-CHARTS-V2@v2.17.1/chart.js
+#  A <script> tag inside the page points straight to the link — no embedded code, no local copy.
+#  Without internet the page shows an error panel with a Retry button (showLibError).
 # ═══════════════════════════════════════════════════════════════════════════
-BADI_LIB_B64 = """
-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
-Z7Ww9ndnZ48ettv4K33USQ/38Ff3MD58FOOvR4PuT6ece3awd0C/fkoPfhp0a1+MyzFGrFxoiekX9MUPkf8ZVfBGJ/iTAGe15Yvp
-jA4699d4FE1nk4tpURc+GBu1rbrYTPRAEgukjVoAYy48V8ka5WUgIFGPzQVmEJ3kt+Dn0SQuBAwv5+xsDQCCQBIMH0rDXvk8uVdJ
-vX6pjHUAJ6eWtBoTR2a8zvPextJJhNLuOwAUahBJbROpoTZxtrGBoC+hgVj14C7AqsdaG0Su390+NX2No3xRmF+NiQ+7co9hoKz5
-VtO/exn5qf67rxmfrnVettCb326Styjb4C3uZXRXbV7nOcPhY7NozTFqX7zV0iekuqT5goa12ml0NGWtlsuo4uYZnojbumSQHv9h
-e6RPvQX/OKFk+eJqXcS9ze6VZK/c1i3VF4nfZewme/KPMme7q+GamsZ/BaZp8zW2aIu7G5+ZztNLLiLWGDcbkRvnayI3uqeXhoZQ
-qm3tzUA6gx2IyXKmx2XXub3tCvosG2EMryQ6SqRti1V4ffRHrYOIzC3eBllKyC2TwD3I86dvZklLR326F90rRXM8jQiRRhhe24ZW
-eFXa1EpWXnbLJze6Ldb1S0XU6Y0vdcpXDf/mbrqF342YyI+c/r9ThM/v4jLtvEWQ4r+qdtWECpzsTS+47U67+vZ6ZT/CWt4r1qwb
-zHKl31H9GPtLz9mDOqe1pYBxnx3IG9ls/E6+QXYgHFdb2SxCxwujIv70uH3c6TU7fceQcHYE6a1Or7ML/1bYD57+WawGYfQ1Irsd
-P8o48O0o+ZH2gYDujzURdN7ULdde69zRAKQy3LFnveJjplFqRJ37a1pE9Vq2SaOeUTqdmtRoJTKeG/6xp4j33wJYS6S4khc38BKk
-yiOHvOW/3wV9qfeQ2i3eJWyRY6la6RL/vk9+XEVk5e8duzMMu8C2dalFG8O22gr+ZmUaD62xPZ631ovHtB9CRweHuDOUX41DfbAn
-MFJWllj3J+YbVERHuwlsMJ4Vqo/3NY+LLhO6YUJHNb4w/pfJ5OJJwebTdZDaxC8KqmkW+eotslsq9CIfxNO0VilhNhEMP1QIed61
-lbV9qwX0jNrLbPfnQLOC53x1YXQuRlrIQfanf849BSg41mDygqtOF+eR46Si4Tqi2O3+21nlBxu+ARj81T4C+Is5EfSjkPFS+C4S
-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
-7sL0+y+JcCOgQvYBAA==
-"""
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-#  PART 3 — THE DESKTOP APP (Python + QML) — التطبيق كاملاً كود واضح
-#  (سطر واحد فقط مُعدَّل هنا: الصفحة تُقرأ من STUDIO_HTML الموجود أعلاه
-#   بدل فك الضغط — انظر دالة build_embedded_html أسفل)
+#  PART 3 — THE DESKTOP APP (Python + QML) — the whole app with its code in the open
+#  (only one line differs here: the page is read from the STUDIO_HTML above
+#   instead of decompression — see the build_embedded_html function below)
 # ═══════════════════════════════════════════════════════════════════════════
 """
 BadiCharts Studio — desktop indicator studio (Python + PySide6/QML)
 Splash + login (same BadiCharts logo & flow) → studio:
-  • the chart & editor are the embedded HTML app (BADI-CHARTS-V2 v2.13.0 chart
+  • the chart & editor are the embedded HTML app (BADI-CHARTS-V2 v2.17.1 chart
     + Monaco editor) rendered inside the window with QtWebEngine
   • program indicators & tools in JavaScript or Python (Python runs in the
     desktop engine and its values are pushed into the chart)
@@ -3184,8 +2767,6 @@ import time
 import base64
 import hashlib
 import hmac
-import gzip
-import lzma
 import random
 import threading
 import urllib.request
@@ -3198,7 +2779,7 @@ from PySide6.QtGui import QGuiApplication, QDesktopServices
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtWebEngineQuick import QtWebEngineQuick
 
-# ---------------------------------------------------------------- الألوان
+# ---------------------------------------------------------------- Colors
 DARK = dict(bg="#000000", side="#000000", card="#0A0A0A", border="#1F1F23",
             fg="#FFFFFF", sub="#8A9099", hover="#151518",
             accent="#3B8BFF", g1="#14B8F5", g2="#3B6CF5", good="#22C55E", bad="#EF4444")
@@ -3206,7 +2787,7 @@ LIGHT = dict(bg="#FFFFFF", side="#FFFFFF", card="#F5F7FB", border="#E1E6F0",
              fg="#000000", sub="#5B6B80", hover="#EAEFF8",
              accent="#2563EB", g1="#0EA5E9", g2="#2F5BF0", good="#16A34A", bad="#DC2626")
 
-# --------------------------------------------------------------- الترجمات
+# --------------------------------------------------------------- Translations
 T = {
     "en": {
         "login": "Sign in", "user": "Username", "pass": "Password", "signin": "Log in",
@@ -3259,14 +2840,15 @@ T = {
         "notifHint": "Notifications from your paid indicators appear here — the developer sends them from his own server (updates, subscription reminders). No files can ever pass through this channel.",
         "notifClear": "Clear all",
         "notifUnreadX": "%1 unread notification(s)", "notifAllRead": "All notifications read",
-        "paidSrvLbl": "Paid control server (optional) — the app polls it and accepts whitelist commands only:",
-        "paidIdLbl": "Paid indicator ID on that server:",
         "badiEnc": "Encrypt the indicator — export a .badi file", "badiImp": "Import an encrypted indicator (.badi)",
         "badiSaved": "Encrypted indicator saved", "badiEmpty": "There is no code to encrypt",
         "badiJsOnly": "Only JavaScript indicators can be encrypted", "badiOk": "Loaded — runs internally, its code stays hidden",
         "badiFail": "BADI import failed", "badiHint": "The 256-bit key is fused into the app — it is never written to any file, never shown and cannot be copied. The encrypted indicator runs inside the chart directly: its code never opens in the editor and is never saved anywhere. The .badi file sits next to the real indicator file — like MetaTrader.",
-        "licTitle": "Encrypt indicator — buyer license", "licHint": "Paste the buyer's USER ID so the indicator runs on his device only. Multiple buyers: separate IDs with commas. Leave empty to allow everyone.",
+        "licTitle": "Encrypt indicator — buyer license", "licHint": "The buyer's USER ID is fetched automatically from your Telegram bot — click his name above to embed it into the encrypted indicator. The manual field below is a fallback only (multiple IDs: commas). Empty = works for everyone.",
         "licOk": "Encrypt", "licCancel": "Cancel", "yourUid": "Your USER ID:",
+        "buyersTitle": "Buyers from your Telegram bot — click one to embed his USER ID into the indicator:",
+        "buyersFetch": "Fetching buyers from the bot…",
+        "buyersNone": "No buyers yet — the buyer opens your bot and sends his USER ID, then reopen this dialog.", "buyersErr": "Could not fetch buyers — save the bot token in settings first",
         "uidCopied": "USER ID copied to clipboard", "folderOpen": "App folder opened",
         "badiFolder": "Indicators folder", "badiFolderHint": "Created indicators and tools are saved here as real files — you can also drop your own files into these folders and the app loads them automatically.",
         "chartLook": "Chart appearance", "lookHint": "Type any color freely (hex like #22E08A or rgba) — not limited to presets. Changes apply instantly and are saved.",
@@ -3337,14 +2919,15 @@ T = {
         "notifHint": "تظهر هنا إشعارات المؤشرات المدفوعة — المبرمج يرسلها من خادمه (تحديثات، تذكير بالاشتراك). لا يمكن لأي ملف أن يمر عبر هذه القناة إطلاقًا.",
         "notifClear": "مسح الكل",
         "notifUnreadX": "%1 إشعار غير مقروء", "notifAllRead": "كل الإشعارات مقروءة",
-        "paidSrvLbl": "خادم التحكم المدفوع (اختياري) — التطبيق يسأله دوريًا ويقبل الأوامر البيضاء فقط:",
-        "paidIdLbl": "معرف المؤشر المدفوع عند ذلك الخادم:",
         "badiEnc": "تشفير المؤشر وتصديره إلى ملف .badi", "badiImp": "استيراد مؤشر مشفر (.badi)",
         "badiSaved": "تم حفظ المؤشر المشفر", "badiEmpty": "لا يوجد كود لتشفيره",
         "badiJsOnly": "التشفير لمؤشرات JavaScript فقط — ملفات Python غير مدعومة", "badiOk": "تم التحميل — يعمل داخليًا وكودــه مخفي",
         "badiFail": "فشل استيراد BADI", "badiHint": "المفتاح 256-بت مدموج داخل التطبيق — لا يُكتب أبدًا في أي ملف، ولا يُعرض، ولا يمكن نسخه. المؤشر المشفر يعمل داخل الشارت مباشرة: كودــه لا يُفتح في المحرر ولا يُحفظ في أي مكان. الملف المشفر .badi يُحفظ بجوار ملف المؤشر الأصلي — مثل ميتاتريدر.",
-        "licTitle": "تشفير المؤشر — ترخيص المشتري", "licHint": "الصق معرّف المشتري (USER ID) ليعمل المؤشر على جهازه هو فقط. لعدة مشترين: افصل المعرفات بفاصلة. اتركه فارغًا ليعمل مع الجميع.",
+        "licTitle": "تشفير المؤشر — ترخيص المشتري", "licHint": "معرّف المشتري يُجلب تلقائيًا من بوت تلجرام — انقر على اسمه بالأعلى ليُدمَج داخل المؤشر المشفر مباشرة. الحقل اليدوي بالأسفل احتياط فقط (لعدة معرفات: فاصلة). اتركه فارغًا ليعمل مع الجميع.",
         "licOk": "تشفير", "licCancel": "إلغاء", "yourUid": "معرّفك (USER ID):",
+        "buyersTitle": "المشترون من بوت تلجرام — انقر على مشترٍ لدمج معرّفه داخل المؤشر:",
+        "buyersFetch": "جلب المشترين من البوت…",
+        "buyersNone": "لا مشترين بعد — المشتري يفتح بوتك ويرسل له معرّفه ثم أعد فتح هذه النافذة.", "buyersErr": "تعذّر جلب المشترين — احفظ توكن البوت في الإعدادات أولًا",
         "uidCopied": "تم نسخ معرّف المستخدم", "folderOpen": "تم فتح مجلد التطبيق",
         "badiFolder": "مجلد المؤشرات", "badiFolderHint": "المؤشرات والأدوات التي تنشئها تُحفظ هنا كملفات حقيقية — ويمكنك أن تضع ملفاتك مباشرة في هذه المجلدات وسيتعرف عليها التطبيق تلقائيًا.",
         "chartLook": "مظهر الشارت", "lookHint": "اكتب أي لون بحرية (hex مثل #22E08A أو rgba) — ليست الألوان محدودة بقوائم. التغيير يُطبق فورًا ويُحفظ.",
@@ -3365,7 +2948,7 @@ T = {
     },
 }
 
-# ---------------------------------------------------------------- الأيقونات
+# ---------------------------------------------------------------- Icons
 ICONS = {
     "zap":    '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',
     "clock":  '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
@@ -3422,7 +3005,7 @@ ICONS = {
     "shield": '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>',
 }
 
-# ---------------------------------------------------------------- الشعار (BadiCharts — طبقات SVG)
+# ---------------------------------------------------------------- Logo (BadiCharts — SVG layers)
 LOGO_PAL = {
     True:  dict(ink="#FFFFFF", tag="#A8B8CA", g1="#43D9FF", g2="#4C8DFF"),
     False: dict(ink="#000000", tag="#5B6B80", g1="#12C4F0", g2="#3B6CF5"),
@@ -3475,7 +3058,7 @@ def logo_uri(name, dark):
 
 
 def logo_uri_full(dark):
-    """شعار التطبيق الكامل (الأيقونة + الحروف + السطر النصي) بـ SVG واحد — لصفحة الويب المدمجة."""
+    """The complete app logo (icon + letters + text line) as one SVG — for the embedded web page."""
     p = LOGO_PAL[bool(dark)]
     bodies = [ICON_SVG.format(**p)]
     for _l0, kind, d in LETTERS:
@@ -3497,8 +3080,8 @@ def icon_uri(name, color):
 
 
 def make_app_icon():
-    """أيقونة النافذة وشريط المهام: علامة BadiCharts من SVG بعدة مقاسات
-    (تُتجاهل بهدوء إن لم يتوفر QtSvg)."""
+    """Window and taskbar icon: the BadiCharts mark from SVG at several sizes
+    (silently ignored when QtSvg is unavailable)."""
     try:
         from PySide6.QtCore import QByteArray, Qt
         from PySide6.QtGui import QIcon, QImage, QPainter, QPixmap
@@ -3518,7 +3101,7 @@ def make_app_icon():
     except Exception:
         return QIcon()
 
-# ---------------------------------------------------------------- السوق: كوتكس حقيقي + OTC
+# ---------------------------------------------------------------- Market: real quotex + OTC
 ASSETS = {
     "real": [
         {"name": "EUR/USD", "base": 1.0865, "vol": 0.0009, "dec": 5},
@@ -3548,14 +3131,14 @@ ASSETS = {
         {"name": "BTC/USD OTC", "base": 67210.0, "vol": 0.013, "dec": 2},
     ],
 }
-# الفريمات الكاملة (طلب المستخدم): 10 ثوانٍ و30 ثانية و2 و3 و10 و30 دقيقة و4 ساعات ويوم —
-# مع الإبقاء على الفريمات القديمة (5 ثوانٍ و15 ثانية و1 و5 و15 دقيقة وساعة)
+# Full timeframe set (user request): 10s and 30s and 2, 3, 10 and 30 minutes and 4 hours and 1 day —
+# while keeping the old frames too (5s, 15s, 1m, 5m, 15m and 1h)
 TFS = [("5s", 5), ("10s", 10), ("15s", 15), ("30s", 30), ("1m", 60), ("2m", 120), ("3m", 180),
        ("5m", 300), ("10m", 600), ("15m", 900), ("30m", 1800), ("1H", 3600), ("4H", 14400), ("1D", 86400)]
 
-# ---------------------------------------------- أعلام ونِسَب الدفع لشريط العملات
+# ---------------------------------------------- Flags and payout rates for the currency strip
 def _flag_uri(body):
-    """علم مصغّر SVG (يُرسم في كل الأنظمة بلا اعتماد على خطوط الإيموجي)."""
+    """Small SVG flag (drawn on every system without relying on emoji fonts)."""
     svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 14">' + body
            + '<rect x="0.4" y="0.4" width="19.2" height="13.2" rx="2" fill="none"'
              ' stroke="rgba(128,128,128,.35)" stroke-width="0.8"/></svg>')
@@ -3582,7 +3165,7 @@ FLAGS = {
 
 
 def asset_flag(name):
-    """علم العملة الأولى في الزوج كـ data-URI (BTC/ETH/XAU لها أيقونة خاصة)."""
+    """Flag of the first currency in the pair as a data-URI (BTC/ETH/XAU have their own icons)."""
     base = name.split("/")[0]
     return _flag_uri(FLAGS[base]) if base in FLAGS else ""
 
@@ -3594,7 +3177,7 @@ _RIM_WHITE = ('<rect x="0.4" y="0.4" width="19.2" height="13.2" rx="2" fill="non
 
 
 def pair_flag_uri(name):
-    """علمان جنب بعض في SVG واحد مدموجين بشكل نظيف (العملة الأولى + عملة الاقتباس)."""
+    """Two flags side by side merged cleanly into one SVG (base currency + quote currency)."""
     parts = name.split("/")
     base = parts[0]
     quote = parts[1].replace(" OTC", "") if len(parts) > 1 else ""
@@ -3615,11 +3198,11 @@ ASSET_PAYOUT = {
     "BTC/USD OTC": 91,
 }
 
-# قائمة العملات المتاحة للشريط: تُعرض على الشريط المُضاف منها فقط (لا الكل) — بعلمي الزوج مدموجين
+# Currency list available to the strip: only the added ones show on the strip (not all) — with both pair flags merged
 BOARD = [{"name": a["name"], "payout": ASSET_PAYOUT.get(a["name"], 85),
           "flag": pair_flag_uri(a["name"])} for a in ASSETS["real"] + ASSETS["otc"]]
 
-# ---------------------------------------------------------------- بيانات الشموع (محاكاة بذريّة)
+# ---------------------------------------------------------------- Candle data (seeded simulation)
 def _mulberry32(seed):
     a = seed & 0xFFFFFFFF
 
@@ -3689,7 +3272,7 @@ def new_candle(prev, tf_sec, vol):
     first = o * (1 + (random.random() - 0.5) * 2 * vol * 0.1)
     return {"t": prev["t"] + tf_sec, "o": o, "h": max(o, first), "l": min(o, first),
             "c": first, "v": random.randint(50, 350)}
-# ---------------------------------------------------------------- قوالب الأكواد
+# ---------------------------------------------------------------- Code templates
 JS_IND_TEMPLATE = """// BadiCharts Studio — JS indicator
 // The code must end with: return { ... }
 //   calculate(candles, s)  -> values (array or {Name: [...]})
@@ -3698,15 +3281,15 @@ JS_IND_TEMPLATE = """// BadiCharts Studio — JS indicator
 //   candles keys: time, open, high, low, close, volume
 //   Helpers: Indicators.sma(v,p) ema(v,p) rsi(v,p) macd(v,f,sl,sg)
 //            bollinger(v,p,m) stoch(candles,p,sm) atr(candles,p)
-//   Market API (طلب المستخدم: معلومات الزوج + نسبة الدفع + مفتوح/مغلق):
-//     Indicators.market.info(['EUR/USD'])  → {name, payout, open, otc}  (بدون اسم = عملة الشارت الحالية)
-//     Indicators.market.assets()           → كل العملات [{name, payout, open, otc}]
-//     Indicators.market.added()            → العملات المضافة إلى الشريط
-//     Indicators.market.current()          → عملة الشارت النشط
-//   إشارات تلغرام: signal() يرجع {dir:'up'|'down', price, chats:'@channel أو -100...'}
-//     chats = معرف محادثة تلغرام لهذا المؤشر — يُرسل إليها مع النتيجة تلقائيًا
-//   نطاق العملات (إرسال إشارات لأكثر من عملة): أضف إلى settings:
-//     scope: 'added' (المضافة للشريط) | 'high' (أعلى نسبة دفع ≥ settings.minPayout) | 'all' (كل العملات)
+//   Market API (user request: pair info + payout rate + open/closed):
+//     Indicators.market.info(['EUR/USD'])  → {name, payout, open, otc}  (no name = the current chart currency)
+//     Indicators.market.assets()           → every currency [{name, payout, open, otc}]
+//     Indicators.market.added()            → the currencies added to the strip
+//     Indicators.market.current()          → the active chart currency
+//   Telegram signals: signal() returns {dir:'up'|'down', price, chats:'@channel or -100...'}
+//     chats = the Telegram chat ID of this indicator — the signal and its result are sent there automatically
+//   Currency scope (sending signals for more than one currency): add to settings:
+//     scope: 'added' (added to the strip) | 'high' (highest payout ≥ settings.minPayout) | 'all' (every currency)
 //   Print to the console:  log('text')
 
 return {
@@ -3723,8 +3306,8 @@ return {
   // render(ctx, values, h, s) { ... },
 
   // optional Telegram alert — return {dir:'up'|'down', price, chats:'@mychannel'} or null:
-  //   chats = معرف محادثة تلغرام لهذا المؤشر (بدل إعدادات التطبيق)
-  //   scope/minPayout في settings تتحكم في نطاق العملات (المضافة / أعلى دفع / الكل)
+  //   chats = the Telegram chat ID of this indicator (instead of the app settings)
+  //   scope/minPayout in settings control the currency scope (added / highest payout / all)
   signal(candles, values, s) { return null; }
 };
 """
@@ -3795,7 +3378,7 @@ return {
 };
 """
 
-# ---------------------------------------------------------------- مكتبة مؤشرات جاهزة
+# ---------------------------------------------------------------- Ready-made indicator library
 LIB = [
     {"key": "ema", "name": "EMA Cross", "desc": "Fast/slow EMA crossover with alerts",
      "code": """return {
@@ -4062,7 +3645,7 @@ SEEDS = [
     {"kind": "jstool", "code": JS_TOOL_TEMPLATE},
 ]
 
-# ---------------------------------------------------------------- مساعدات بايثون للمؤشرات
+# ---------------------------------------------------------------- Python helpers for indicators
 def _sma(v, p):
     out, s = [None] * len(v), 0.0
     for i, x in enumerate(v):
@@ -4110,18 +3693,18 @@ FILES_FILE = os.path.join(CFG_DIR, "files.json")
 SHOTS_DIR = os.path.join(CFG_DIR, "signals")
 NAME_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 
-# ───── مظهر الشارت: الألوان القابلة للتغيير الحر من زر الإعدادات (طلبات المستخدم) ─────
-# مفاتيح مكتبة BADI-CHARTS-V2 — أي لون hex/rgba يُقبل بلا قوائم محدودة
+# ───── Chart appearance: colors freely changeable from the settings button (user requests) ─────
+# BADI-CHARTS-V2 library keys — any hex/rgba color is accepted, no fixed lists
 CHART_THEME_DEFAULTS = {
-    "bg":       "#0e1015",   # خلفية الشارت
-    "bull":     "#26a69a",   # الشمعة الصاعدة
-    "bear":     "#ef5350",   # الشمعة الهابطة
-    "bullVol":  "rgba(38,166,154,0.50)",   # حجم الشمعة الصاعدة
-    "bearVol":  "rgba(239,83,80,0.50)",   # حجم الشمعة الهابطة
-    "grid":     "#1c2030",   # الشبكة
-    "axisText": "#787b86",   # ألوان محاور السعر/الوقت
-    "crosshair":"#787b86",   # مؤشر التقاطع
-    "drawing":  "#38bdf8"    # أدوات الرسم
+    "bg":       "#0e1015",   # Chart background
+    "bull":     "#26a69a",   # Bullish candle
+    "bear":     "#ef5350",   # Bearish candle
+    "bullVol":  "rgba(38,166,154,0.50)",   # Bullish candle volume
+    "bearVol":  "rgba(239,83,80,0.50)",   # Bearish candle volume
+    "grid":     "#1c2030",   # Grid
+    "axisText": "#787b86",   # Price/time axis colors
+    "crosshair":"#787b86",   # Crosshair
+    "drawing":  "#38bdf8"    # Drawing tools
 }
 TG_TMPL_DEFAULT = ("🎯 {dir} | {asset} ({tf})\n⏱ Duration: {tf}\n"
                    "📊 Indicator: {indicator}\n🕐 Entry: {time}\n💰 Price: {price}")
@@ -4148,7 +3731,7 @@ def random_suffix(n=6):
 
 
 def _tg_send(token, chats, text, png=None):
-    """إرسال إلى تلجرام: نص لكل المحادثات + صورة اختيارية (multipart)."""
+    """Send to Telegram: text to every chat + optional image (multipart)."""
     ok_count = 0
     errs = []
     chats = [c.strip() for c in chats.replace(";", ",").split(",") if c.strip()]
@@ -4180,18 +3763,22 @@ def _tg_send(token, chats, text, png=None):
     if ok_count == 0:
         raise RuntimeError(errs[0] if errs else "send failed")
     return ok_count, errs
-# ---------------------------------------------------------------- الباك إند
+# ---------------------------------------------------------------- Back end
 # ═══════════════════════════════════════════════════════════════════════════
-#  BADI — BADI SECURE INDICATOR FORMAT (المؤشرات المشفرة)
-#  صيغة الملف .badi:  MAGIC "BADI" (4) + VERSION (1) + NONCE (12) + AES-256-GCM(ciphertext+tag)
-#  • المفتاح الرئيسي 256-بت مدموج داخل هذا الملف (BADI_MASTER_KEY_HEX) — ثابت
-#    للجميع، لا يُكتب في أي ملف، ولا يُنسخ إلى الحافظة، ولا يُعرض، ولا يُرسل —
-#    لا توجد أي وصلة تُخرجه من التطبيق؛ البصمة المعروضة SHA-256 مقطوعة لا تكشفه.
-#  • التشفير AES-GCM مع AAD = MAGIC+VERSION حتى لا يُنقل أي جزء من الملف دون كشفه.
-#  • المؤشر يُفك داخل الذاكرة فقط، يُفحص (ماسح أنماط ممنوعة + QuickJS معزولة
-#    بلا ملفات ولا شبكة) ثم يُشغَّل داخليًا على الشارت: لا يُفتح في المحرر،
-#    لا يُحفظ، ولا يظهر كوده للمستخدم إطلاقًا — المؤشرات المدفوعة آمنة.
-#  • الملف المشفر .badi يُكتب بجوار ملف المؤشر الأصلي — مثل ميتاتريدر.
+#  BADI — BADI SECURE INDICATOR FORMAT (encrypted indicators)
+#  .badi file format (v2):  MAGIC "BADI" (4) + VERSION (1) + NONCE (12) +
+#                          AES-256-GCM(ciphertext+tag) + salted SHA-256 (32)
+#  • BADI Vault — Multi-Layer Key Protection: one 256-bit key for every copy of the
+#    app (not generated at install), fused in multiple layers inside this file —
+#    it never appears in any explicit form (no hex, no base64, no contiguous bytes),
+#    never written to any file, never shown, never sent; the truncated SHA-256 fingerprint shown cannot reveal it.
+#  • Integrity layer: salted SHA-256 over the whole envelope — any change of any byte is rejected before
+#    decryption, and on top of that AES-GCM signatures with AAD = MAGIC+VERSION.
+#  • The indicator is decrypted in memory only, checked (forbidden-pattern scanner + isolated QuickJS
+#    with no files and no network) and then run internally on the chart: never opened in the editor,
+#    never saved, and its code is never shown to the user — paid indicators stay safe.
+#  • The encrypted .badi file is written next to the original indicator file — like MetaTrader.
+#    Old v1 files are accepted for reading as they are.
 # ═══════════════════════════════════════════════════════════════════════════
 try:
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -4207,7 +3794,9 @@ except Exception:
     _HAS_QJS = False
 
 BADI_MAGIC = b"BADI"
-BADI_VERSION = b"\x01"
+BADI_VERSION = b"\x02"             # v2 = envelope with an explicit integrity layer (salted SHA-256)
+BADI_VERSION_V1 = b"\x01"          # Old version — read only (protected by GCM signatures)
+BADI_INTEG_SALT = b"BADI-integrity-v2"
 BADI_MSGS = {
     "en": {
         "noaes": "Encryption library missing — run: pip install cryptography",
@@ -4215,6 +3804,7 @@ BADI_MSGS = {
         "badver": "Unsupported BADI version",
         "short": "Corrupted file — data is incomplete",
         "key": "Decryption failed — the file is corrupted or the app key does not match",
+        "integ": "Tampered file — integrity check failed",
         "text": "Corrupted file — the decrypted content is not text",
         "noc": "The code does not define calculate(candles, settings)",
         "run": "The code crashed in the sandbox",
@@ -4231,6 +3821,7 @@ BADI_MSGS = {
         "badver": "إصدار ملف BADI غير مدعوم",
         "short": "الملف تالف — البيانات غير مكتملة",
         "key": "فك التشفير فشل — الملف تالف أو مفتاح التطبيق غير مطابق",
+        "integ": "الملف معدَّل — فحص السلامة لم يطابق",
         "text": "الملف تالف — المحتوى المفكوك ليس نصًا",
         "noc": "الكود لا يعرّف calculate(candles, settings)",
         "run": "الكود توقف داخل بيئة الاختبار المعزولة",
@@ -4244,10 +3835,10 @@ BADI_MSGS = {
 }
 
 
-# ───── حماية BADI: أنماط ممنوعة في كود المؤشرات المشفرة (طلب المستخدم) ─────
-# الملفات التي ينشئها التطبيق والمفاتيح وأجزاء المحرك الداخلية لا يمكن للمؤشر
-# المشفر أن يمرّ عليها: الشبكة والتخزين وجسر سطح المكتب وأسماء الأجزاء الداخلية
-# كلها ممنوعة — وأي كود يلمسها يُرفض قبل تشغيله (ويُفحص أيضًا داخل QuickJS).
+# ───── BADI protection: forbidden patterns inside encrypted indicator code (user request) ─────
+# The files the app creates, the keys and the internal engine parts must never be touched by an
+# encrypted indicator: network, storage, the desktop bridge and internal part names
+# are all forbidden — any code that touches them is rejected before running (also checked inside QuickJS).
 BADI_BANNED_RE = re.compile(
     r"(localstorage|sessionstorage|indexeddb|xmlhttprequest|websocket|eventsource"
     r"|sendbeacon|fetch\s*\(|import\s*\(|importscripts|document\.cookie|caches\b"
@@ -4263,53 +3854,93 @@ BADI_BANNED_RE = re.compile(
 
 
 class BADIError(Exception):
-    """خطأ BADI — الرسالة مفتاح من BADI_MSGS يُترجم حسب لغة التطبيق."""
+    """BADI error — the message is a key from BADI_MSGS, translated by the app language."""
     pass
 
 
 class BADI:
-    """تشفير/فك تشفير مؤشرات JavaScript بصيغة .badi — المفتاح داخل التطبيق فقط.
+    """Encrypt/decrypt JavaScript indicators in the .badi format — BADI Vault.
 
-    المفتاح 256-بت مدموج داخل هذا الملف (طلب المستخدم: يبقى داخل التطبيق
-    ولا يُكتب أبدًا داخل ملف المؤشر). لاستخدام مفتاحك الخاص استبدل قيمة
-    BADI_MASTER_KEY_HEX بـ 64 حرفًا سداسيًا عشوائيًا."""
+    One 256-bit key for every copy of the app (user request: not generated at install
+    and never written inside the indicator file) — fused in multiple layers (BADI Vault —
+    Multi-Layer Key Protection) and never present in the code in any explicit form: its layers
+    are assembled in memory at use time only, then discarded."""
 
-    BADI_MASTER_KEY_HEX = "AAC20E18936337C73D4D358E0A65BE9A2CFF59A96EA2709ACE23F468A082379F"
+    # ═══ BADI Vault — Multi-Layer Key Protection (user request) ═══
+    # Layer 1: two complementary halves merged with XOR — neither is enough alone
+    # Layer 2: cyclic byte rotation
+    # Layer 3: independent XOR mask per byte
+    # Layer 4: SHA-256 signature validating the assembly — any corrupt layer = instant rejection
+    _V_A = (
+        24, 187, 32, 30, 15, 98, 167, 54,
+        136, 52, 138, 188, 34, 37, 48, 185,
+        98, 149, 67, 107, 136, 90, 225, 37,
+        78, 94, 244, 60, 176, 19, 123, 235)
+    _V_B = (
+        4, 71, 102, 44, 237, 186, 189, 76,
+        118, 161, 175, 3, 189, 100, 13, 8,
+        123, 202, 176, 236, 219, 202, 223, 89,
+        36, 82, 152, 212, 162, 47, 217, 143)
+    _V_M = (
+        166, 174, 230, 10, 175, 193, 83, 219,
+        193, 11, 7, 108, 210, 127, 196, 100,
+        185, 218, 230, 54, 47, 159, 193, 131,
+        145, 208, 115, 59, 48, 188, 75, 245)
+    _V_R = 7
+    _V_SIG = (28, 107, 240, 17)
 
     @classmethod
     def master_key(cls):
-        """مفتاح 256-بت مدموج داخل التطبيق — 32 بايت (64 حرفًا hex)."""
-        return bytes.fromhex(cls.BADI_MASTER_KEY_HEX)
+        """BADI Vault: assemble the 256-bit key from its layers in memory only."""
+        raw = bytes(((a ^ b) & 0xFF) for a, b in zip(cls._V_A, cls._V_B))
+        r = cls._V_R % 32
+        raw = raw[-r:] + raw[:-r] if r else raw
+        key = bytes(((x ^ m) & 0xFF) for x, m in zip(raw, cls._V_M))
+        if hashlib.sha256(key + b"badi-vault-check").digest()[:4] != bytes(cls._V_SIG):
+            raise RuntimeError("BADI Vault key assembly failed")
+        return key
 
     @classmethod
     def fingerprint(cls):
-        """بصمة قصيرة للمفتاح للعرض في الإعدادات (لا تكشف المفتاح نفسه)."""
+        """Short key fingerprint shown in Settings (does not reveal the key itself)."""
         return hashlib.sha256(cls.master_key()).hexdigest()[:12].upper()
 
     @classmethod
     def encrypt(cls, source: str) -> bytes:
+        """AES-256-GCM encryption + v2 envelope with an explicit integrity layer (salted SHA-256)."""
         if not _HAS_AESGCM:
             raise BADIError("noaes")
         nonce = os.urandom(12)
         aes = AESGCM(cls.master_key())
         enc = aes.encrypt(nonce, source.encode("utf-8"), BADI_MAGIC + BADI_VERSION)
-        return BADI_MAGIC + BADI_VERSION + nonce + enc
+        blob = BADI_MAGIC + BADI_VERSION + nonce + enc
+        return blob + hashlib.sha256(blob + BADI_INTEG_SALT).digest()
 
     @classmethod
     def decrypt(cls, blob: bytes) -> str:
+        """Decrypt only after the integrity check first: any change of any byte = instant rejection.
+        Old v1 files are accepted for reading and protected by the same AES-GCM signatures."""
         if not _HAS_AESGCM:
             raise BADIError("noaes")
-        if len(blob) < 4 or blob[:4] != BADI_MAGIC:
+        if len(blob) < 5 or blob[:4] != BADI_MAGIC:
             raise BADIError("notbadi")
-        if len(blob) < 5:
-            raise BADIError("short")
-        if blob[4:5] != BADI_VERSION:
+        ver = blob[4:5]
+        if ver == BADI_VERSION:
+            body = blob[:-32]
+            if len(body) < 5 + 12 + 16:
+                raise BADIError("short")
+            if hashlib.sha256(body + BADI_INTEG_SALT).digest() != blob[-32:]:
+                raise BADIError("integ")          # File was modified — reject before any decryption
+            nonce, ct = body[5:17], body[17:]
+        elif ver == BADI_VERSION_V1:
+            if len(blob) < 5 + 12 + 16:
+                raise BADIError("short")
+            nonce, ct = blob[5:17], blob[17:]
+        else:
             raise BADIError("badver")
-        if len(blob) < 5 + 12 + 16:
-            raise BADIError("short")
         try:
             aes = AESGCM(cls.master_key())
-            plain = aes.decrypt(blob[5:17], blob[17:], BADI_MAGIC + BADI_VERSION)
+            plain = aes.decrypt(nonce, ct, BADI_MAGIC + ver)
         except Exception:
             raise BADIError("key")
         try:
@@ -4318,17 +3949,17 @@ class BADI:
             raise BADIError("text")
 
 
-# ═══════════ معرّف المستخدم الثابت — BADI-XXXX-XXXX-XXXX (طلب المستخدم) ═══════════
-# لكل مستخدم يُثبّت التطبيق معرّف عشوائي ثابت لا يتغير أبدًا:
-#  • يُولَّد مرة واحدة ويُحفظ بعمق في مواقع مخفية (مجلد التطبيق + بيانات المستخدم على
-#    النظام) موقّعًا بـ HMAC-SHA256 ومربوطًا ببصمة هذا الجهاز — لا يمكن تغييره ولا
-#    نقله إلى جهاز أو تطبيق آخر: أي نسخ لملف التخزين إلى جهاز آخر يُرفض (البصمة لا
-#    تطابق) ويُولَّد معرّف جديد تلقائيًا. أي عبث في المحتوى يكسر التوقيع.
-#  • البائع يدمج معرّف المشتري داخل المؤشر المشفر (.badi) — والمؤشر لا يعمل إلا على
-#    الجهاز الذي يطابق معرّفه المدمج (فحص داخل التطبيق عند فك التشفير).
+# ═══════════ Fixed user ID — BADI-XXXX-XXXX-XXXX (user request) ═══════════
+# For every user the app pins a fixed random ID that never changes:
+#  • Generated once and stored deep in hidden locations (the app folder + the user data on
+#    the system) signed with HMAC-SHA256 and bound to this device fingerprint — it cannot be
+#    changed or moved to another device or app: copying the storage file to another device is
+#    rejected (the fingerprint does not match) and a new ID is generated automatically. Any tampering breaks the signature.
+#  • The seller embeds the buyer ID inside the encrypted indicator (.badi) — and the indicator runs only on
+#    the device matching its embedded ID (checked inside the app at decryption).
 BADI_UID_RE = re.compile(r"^BADI-[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}$")
-BADI_UID_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"   # بلا 0/O/1/I لتجنب اللبس
-# سر التوقيع مشتق من مفتاح التطبيق الرئيسي — لا يُكتب في أي ملف ولا يُعرض
+BADI_UID_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"   # No 0/O/1/I to avoid confusion
+# The signing secret is derived from the app master key — never written to any file and never shown
 BADI_UID_SECRET = hashlib.sha256(
     BADI.master_key() + b"badi-user-id-signature-v1").digest()
 
@@ -4337,12 +3968,12 @@ _USER_ID_LOCK = threading.Lock()
 
 
 def _machine_fp():
-    """بصمة الجهاز من معرّفات النظام المستقرة (لا تتغير بين الجلسات):
-    machine-id على لينكس، MachineGuid على ويندوز، IOPlatformUUID على ماك،
-    ثم عنوان MAC إن كان حقيقيًا (وليس العشوائي المؤقت) واسم الجهاز —
-    لربط معرّف المستخدم بهذا الجهاز فقط: نسخ ملف التخزين لجهاز آخر لا يُقبل."""
+    """Device fingerprint from stable system identifiers (unchanged across sessions):
+    machine-id on Linux, MachineGuid on Windows, IOPlatformUUID on macOS,
+    then the MAC address if it is real (not the temporary random one) and the hostname —
+    to bind the user ID to this device only: copying the storage file to another device is not accepted."""
     parts = []
-    # 1) معرّف الجهاز على لينكس (مستقر عبر إعادة التشغيل)
+    # 1) Device ID on Linux (stable across reboots)
     for p in ("/etc/machine-id", "/var/lib/dbus/machine-id"):
         try:
             with open(p, "r", encoding="utf-8") as fh:
@@ -4352,14 +3983,14 @@ def _machine_fp():
                 break
         except Exception:
             pass
-    # 2) MachineGuid على ويندوز (سجل النظام)
+    # 2) MachineGuid on Windows (system registry)
     try:
         import winreg as _wr
         with _wr.OpenKey(_wr.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Cryptography") as k:
             parts.append(str(_wr.QueryValueEx(k, "MachineGuid")[0]))
     except Exception:
         pass
-    # 3) IOPlatformUUID على ماك
+    # 3) IOPlatformUUID on macOS
     try:
         import subprocess as _sp
         out = _sp.run(["ioreg", "-rd1", "-c", "IOPlatformExpertDevice"],
@@ -4370,8 +4001,8 @@ def _machine_fp():
                 break
     except Exception:
         pass
-    # 4) عنوان MAC فقط إن كان حقيقيًا — عند فشل القراءة يولّد uuid رقمًا عشوائيًا
-    #    مؤقتًا (بت multicast = 1) فلا يصلح لبصمة مستقرة ويُستبعد
+    # 4) MAC address only if it is real — when reading fails uuid generates a random
+    #    temporary number (multicast bit = 1) that cannot serve as a stable fingerprint, so it is excluded
     try:
         import uuid as _uuid
         node = _uuid.getnode()
@@ -4379,7 +4010,7 @@ def _machine_fp():
             parts.append(str(node))
     except Exception:
         pass
-    # 5) اسم الجهاز (مكمّل، ليس كافيًا وحده)
+    # 5) Hostname (complementary, not sufficient alone)
     try:
         import platform as _plat
         parts.append((_plat.node() or "")[:64])
@@ -4392,7 +4023,7 @@ def _machine_fp():
 
 
 def _uid_stores():
-    """مواقع التخزين العميقة لمعرّف المستخدم (نسخ احتياطية متعددة — قاعدة داخلية)."""
+    """Deep storage locations for the user ID (multiple backups — internal rule)."""
     out = []
     try:
         out.append(os.path.join(CFG_DIR, ".badi-sys", "id.dat"))
@@ -4416,7 +4047,7 @@ def _uid_sign(uid, fp, ts):
 
 
 def _uid_record_ok(rec, fp):
-    """يتحقق من صحة سجل التخزين: توقيع HMAC + مطابقة بصمة الجهاز — يرجع (ts, uid) أو None."""
+    """Validates the storage record: HMAC signature + device fingerprint match — returns (ts, uid) or None."""
     try:
         if not isinstance(rec, dict):
             return None
@@ -4434,14 +4065,14 @@ def _uid_record_ok(rec, fp):
 
 
 def _gen_user_id():
-    """معرّف عشوائي مثل BADI-7K9X-4M2P-8Q6R — من os.urandom (حتمي آمن)."""
+    """Random ID like BADI-7K9X-4M2P-8Q6R — from os.urandom (cryptographically safe)."""
     raw = os.urandom(12)
     grp = ["".join(BADI_UID_ALPHABET[b % 32] for b in raw[i:i + 4]) for i in (0, 4, 8)]
     return "BADI-" + "-".join(grp)
 
 
 def _write_uid_everywhere(uid, fp):
-    """كتابة السجل الموقّع في كل مواقع التخزين العميقة (نسخ احتياطية)."""
+    """Writes the signed record to every deep storage location (backups)."""
     ts = int(time.time())
     rec = {"id": uid, "fp": fp, "ts": ts, "sig": _uid_sign(uid, fp, ts)}
     body = json.dumps(rec, ensure_ascii=False)
@@ -4449,13 +4080,13 @@ def _write_uid_everywhere(uid, fp):
         try:
             os.makedirs(os.path.dirname(p), exist_ok=True)
             try:
-                os.chmod(p, 0o666)      # فك القراءة-فقط قبل إعادة الكتابة
+                os.chmod(p, 0o666)      # Unlock read-only before rewriting
             except Exception:
                 pass
             with open(p, "w", encoding="utf-8") as fh:
                 fh.write(body)
             try:
-                os.chmod(p, 0o444)      # قراءة فقط — يمنع العبث السهل
+                os.chmod(p, 0o444)      # Read-only — prevents easy tampering
             except Exception:
                 pass
         except Exception:
@@ -4463,7 +4094,7 @@ def _write_uid_everywhere(uid, fp):
 
 
 def _get_user_id():
-    """معرّف المستخدم الثابت — يُقرأ من أقدم نسخة صالحة أو يُولَّد مرة واحدة ويُحفظ بعمق."""
+    """The fixed user ID — read from the oldest valid copy, or generated once and stored deep."""
     global _USER_ID_CACHE
     with _USER_ID_LOCK:
         if _USER_ID_CACHE:
@@ -4486,9 +4117,9 @@ def _get_user_id():
 
 
 def _badi_payload(plain):
-    """تفكيك الحمولة المفكوكة: مغلف جديد {t:badi-ind,...} أو كود خام (توافق مع الملفات القديمة).
-    يرجع (code, license_ids, paid_manifest, name) — بيان المؤشر المدفوع (المعرف + خادم المبرمج)
-    مدفون داخل المغلف المشفر نفسه: لا يمكن لأي سكريبت قراءته قبل الفك ولا زوّره (طلب المستخدم)."""
+    """Unpack the decrypted payload: new envelope {t:badi-ind,...} or raw code (compatibility with old files).
+    Returns (code, license_ids, paid_manifest, name) — the paid-indicator manifest (ID + developer server)
+    is buried inside the encrypted envelope itself: no script can read it before decryption or forge it (user request)."""
     s = str(plain or "")
     if s.lstrip().startswith("{"):
         try:
@@ -4506,37 +4137,37 @@ def _badi_payload(plain):
 
 
 def _badi_license_denied(license_ids):
-    """True إذا كان المؤشر مرخّصًا لمعرّفات لا تشمل معرّف هذا الجهاز (طلب المستخدم):
-    قائمة فارغة = يعمل مع الجميع — وإلا يجب تطابق معرّف واحد على الأقل."""
+    """True when the indicator is licensed to IDs that do not include this device ID (user request):
+    empty list = works for everyone — otherwise at least one ID must match."""
     ids = [str(x or "").strip().upper() for x in (license_ids or []) if str(x or "").strip()]
     if not ids:
         return False
     return _get_user_id().upper() not in ids
 
 
-# ═══════════ المؤشرات المدفوعة — قاعدة محمية + تحكم المبرمج عبر خادمه (طلب المستخدم) ═══════════
-# المبدأ الأمني (لا يمكن لأي سكريبت تجاوزه):
-#   • بيان المؤشر المدفوع (معرفه + خادم مبرمجه) مدفون داخل المغلف المشفر AES-GCM نفسه —
-#     لا يُقرأ إلا عند فك التشفير داخل التطبيق، فلا يمكن لأي كود زوّره أو تغييره.
-#   • قاعدة البيانات الصغيرة موقّعة HMAC-SHA256 بمفتاح مشتق من مفتاح التطبيق + بصمة
-#     الجهاز، وبنسخ مخفية متعددة — الحذف أو التعديل لا يمدد الاشتراك أبدًا:
-#     (الفشل مغلق) المفقود = مؤشر متوقف حتى يعيد خادم المبرمج الحقيقة.
-#   • منع تراجع ساعة الجهاز: يُحفظ آخر تاريخ رأاه النظام — الأيام لا تزيد أبدًا.
-#   • قناة التحكم من الخادم: استطلاع GET صغير واستجابة JSON فقط ≤16KB — أوامر بيضاء
-#     (duration/enable/disable/status/notify) وفقط: لا ملفات ولا base64 ولا تنفيذ أي كود.
+# ═══════════ Paid indicators — protected database + developer control through his server (user request) ═══════════
+# The security principle (no script can bypass it):
+#   • The paid-indicator manifest (its ID + its developer server) is buried inside the same AES-GCM encrypted envelope —
+#     read only when decrypted inside the app, so no code can forge or change it.
+#   • The small database is signed with HMAC-SHA256 using a key derived from the app key + the device
+#     fingerprint, with multiple hidden copies — deleting or editing never extends a subscription:
+#     (fail closed) a missing record = indicator stopped until the developer server restores the truth.
+#   • Device clock rollback prevention: the last date the system saw is saved — days never increase.
+#   • Server control channel: a small GET poll with a JSON response only, ≤16KB — allow-listed commands
+#     (duration/enable/disable/status/notify) and nothing else: no files, no base64, no code execution.
 _PAID_VER = 1
-_PAID_LOCK = threading.RLock()   # RLock: نفس الخيط يستدعي دوالاً داخلية تأخذ القفل
+_PAID_LOCK = threading.RLock()   # RLock: the same thread calls inner functions that also take the lock
 _PAID_RECS = None
 
 
 def _paid_secret():
-    """سر توقيع القاعدة المحمية — مشتق داخل التطبيق من مفتاحه + بصمة الجهاز، لا يُكتب في أي ملف."""
+    """Signing secret of the protected database — derived inside the app from its key + the device fingerprint, never written to any file."""
     return hashlib.sha256(
         BADI.master_key() + b"badi-paid-store-v1" + _machine_fp().encode()).digest()
 
 
 def _paid_stores():
-    """مواقع القاعدة المحمية (نسخ مخفية متعددة — قاعدة داخلية مثل معرّف المستخدم)."""
+    """Locations of the protected database (multiple hidden copies — internal rule, like the user ID)."""
     out = [os.path.join(CFG_DIR, ".badi-sys", "paid.dat"),
            os.path.join(CFG_DIR, ".badi-sys", ".c", "p.bin")]
     try:
@@ -4558,7 +4189,7 @@ def _paid_sign(body):
 
 
 def _paid_load():
-    """قراءة القاعدة: تُعتمد السجلات من النسخ السليمة التوقيع فقط — أي عبث يكسر التوقيع فيُهمَل."""
+    """Read the database: records are accepted only from signature-valid copies — any tampering breaks the signature and is ignored."""
     global _PAID_RECS
     with _PAID_LOCK:
         if _PAID_RECS is not None:
@@ -4584,7 +4215,7 @@ def _paid_load():
 
 
 def _paid_save():
-    """كتابة القاعدة في كل النسخ المخفية مع التوقيع + وضع القراءة فقط (منع العبث السهل)."""
+    """Write the database to every hidden copy with the signature + read-only flag (prevents easy tampering)."""
     with _PAID_LOCK:
         body = json.dumps(_PAID_RECS or {}, sort_keys=True, ensure_ascii=False)
         doc = {"v": _PAID_VER, "recs": _PAID_RECS or {}, "sig": _paid_sign(body)}
@@ -4611,7 +4242,7 @@ def _today_iso():
 
 
 def _paid_days_left(rec, today):
-    """الأيام المتبقية من الاشتراك — مع منع تراجع التاريخ (آخر تاريخ رأاه النظام)."""
+    """Days left of the subscription — with date-rollback prevention (last date the system saw)."""
     try:
         exp = str(rec.get("expiry") or "")
         if not exp:
@@ -4626,7 +4257,7 @@ def _paid_days_left(rec, today):
 
 
 def _norm_paid_manifest(m):
-    """تحقق صارم من بيان المؤشر المدفوع: معرف آمن + خادم http(s) فقط — بلا أي شيء آخر."""
+    """Strict validation of the paid-indicator manifest: safe ID + http(s) server only — nothing else."""
     try:
         if not isinstance(m, dict):
             return None
@@ -4645,8 +4276,8 @@ def _norm_paid_manifest(m):
 
 
 def paid_register(manifest, name):
-    """تسجيل/تحديث سجل المؤشر المدفوع في القاعدة المحمية — يُستدعى فقط عند فك التشفير
-    داخل التطبيق (لا يمكن لأي سكريبت استدعاؤه أو زوّر بياناته)."""
+    """Register/update the paid-indicator record in the protected database — called only during decryption
+    inside the app (no script can call it or forge its data)."""
     with _PAID_LOCK:
         recs = _paid_load()
         rid = str(manifest.get("id") or "")
@@ -4668,7 +4299,7 @@ def paid_register(manifest, name):
 
 
 def paid_records():
-    """نسخة من سجلات القاعدة المحمية — للقراءة فقط."""
+    """Copy of the protected database records — read only."""
     with _PAID_LOCK:
         return dict(_paid_load())
 
@@ -4678,7 +4309,7 @@ def paid_days_left(rec, today):
 
 
 def paid_save_rec(rec):
-    """حفظ تعديل سجل (من مراقبة الاشتراك المحلية) — مع تحديث آخر تاريخ رأاه النظام."""
+    """Save a record change (from local subscription monitoring) — updating the last date the system saw."""
     with _PAID_LOCK:
         recs = _paid_load()
         rec["upd"] = int(time.time())
@@ -4689,7 +4320,7 @@ def paid_save_rec(rec):
 
 
 def paid_open_denied(rid, lang):
-    """بوابة الفتح للمدفوع: انتهى الاشتراك أو أوقفه المبرمج؟ الفشل مغلق — لا فتح."""
+    """Open gate for paid indicators: subscription expired or disabled by the developer? Fails closed — no opening."""
     rec = paid_records().get(str(rid or ""))
     if not rec:
         return None
@@ -4702,8 +4333,8 @@ def paid_open_denied(rid, lang):
 
 
 def paid_apply_commands(rid, rec, cmds):
-    """تنفيذ الأوامر البيضاء فقط (طلب المستخدم: مدة/تشغيل/إيقاف/نجاح/إشعار — وفقط).
-    يرجع (toggles, notes) — أي أمر آخر يُتجاهل صامتًا ولا يُنفذ أي كود من الخادم."""
+    """Execute the allow-listed commands only (user request: duration/enable/disable/status/notify — and only those).
+    Returns (toggles, notes) — any other command is silently ignored and no server code is ever executed."""
     toggles, notes = [], []
     for c in cmds[:20]:
         try:
@@ -4727,7 +4358,7 @@ def paid_apply_commands(rid, rec, cmds):
                 rec["upd"] = int(time.time())
             elif cmd in ("enable", "disable"):
                 want = (cmd == "enable")
-                if rec.get("enabled") != want:      # أمر التشغيل/الإيقاف فقط عند تغيّر فعلي
+                if rec.get("enabled") != want:      # Enable/disable command only when it actually changes
                     rec["enabled"] = want
                     toggles.append((str(rec.get("name") or rid), want))
                 rec["upd"] = int(time.time())
@@ -4753,7 +4384,7 @@ def paid_apply_commands(rid, rec, cmds):
 
 
 def _downloads_dir():
-    """مجلد التنزيلات على الجهاز (يُستعمل عند الحاجة للتصدير اليدوي)."""
+    """Downloads folder on the device (used when a manual export is needed)."""
     try:
         from PySide6.QtCore import QStandardPaths
         p = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DownloadLocation)
@@ -4765,15 +4396,15 @@ def _downloads_dir():
     return p if os.path.isdir(p) else os.path.expanduser("~")
 
 
-# ═══════════ مجلد BadiCharts على القرص (طلب المستخدم) ═══════════
-# التطبيق يحفظ كل مؤشر/أداة ينشئها المستخدم كملف حقيقي في:
-#   <مجلد التطبيق>/BadiCharts/Indicators/   → المؤشرات (.js و .py)
-#   <مجلد التطبيق>/BadiCharts/Tools/        → أدوات الرسم (.js)
-# وأي ملف .badi مشفر يُكتب بجوار ملف المؤشر الأصلي (مثل .mq5/.ex5 في ميتاتريدر).
-# المستخدم يمكنه أيضًا أن يضع ملفات المؤشرات/الأدوات مباشرة في المجلد —
-# التطبيق يفحص المجلدين عند الإقلاع وعند فتح المحرر ويستوردها تلقائيًا.
+# ═══════════ BadiCharts folder on disk (user request) ═══════════
+# The app saves every indicator/tool the user creates as a real file in:
+#   <app folder>/BadiCharts/Indicators/   → indicators (.js and .py)
+#   <app folder>/BadiCharts/Tools/        → drawing tools (.js)
+# and any encrypted .badi file is written next to the original indicator file (like .mq5/.ex5 in MetaTrader).
+# The user can also drop indicator/tool files directly into the folder —
+# the app scans both folders at boot and when the editor opens and imports them automatically.
 def _desktop_dir():
-    """مجلد سطح المكتب الحقيقي على أي نظام (طلب المستخدم: التطبيق ينشئ مجلده على سطح المكتب)."""
+    """The real desktop folder on any system (user request: the app creates its folder on the desktop)."""
     try:
         from PySide6.QtCore import QStandardPaths
         p = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation)
@@ -4786,11 +4417,11 @@ def _desktop_dir():
         p = os.path.join(home, cand)
         if os.path.isdir(p) and os.access(p, os.W_OK):
             return p
-    return CFG_DIR   # تعذر الوصول لسطح المكتب — بجانب التطبيق (احتياط)
+    return CFG_DIR   # Desktop unavailable — next to the app (fallback)
 
 
 def _migrate_badi_tree(src, dst):
-    """ترحيل محتوى Indicators/Tools/Thumbs من الموقع القديم إلى الجديد (مرة واحدة)."""
+    """Migrate Indicators/Tools/Thumbs content from the old location to the new one (once)."""
     try:
         if not os.path.isdir(src) or (os.path.isdir(dst) and any(os.scandir(dst))):
             return
@@ -4816,7 +4447,7 @@ def _migrate_badi_tree(src, dst):
         pass
 
 
-# مجلد التطبيق على سطح المكتب أولًا — وإن فشل الإنشاء يبقى بجانب التطبيق (طلب المستخدم)
+# App folder on the desktop first — if creation fails it stays next to the app (user request)
 _BADI_DIR_DESK = os.path.join(_desktop_dir(), "BadiCharts")
 _BADI_DIR_LOCAL = os.path.join(CFG_DIR, "BadiCharts")
 try:
@@ -4827,157 +4458,164 @@ except Exception:
 _migrate_badi_tree(_BADI_DIR_LOCAL, BADI_DIR)
 BADI_IND_DIR = os.path.join(BADI_DIR, "Indicators")
 BADI_TOOL_DIR = os.path.join(BADI_DIR, "Tools")
-# صور المصغرة: صورة واحدة فقط لكل مؤشر — تُلتقط تلقائيًا عند أول تشغيل (طلب المستخدم)
+# Thumbnails: one image per indicator — captured automatically on first run (user request)
 BADI_THUMB_DIR = os.path.join(BADI_DIR, "Thumbs")
 
 
-# ═══════════ ملف الدليل: شرح البرمجة والرسم على الشارت (طلب المستخدم) ═══════════
-# يُكتب مرة واحدة في BadiCharts/Indicators عند الإقلاع — مؤشر حقيقي يعمل،
-# والشرح الكامل داخل تعليقاته: بنية المؤشر، الحساب والدوال الجاهزة، API السوق
-# (نسبة الدفع + مفتوح/مغلق)، الإشارات وتلجرام والنطاق، الرسم الحر على الشارت،
-# وأدوات الرسم التفاعلية. إذا حذفه المستخدم يُعاد عند الإقلاع التالي.
-# طلب المستخدم: أسماء ملفات البرمجة بالإنجليزية — وليس بالعربية
+# ═══════════ Guide file: programming and drawing on the chart explained (user request) ═══════════
+# Written once into BadiCharts/Indicators at boot — a real working indicator,
+# with the full explanation inside its comments: indicator structure, calculation and ready-made functions, market API
+# (payout + open/closed), signals with Telegram and scope, free drawing on the chart,
+# and interactive drawing tools. If the user deletes it, it is restored at the next boot.
+# User request: programming file names in English — not Arabic
 GUIDE_FILE_NAME = "BadiCharts_Programming_Guide.js"
-# النسخ القديمة ذات الاسم العربي تُحذف عند الإقلاع (ترحيل)
+# Old copies with the Arabic name are deleted at boot (migration)
 LEGACY_GUIDE_FILES = ("دليل البرمجة والرسم على الشارت.js",)
 
 GUIDE_JS = """/* ═══════════════════════════════════════════════════════════════════════════
-   BadiCharts Programming Guide — دليل البرمجة والرسم على الشارت (الشرح الكامل)
+   BadiCharts Programming Guide — programming and drawing on the chart (full explanation)
    ═══════════════════════════════════════════════════════════════════════════
 
-   هذا الملف مؤشر حقيقي يعمل على الشارت — والشرح الكامل في التعليقات أدناه.
-   شغّله بزر ▶ وسترى: نطاق بولينجر مرسوم + تعبئة شفافة + دائرة + نص حر.
+   This file is a real indicator that runs on the chart — the full explanation is in the
+   comments below. Run it with the ▶ button and you will see: a drawn Bollinger band +
+   transparent fill + a circle + free text.
 
-   ── 1) بنية أي مؤشر ────────────────────────────────────────────────────────
-   الكود ينتهي دائمًا بـ return { ... } ويحوي:
+   ── 1) Structure of any indicator ──────────────────────────────────────────
+   The code always ends with return { ... } and contains:
 
-     label    : اسم المؤشر كما يظهر على الشارت
-     type     : 'overlay' فوق الشموع   |   'pane' نافذة أسفل الشارت
-     color    : لون المؤشر الافتراضي
-     settings : الإعدادات — أي مفتاح يظهر تلقائيًا في بطاقة الإعدادات ⚙
+     label    : the indicator name as shown on the chart
+     type     : 'overlay' above the candles   |   'pane' a window under the chart
+     color    : the default indicator color
+     settings : the settings — any key appears automatically in the ⚙ settings card
                 (period / mult / fast / slow / signal / bins / color)
 
-   ── 2) calculate(candles, s) — الحساب ──────────────────────────────────────
-     candles : مصفوفة الشموع [{time, open, high, low, close, volume}, ...]
-     s       : الإعدادات أعلاه
-     يعيد    : مصفوفة أرقام  أو  كائن {الاسم: [قيم...], ...}
+   ── 2) calculate(candles, s) — the calculation ─────────────────────────────
+     candles : the candle array [{time, open, high, low, close, volume}, ...]
+     s       : the settings above
+     returns : an array of numbers  or  an object {name: [values...], ...}
 
-     دوال جاهزة:
-       Indicators.sma(v, p)          المتوسط المتحرك البسيط
-       Indicators.ema(v, p)          المتوسط المتحرك الأسي
+     ready-made functions:
+       Indicators.sma(v, p)          simple moving average
+       Indicators.ema(v, p)          exponential moving average
        Indicators.bollinger(v, p, m) → {mid, upper, lower}
-       Indicators.rsi(v, p)          مؤشر القوة النسبية
-       Indicators.macd(v, f, sl, sg) الماكد
-       Indicators.stoch(candles, p, sm) الاستوكاستك
-       Indicators.atr(candles, p)    متوسط المدى الحقيقي
+       Indicators.rsi(v, p)          relative strength index
+       Indicators.macd(v, f, sl, sg) MACD
+       Indicators.stoch(candles, p, sm) stochastic
+       Indicators.atr(candles, p)    average true range
 
-   ── 3) معلومات الزوج: نسبة الدفع + السوق مفتوح أم مغلق (API السوق) ────────
-     Indicators.market.info()             ← الزوج الحالي: {name, payout, open, otc}
-     Indicators.market.info('EUR/USD')    ← زوج محدد بالاسم
-     Indicators.market.assets()           ← كل العملات [{name, payout, open, otc}]
-     Indicators.market.added()            ← العملات المضافة إلى شريط العملات فقط
-     Indicators.market.current()          ← عملة الشارت النشط الآن
-     الحالة: OTC والعملات الرقمية مفتوحة دائمًا — والفوركس من الأحد 22:00 إلى الجمعة 22:00 UTC
+   ── 3) Pair info: payout rate + market open or closed (Market API) ─────────
+     Indicators.market.info()             ← the current pair: {name, payout, open, otc}
+     Indicators.market.info('EUR/USD')    ← a specific pair by name
+     Indicators.market.assets()           ← every currency [{name, payout, open, otc}]
+     Indicators.market.added()            ← only the currencies added to the strip
+     Indicators.market.current()          ← the currency of the active chart now
+     State: OTC and crypto are always open — forex runs from Sunday 22:00 to Friday 22:00 UTC
 
-   ── 4) الإشارات + بوت تلجرام ───────────────────────────────────────────────
-     signal(candles, values, s) تُفحص كل ثانية، وعندما تعيد:
+   ── 4) Signals + Telegram bot ──────────────────────────────────────────────
+     signal(candles, values, s) is checked every second, and when it returns:
 
-       {dir: 'up' | 'down', price: السعر, chats: '@قناتك أو -100...'}   ← إشارة
-       null                                                             ← لا شيء
+       {dir: 'up' | 'down', price: the price, chats: '@yourchannel or -100...'}   ← a signal
+       null                                                                       ← nothing
 
-       chats = معرف محادثة/قناة تلجرام لهذا المؤشر — الإشارة ونتيجتها (WIN/LOSS)
-               تُرسلان تلقائيًا إلى تلك المحادثة مع لقطة الشارت.
-     لإرسال إشارات لأكثر من عملة أضف مفاتيح في settings:
-       scope:     'added' → العملات المضافة للشريط فقط
-                  'high'  → العملات ذات نسبة الدفع الأعلى (ليس شرطًا تكون مضافة)
-                  'all'   → كل العملات
-       minPayout: 85            ← الحد الأدنى مع scope: 'high'
+       chats = the Telegram chat/channel ID of this indicator — the signal and its result
+               (WIN/LOSS) are sent automatically to that chat with a chart screenshot.
+     To send signals for more than one currency add keys to settings:
+       scope:     'added' → only the currencies added to the strip
+                  'high'  → the currencies with the highest payout (they do not have to be added)
+                  'all'   → every currency
+       minPayout: 85            ← the minimum with scope: 'high'
 
-     🎨 تصميم بطاقة الإشارة بنفسك — البطاقة غير ثابتة (طلب المستخدم):
-       أضف card إلى الإشارة، وقيمتها HTML حر أو كائن:
+     🎨 Design the signal card yourself — the card is not fixed (user request):
+       add card to the signal; its value is free HTML or an object:
          signal({dir:'up', card:'<div style="padding:6px 10px"><b>MY SIGNAL</b></div>'})
          signal({dir:'down', card:{html:'…', bg:'#101820', accent:'#FF4D5E', color:'#ffffff'}})
-           html   : محتوى البطاقة كاملًا — أي HTML وستايل تريده (حرية تامة)
-           bg     : خلفية البطاقة          accent : لون الشريط الجانبي للبطاقة
-           color  : لون النص الافتراضي
-       بدون card تظهر البطاقة الافتراضية. ملاحظات:
-       • توقيت الإشارة يظهر في الزاوية اليسرى للبطاقة.
-       • البطاقة تختفي تلقائيًا بعد انتهاء شمعة الفريم، والنتيجة (WIN/LOSS)
-         تُسجَّل في تبويب السجل.
-       • المؤقت التنازلي بجانب الشمعة الحية (رقمان فقط بلا إطار) تلقائي —
-         يعرض الثواني المتبقية لإغلاق الشمعة الحالية.
+           html   : the full card content — any HTML and style you want (total freedom)
+           bg     : the card background          accent : the card side-strip color
+           color  : the default text color
+       Without card the default card appears. Notes:
+       • The signal time shows in the left corner of the card.
+       • The card disappears automatically when the timeframe candle ends, and the result
+         (WIN/LOSS) is recorded in the History tab.
+       • The countdown beside the live candle is the library's own counter — automatic,
+         it shows the time left until the current candle closes (seconds/minutes adaptive).
 
-   ── 5) الرسم الحر — الشارت يقبل رسم أي شيء (Canvas 2D كامل) ───────────────
-     render(ctx, values, h, s) اختيارية — بدونها تُرسم النتائج خطوطًا تلقائيًا.
-       ctx    : سياق Canvas 2D — خطوط، مستطيلات، دوائر، نصوص، تدرجات، ظلال...
-       values : ناتج calculate
-       h      : أدوات الإحداثيات:
-                  h.indexToX(i)     فهرس الشمعة → بكسل X
-                  h.priceToY(p)     السعر → بكسل Y        (نوع overlay)
-                  h.paneToY(v)      قيمة → بكسل Y         (نوع pane)
+   ── 5) Free drawing — the chart accepts drawing anything (full Canvas 2D) ──
+     render(ctx, values, h, s) is optional — without it the results are drawn as lines automatically.
+       ctx    : the Canvas 2D context — lines, rectangles, circles, text, gradients, shadows...
+       values : the calculate output
+       h      : the coordinate helpers:
+                  h.indexToX(i)     candle index → X pixel
+                  h.priceToY(p)     price → Y pixel        (overlay type)
+                  h.paneToY(v)      value → Y pixel         (pane type)
                   h.firstIdx / h.lastIdx / h.candles / h.THEME / h.barSpacing
                   h.chartLeft / h.chartRight / h.priceTop / h.priceBottom
-                  h.drawGradientArea(...)  تعبئة متدرجة جاهزة
+                  h.drawGradientArea(...)  a ready gradient fill
 
-   ── 6) أدوات الرسم التفاعلية — اسحب وارسم على الشارت مباشرة ───────────────
-     أداة رسم تُبرمج بأربع دوال (راجع مثال Signal Arrow في المحرر):
+   ── 6) Interactive drawing tools — drag and draw directly on the chart ─────
+     A drawing tool is programmed with four functions (see the Signal Arrow example in the editor):
 
-       onStart(ctx)         بدء السحب  → يعيد كائن الرسم {i1, p1, ...}
-       onUpdate(d, ctx)     أثناء السحب → عدّل بيانات الرسم d
-       onDraw(ctx, d, h)    الرسم في كل إطار
-       onHitTest(d, x, y, h) هل النقطة فوق الرسم؟ (للتحديد/الحذف/الخصائص)
+       onStart(ctx)         drag starts  → returns the drawing object {i1, p1, ...}
+       onUpdate(d, ctx)     while dragging → modify the drawing data d
+       onDraw(ctx, d, h)    drawn every frame
+       onHitTest(d, x, y, h) is the point over the drawing? (for select/delete/properties)
 
-     نصيحة: خزّن الإحداثيات كـ (فهرس شمعة + سعر) — تبقى الرسوم ملتصقة
-            بالشموع عند التكبير والتحريك.
+     Tip: store coordinates as (candle index + price) — drawings stay glued to the
+            candles when zooming and panning.
 
-   ── 7) إضافات ──────────────────────────────────────────────────────────────
-     getRange(values, s) → {min, max}   تحديد نطاق النافذة السفلية (pane)
-     log('نص')                          طباعة في كونسول المحرر
-     النتيجة تُحسب تلقائيًا: عند انتهاء مدة الفريم تُقارن الدخول بالخروج (WIN/LOSS)
+   ── 7) Extras ──────────────────────────────────────────────────────────────
+     getRange(values, s) → {min, max}   set the lower window (pane) range
+     log('text')                        print in the editor console
+     The result is computed automatically: when the timeframe duration ends the entry is
+     compared with the exit (WIN/LOSS)
 
-   ── 8) المؤشرات المدفوعة — تحكم المبرمج في مؤشره عبر خادمه (جديد) ───────────
-   عند تشفير المؤشر (نافذة الترخيص) توجد حقلا المدفوع:
-     Paid control server : https://خادمك/badi/api   (https فقط — اختياري)
-     Paid indicator ID   : PRO_SIGNAL_1             (حروف وأرقام و _ . - فقط)
-   الحقولا يُدمان داخل المغلف المشفر نفسه — لا يمكن لأي سكريبت تغييرهما.
+   ── 8) Paid indicators — the developer controls his indicator through his server (new) ──
+   When encrypting the indicator (the licensing window) there are two paid fields:
+     Paid control server : https://your-server/badi/api   (https only — optional)
+     Paid indicator ID   : PRO_SIGNAL_1             (letters, digits and _ . - only)
+   Both fields are embedded inside the encrypted envelope itself — no script can change them.
 
-   ثم تتحكم في المؤشر من خادمك — التطبيق يسأل خادمك عند الإقلاع وكل 15 دقيقة:
-     GET {server}?ind=ID&dev=USER-ID&left=الأيام المتبقية&st=الحالة&v=1
-     (left = الأيام المتبقية محليًا — تتابعها من خادمك وتقرر بنفسك)
-   ويقبل تطبيقك من خادمك استجابة JSON فقط (أقل من 16KB):
+   Then you control the indicator from your server — the app asks your server at boot
+   and every 15 minutes:
+     GET {server}?ind=ID&dev=USER-ID&left=days-left&st=state&v=1
+     (left = the days left locally — you track it on your server and decide yourself)
+   Your app accepts from your server a JSON response only (under 16KB):
      {"ok":1,"cmds":[
-       {"cmd":"duration","days":30},             ← تحديد/تمديد الاشتراك 30 يومًا
-       {"cmd":"duration","until":"2026-12-31"},  ← أو حتى تاريخ محدد
-       {"cmd":"enable"},                         ← تشغيل المؤشر
-       {"cmd":"disable"},                        ← إيقاف المؤشر
-       {"cmd":"status","state":"active"},        ← active أو expired (ساري/انتهى)
-       {"cmd":"notify","text":"تم تحديث المؤشر — فلترة أدق وإصلاحات"} ← إشعار للمستخدم
+       {"cmd":"duration","days":30},             ← set/extend the subscription 30 days
+       {"cmd":"duration","until":"2026-12-31"},  ← or until a specific date
+       {"cmd":"enable"},                         ← enable the indicator
+       {"cmd":"disable"},                        ← disable the indicator
+       {"cmd":"status","state":"active"},        ← active or expired
+       {"cmd":"notify","text":"Indicator updated — finer filters and fixes"} ← a user notification
      ]}
-   هذه الأوامر كلها — وفقط: أي أمر آخر يُتجاهل، ولا يُنفَّذ أي كود قادم من الخادم،
-   ولا يمكن رفع أو سحب أي ملف عبر هذه القناة إطلاقًا — أي استجابة تحوي base64
-   أو ملفًا أو بيانات كبيرة تُرفض ويُحظر خادمك 10 دقائق.
+   These are all the commands — and only these: any other command is ignored, no code coming
+   from the server is ever executed, and no file can be uploaded or pulled through this channel
+   at all — any response containing base64 or a file or large data is rejected and your server
+   is banned for 10 minutes.
 
-   قاعدة بيانات صغيرة محمية داخل التطبيق لكل مؤشر مدفوع (لا يمكن حذفها أو عبثها):
-     • تحفظ لكل مؤشر: معرفه، خادمه، تاريخ انتهاء الاشتراك، الحالة، الأيام المتبقية،
-       وآخر تاريخ رأاه النظام.
-     • موقّعة HMAC-SHA256 بمفتاح مشتق من مفتاح التطبيق + بصمة هذا الجهاز، وبنسخ
-       مخفية متعددة — حذفها أو تعديلها لا يمدد الاشتراك: (الفشل مغلق) المؤشر
-       يتوقف حتى يجيب خادمك بالحقيقة ويعيد الحالة.
-     • مراقبة الأيام تعمل حتى لو حذف المستخدم سجلّات التطبيق: الأيام تُحسب
-       من آخر تاريخ رأاه النظام — رجّع المستخدم ساعة جهازه فلن يكسب يومًا واحدًا.
-     • التذكير تلقائي: قبل الانتهاء بـ 7 و3 ويوم واحد يظهر إشعار «ينتهي اشتراك
-       مؤشر كذا بعد N يوم — يجب التجديد»، وعند الانتهاء: «انتهى الشهر/الاشتراك —
-       يجب التجديد» وينطفئ المؤشر حتى تفعّله أنت من خادمك.
-     • إشعاراتك (notify) تظهر في بطاقة الإشعارات الصغيرة بجانب زر الإعدادات —
-       نص فقط حتى 300 حرف، بلا HTML ولا روابط ملفات.
+   A small protected database inside the app for every paid indicator (cannot be deleted or tampered with):
+     • It saves for each indicator: its ID, its server, the subscription expiry date, the state,
+       the days left, and the last date the system saw.
+     • Signed with HMAC-SHA256 using a key derived from the app key + this device fingerprint,
+       with multiple hidden copies — deleting or editing it never extends the subscription:
+       (fail closed) the indicator stops until your server answers with the truth and restores the state.
+     • Day monitoring works even if the user deletes the app records: days are counted
+       from the last date the system saw — rolling the device clock back earns not a single day.
+     • Reminders are automatic: 7, 3 and 1 day before expiry a notification shows ("the
+       subscription of indicator X ends in N days — renewal required"), and at expiry:
+       "the month/subscription ended — renewal required" and the indicator turns off until
+       you enable it from your server.
+     • Your notifications (notify) show in the small notification card beside the settings
+       button — text only, up to 300 characters, no HTML and no file links.
 
-   الحماية المدمجة (لا يمكن لأي سكريبت تجاوزها):
-     • مفتاح فك تشفير المؤشرات مدموج داخل التطبيق — لا يُكتب في ملف، لا يصل إلى
-       صفحة الويب، ولا يمكن نسخه؛ لا يظهر إلا بصمته في الإعدادات.
-     • بيان المدفوع (المعرف + الخادم) داخل التشفير — كود المؤشر نفسه لا يراه ولا يغيره.
-     • كود المؤشر ممنوع منه الشبكة والتخزين والجسور نهائيًا (فحص مزدوج قبل التشغيل
-       وداخل QuickJS) — ولا يرى الترخيص ولا القاعدة المحمية ولا خادم التحكم شيء منه.
-     • الأوامر تُفحص بقائمة بيضاء صارمة داخل التطبيق — تنفيذ الكود من الخادم مستحيل.
+   Built-in protection (no script can bypass it):
+     • The indicator decryption key is fused inside the app — never written to a file, never
+       reaches the web page, and cannot be copied; only its fingerprint shows in Settings.
+     • The paid manifest (ID + server) is inside the encryption — the indicator code itself
+       never sees or changes it.
+     • Indicator code is permanently denied network, storage and bridges (double-checked before
+       running and inside QuickJS) — it sees nothing of the license, the protected database
+       or the control server.
+     • Commands are checked against a strict allow-list inside the app — executing server code is impossible.
    ═══════════════════════════════════════════════════════════════════════════ */
 
 return {
@@ -4994,7 +4632,7 @@ return {
   render(ctx, v, h, s) {
     if (!v) return;
 
-    // (أ) تعبئة شفافة بين الحدين — الأشكال المملوءة ممكنة أيضًا
+    // (a) transparent fill between the two bands — filled shapes are possible too
     ctx.fillStyle = 'rgba(34, 224, 138, 0.08)';
     ctx.beginPath();
     let started = false;
@@ -5010,7 +4648,7 @@ return {
     ctx.closePath();
     ctx.fill();
 
-    // (ب) خطوط بعرض ولون ونمط مخصص
+    // (b) lines with custom width, color and style
     const line = (arr, color, width, dash) => {
       ctx.strokeStyle = color; ctx.lineWidth = width;
       ctx.setLineDash(dash || []);
@@ -5025,11 +4663,11 @@ return {
       ctx.stroke();
       ctx.setLineDash([]);
     };
-    line(v.upper, '#FF4D5E', 1.4);          // الحد الأعلى — أحمر
-    line(v.lower, '#22E08A', 1.4);          // الحد الأدنى — أخضر
-    line(v.mid, '#38bdf8', 1.6, [5, 4]);    // الوسط — أزرق متقطع
+    line(v.upper, '#FF4D5E', 1.4);          // upper band — red
+    line(v.lower, '#22E08A', 1.4);          // lower band — green
+    line(v.mid, '#38bdf8', 1.6, [5, 4]);    // middle — dashed blue
 
-    // (ج) دائرة على آخر شمعة + نص حر — رسم أي شيء فوق الشارت
+    // (c) a circle on the last candle + free text — draw anything over the chart
     const last = h.lastIdx, mid = v.mid[last];
     if (mid != null) {
       ctx.fillStyle = '#38bdf8';
@@ -5039,25 +4677,25 @@ return {
     }
     ctx.fillStyle = '#8b93a7';
     ctx.font = '11px sans-serif';
-    ctx.fillText('هذا نص حر — يمكنك رسم أي شيء على الشارت (Canvas 2D كامل)',
+    ctx.fillText('Free text — you can draw anything on the chart (full Canvas 2D)',
                  h.chartLeft + 10, h.priceTop + 16);
   },
 
   signal(candles, v, s) {
-    // مثال شكل إشارة — محايد افتراضيًا (يعيد null حتى لا يزعجك أثناء التجربة):
+    // Example signal shape — neutral by default (returns null so it does not bother you while testing):
     // const info = Indicators.market.info();            // {name, payout, open, otc}
-    // if (!info.open) return null;                      // السوق مغلق؟ لا إشارات
+    // if (!info.open) return null;                      // market closed? no signals
     // return { dir: 'up', price: candles[candles.length - 1].close,
-    //          chats: '@mychannel' };                   // معرف تلجرام لهذا المؤشر
+    //          chats: '@mychannel' };                   // the Telegram ID of this indicator
     return null;
   }
 };"""
 
 
 def _seed_guide_file():
-    """كتابة ملف دليل البرمجة والرسم في مجلد Indicators (مرة واحدة) — الاسم بالإنجليزية (طلب المستخدم)."""
+    """Write the programming-and-drawing guide file into the Indicators folder (once) — English file name (user request)."""
     try:
-        # ترحيل: حذف النسخ القديمة ذات الاسم العربي إن وُجدت
+        # Migration: delete old copies with the Arabic name if any exist
         for old in LEGACY_GUIDE_FILES:
             op = os.path.join(BADI_IND_DIR, old)
             if os.path.exists(op):
@@ -5073,7 +4711,7 @@ def _seed_guide_file():
                     cur = fh.read()
             except Exception:
                 cur = ""
-        # يُعاد كتابة الدليل عند تغيّر محتواه — ليصل قسم المؤشرات المدفوعة الجديد لكل المستخدمين
+        # The guide is rewritten when its content changes — so the new paid-indicators section reaches every user
         if cur.strip() != GUIDE_JS.strip():
             with open(p, "w", encoding="utf-8") as fh:
                 fh.write(GUIDE_JS + "\n")
@@ -5091,19 +4729,19 @@ def _ensure_badi_dirs():
 
 
 def _safe_file_name(name):
-    """اسم ملف آمن — يمنع المسارات المطلقة/النسبية ويحافظ على الامتداد."""
+    """Safe file name — blocks absolute/relative paths and preserves the extension."""
     n = os.path.basename(str(name or "").strip())
     n = n.replace("\\", "_").replace("/", "_")
     return n[:120] if n else ""
 
 
 def _disk_dir_for(kind):
-    """مجلد الملف حسب نوعه: المؤشرات (js/py) في Indicators والأدوات في Tools."""
+    """Folder for a file by its kind: indicators (js/py) go to Indicators and tools to Tools."""
     return BADI_TOOL_DIR if str(kind) in ("jstool", "tool") else BADI_IND_DIR
 
 
 def _disk_path_for(f):
-    """المسار الحقيقي لملف على القرص حسب نوعه واسمه."""
+    """The real disk path of a file by its kind and name."""
     return os.path.join(_disk_dir_for(f.get("kind")), _safe_file_name(f.get("fileName")))
 
 
@@ -5120,7 +4758,7 @@ def _read_text_file(path):
 
 
 def _write_text_file(path, text):
-    """كتابة آمنة: ملف مؤقت ثم استبدال — حتى لا يفسد ملف المؤشر عند انقطاع مفاجئ."""
+    """Safe write: temporary file then replace — so a sudden cutoff cannot corrupt the indicator file."""
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         tmp = path + ".tmp"
@@ -5132,7 +4770,7 @@ def _write_text_file(path, text):
         return False
 
 
-# بيئة مساعدين مبسطة لفحص كود المؤشر داخل QuickJS (نفس واجهة window.Indicators في الشارت)
+# Simplified helper environment to check indicator code inside QuickJS (same interface as window.Indicators on the chart)
 _QJS_STUBS = r'''
 var Indicators = {
   sma: function (arr, p) { var out = [], s = 0, i; p = p || 1;
@@ -5147,7 +4785,7 @@ var Indicators = {
     for (i = 0; i < candles.length; i++) tr.push(i === 0 ? candles[i].high - candles[i].low
       : Math.max(candles[i].high - candles[i].low, Math.abs(candles[i].high - candles[i - 1].close), Math.abs(candles[i].low - candles[i - 1].close)));
     return Indicators.ema(tr, p || 14); },
-  /* API السوق داخل بيئة الفحص المعزولة — نفس واجهة الشارت (معلومات الزوج + الدفع + الحالة) */
+  /* Market API inside the isolated check sandbox — same interface as the chart (pair info + payout + state) */
   market: {
     info: function (name) { return { name: String(name || "EUR/USD"), payout: 85, open: true, otc: false }; },
     assets: function () { return [{ name: "EUR/USD", payout: 92, open: true, otc: false }]; },
@@ -5190,18 +4828,19 @@ class Backend(QObject):
     testResult = Signal(bool, str)
     shotSaved = Signal(bool, str)          # ok, path
     liveChanged = Signal()
-    addedChanged = Signal()                # قائمة العملات المضافة تغيّرت (لوحة الإعدادات)
-    sigResult = Signal(str)                # نتيجة إشارة (WIN/LOSS) بعد انتهاء المدة
-    myIndsChanged = Signal()               # قائمة مؤشراتي في صفحة المؤشرات تغيّرت (طلب المستخدم)
-    notifChanged = Signal()                # بطاقة الإشعارات تغيّرت (طلب المستخدم)
-    paidCmd = Signal(str)                  # أمر تحكم بعيد صالح: تشغيل/إيقاف مؤشر مدفوع (طلب المستخدم)
+    addedChanged = Signal()                # Added-currencies list changed (settings panel)
+    sigResult = Signal(str)                # Signal result (WIN/LOSS) after the duration ends
+    myIndsChanged = Signal()               # My-indicators list on the indicators page changed (user request)
+    notifChanged = Signal()                # Notification card changed (user request)
+    paidCmd = Signal(str)                  # Valid remote control command: enable/disable a paid indicator (user request)
+    buyersFetched = Signal(str)            # Buyers list fetched from the Telegram bot (user request)
 
     def __init__(self):
         super().__init__()
         cfg = _read_json(CFG_FILE, {})
         self._lang = cfg.get("lang", "en")
         self._dark = bool(cfg.get("dark", True))
-        self._market = "real"        # قسم الحساب الحقيقي/التجريبي حُذف — يبقى وسم السوق للعملات OTC فقط
+        self._market = "real"        # Real/demo account section removed — the market tag remains for OTC currencies only
         self._asset = cfg.get("asset", "EUR/USD")
         self._tf = cfg.get("tf", "1m")
         if not any(a["name"] == self._asset for a in ASSETS["real"] + ASSETS["otc"]):
@@ -5211,21 +4850,21 @@ class Backend(QObject):
         if not saved_added:
             saved_added = [n for n in ("EUR/USD", "BTC/USD") if n in board_names] or board_names[:2]
         self._added = list(dict.fromkeys(saved_added))
-        self._live = True        # البث الحي يعمل مباشرة دائمًا — الشموع متحركة بلا زر (طلب المستخدم)
+        self._live = True        # Live feed always runs directly — candles animate with no button (user request)
         self._tick = 0
         self._candles = generate_candles(self._asset, self._tf)
         self._files = self._load_files()
         _ensure_badi_dirs()
-        self.syncDiskFiles(emit=False)     # استيراد أي ملفات وضعها المستخدم في مجلد BadiCharts
-        # ── مراقبة مجلدي BadiCharts: أي ملف يوضعه المستخدم يُكتشف فورًا ويظهر في
-        #    صفحة المؤشرات مباشرة دون إعادة تشغيل (طلب المستخدم) ──
+        self.syncDiskFiles(emit=False)     # Import any files the user dropped into the BadiCharts folder
+        # ── Watching both BadiCharts folders: any file the user drops is detected instantly and shows on
+        #    the indicators page directly, without a restart (user request) ──
         self._watcher = QFileSystemWatcher(self)
         self._watcher.addPath(BADI_IND_DIR)
         self._watcher.addPath(BADI_TOOL_DIR)
         self._watcher.directoryChanged.connect(self._on_dir_changed)
         self._hist = _read_json(os.path.join(CFG_DIR, "signals.json"), [])
-        self._sigpend = []       # إشارات بانتظار نتيجتها (WIN/LOSS بعد مدة الفريم)
-        # ── مظهر الشارت القابل للتخصيص من الإعدادات (خلفية/ألوان الشموع...) ──
+        self._sigpend = []       # Signals waiting for their result (WIN/LOSS after the timeframe duration)
+        # ── Chart appearance customizable from Settings (background/candle colors...) ──
         self._chart_theme = dict(CHART_THEME_DEFAULTS)
         saved_ct = cfg.get("chart_theme") or {}
         if isinstance(saved_ct, dict):
@@ -5235,13 +4874,13 @@ class Backend(QObject):
         self._py_mods = {}       # id -> module dict
         self._py_err = {}        # id -> count
         self._py_names = {}      # id -> fileName
-        self._pending = None     # إشارة بانتظار لقطة الشاشة
+        self._pending = None     # Signal waiting for its screenshot
         os.makedirs(SHOTS_DIR, exist_ok=True)
 
-        # ── المؤشرات المدفوعة: بطاقة الإشعارات (بلا إشعارات جاهزة — المبرمج يرسلها من خادمه)
-        #    + قناة تحكم المبرمج عبر خادمه بأوامر بيضاء فقط (طلب المستخدم) ──
-        self._notifs = []            # إشعارات البطاقة: نص فقط — لا ملفات إطلاقًا عبر هذه القناة
-        self._paid_block = {}        # خادم تجاوز الحدود → حظر مؤقت 10 دقائق (تشديد الحماية)
+        # ── Paid indicators: notification card (no ready-made notifications — the developer sends them from his server)
+        #    + the developer control channel through his server with allow-listed commands only (user request) ──
+        self._notifs = []            # Card notifications: text only — never any files through this channel
+        self._paid_block = {}        # Server exceeded the limits → temporary 10-minute ban (hardened protection)
         self._paidT = QTimer(self)
         self._paidT.setInterval(15 * 60 * 1000)
         self._paidT.timeout.connect(self._paid_poll)
@@ -5255,11 +4894,11 @@ class Backend(QObject):
         self._timer = QTimer(self)
         self._timer.setInterval(1000)
         self._timer.timeout.connect(self._on_tick)
-        # تشغيل المؤقت فعليًا — بلا هذا السطر كان محرك الشموع الحية متوقفًا تمامًا
-        # ولهذا لم تكن شموع جديدة تظهر في التطبيق (الشارت متجمد)
+        # Actually start the timer — without this line the live-candle engine stayed completely off
+        # and that is why no new candles appeared in the app (the chart was frozen)
         self._timer.start()
 
-    # ---------- خصائص الواجهة ----------
+    # ---------- UI properties ----------
     def _get_lang(self):
         return self._lang
 
@@ -5285,39 +4924,39 @@ class Backend(QObject):
     dark = Property(bool, _get_dark, _set_dark, notify=darkChanged)
     c = Property("QVariantMap", lambda self: DARK if self._dark else LIGHT, notify=darkChanged)
 
-    # ---------- الحساب والرصيد والصفقات حُذفت بالكامل (طلب المستخدم) ----------
+    # ---------- Account, balance and trades fully removed (user request) ----------
 
     @Property(list, constant=True)
     def board(self):
-        """كل العملات المتاحة (اسم + نسبة الدفع + علم الزوج مدموجاً) للوحة الإعدادات."""
+        """All available currencies (name + payout + merged pair flag) for the settings panel."""
         return BOARD
 
     @Slot(str, result=bool)
     def marketOpen(self, name):
-        """حالة السوق لبطاقات العملات (طلب المستخدم): OTC والرقمية مفتوحة دائمًا —
-        الفوركس مفتوح من الأحد 22:00 إلى الجمعة 22:00 بتوقيت UTC — نفس قاعدة الويب."""
+        """Market state for currency cards (user request): OTC and crypto always open —
+        forex open from Sunday 22:00 to Friday 22:00 UTC — same rule as the web."""
         n = str(name or "")
         if "OTC" in n:
             return True
         if "BTC" in n or "ETH" in n:
             return True
         now = datetime.now(timezone.utc)
-        js_day = (now.weekday() + 1) % 7        # الأحد=0 … السبت=6 (مطابق لـ getUTCDay في الويب)
+        js_day = (now.weekday() + 1) % 7        # Sunday=0 … Saturday=6 (matches getUTCDay on the web)
         hour = now.hour + now.minute / 60.0
         return not (js_day == 6 or (js_day == 5 and hour >= 22) or (js_day == 0 and hour < 22))
 
     @Property(list, notify=addedChanged)
     def added(self):
-        """العملات المعروضة على شريط العملات (المضافة فقط)."""
+        """Currencies shown on the currency strip (the added ones only)."""
         return self._added
 
     @Slot(str)
     def toggleAdded(self, name):
-        """إضافة/إزالة عملة من الشريط — مع إبقاء عملة واحدة على الأقل دائمًا."""
+        """Add/remove a currency from the strip — always keeping at least one currency."""
         if not isinstance(name, str) or name not in [b["name"] for b in BOARD]:
             return
         if name in self._added:
-            if len(self._added) <= 1:      # يجب أن تبقى عملة واحدة على الأقل في الشريط
+            if len(self._added) <= 1:      # At least one currency must remain on the strip
                 return
             self._added = [n for n in self._added if n != name]
         else:
@@ -5327,7 +4966,7 @@ class Backend(QObject):
 
     @Slot(str)
     def setAddedJson(self, js):
-        """الصفحة أبلغت عن قائمة جديدة (حذف من الشريط عبر × أو قائمة +)."""
+        """The page reported a new list (removed from the strip via × or the + list)."""
         try:
             arr = json.loads(js)
         except Exception:
@@ -5336,7 +4975,7 @@ class Backend(QObject):
             return
         board_names = [b["name"] for b in BOARD]
         clean = list(dict.fromkeys(n for n in arr if isinstance(n, str) and n in board_names))
-        if not clean:                       # لا يُحذف كل شيء — عملة واحدة على الأقل
+        if not clean:                       # Never remove everything — at least one currency
             return
         if clean == self._added:
             return
@@ -5362,7 +5001,7 @@ class Backend(QObject):
 
     @Property(str, notify=candlesChanged)
     def lastTickJson(self):
-        """آخر شمعة فقط — تُدفع كل ثانية بدون إعادة تسلسل المصفوفة كاملة (أداء)."""
+        """Last candle only — pushed every second without re-serializing the whole array (performance)."""
         return json.dumps(self._candles[-1], separators=(",", ":")) if self._candles else "{}"
 
     @Property(int, notify=candlesChanged)
@@ -5398,7 +5037,7 @@ class Backend(QObject):
     def tfSec(self):
         return self._tf_sec()
 
-    # ---------- أدوات داخلية ----------
+    # ---------- Internal helpers ----------
     def _asset_cfg(self, asset=None):
         name = str(asset or self._asset or "")
         for a in ASSETS["real"] + ASSETS["otc"]:
@@ -5428,8 +5067,8 @@ class Backend(QObject):
                         "fileName": f"{base_names[s['kind']]}.{ext}", "kind": s["kind"],
                         "code": s["code"], "enabled": False})
         if isinstance(data, list) and data:
-            # ترحيل اسم الدليل للإنجليزية (طلب المستخدم): تجاهل المدخل القديم ذا الاسم العربي
-            # حتى لا تعيد المزامنة كتابته إلى القرص بعد حذفه
+            # Migrate the guide name to English (user request): ignore the old entry with the Arabic name
+            # so the sync does not write it back to disk after deletion
             out = [f for f in data if isinstance(f, dict)
                    and str(f.get("fileName") or "") not in LEGACY_GUIDE_FILES]
         return out
@@ -5437,9 +5076,9 @@ class Backend(QObject):
     def _log(self, kind, text):
         self.consoleMsg.emit(kind, text)
 
-    # ---------- مجلد BadiCharts: حفظ المؤشرات على القرص ومزامنتها ----------
-    # كل مؤشر/أداة يُنشأ في التطبيق يُكتب كملف حقيقي داخل BadiCharts/Indicators
-    # أو BadiCharts/Tools — وأي ملف يوضعه المستخدم هناك يُستورد تلقائيًا.
+    # ---------- BadiCharts folder: save indicators to disk and sync them ----------
+    # Every indicator/tool created in the app is written as a real file inside BadiCharts/Indicators
+    # or BadiCharts/Tools — and any file the user drops there is imported automatically.
     @staticmethod
     def _norm_kind(k):
         k = str(k or "").lower()
@@ -5459,7 +5098,7 @@ class Backend(QObject):
         return pfx + "_" + random_suffix(6).lower()
 
     def _disk_scan(self):
-        """فحص مجلدي BadiCharts: ملفات المؤشرات/الأدوات + ملفات .badi المشفرة."""
+        """Scan both BadiCharts folders: indicator/tool files + encrypted .badi files."""
         _ensure_badi_dirs()
         items = []
         for d, exts in ((BADI_IND_DIR, ("js", "py")), (BADI_TOOL_DIR, ("js",))):
@@ -5483,7 +5122,7 @@ class Backend(QObject):
         return items
 
     def _write_entry_to_disk(self, f):
-        """كتابة كود ملف المستخدم إلى مساره الحقيقي في BadiCharts — تُرجع المسار أو None."""
+        """Write a user file code to its real path in BadiCharts — returns the path or None."""
         kind = self._norm_kind(f.get("kind"))
         name = _safe_file_name(f.get("fileName"))
         if not name or kind == "badi" or not str(f.get("code") or "").strip():
@@ -5492,7 +5131,7 @@ class Backend(QObject):
         return path if _write_text_file(path, f.get("code", "")) else None
 
     def _delete_entry_from_disk(self, f):
-        """حذف ملف المستخدم من القرص (مصدره أو ملفه المشفر)."""
+        """Delete a user file from disk (its source or its encrypted file)."""
         kind = self._norm_kind(f.get("kind"))
         name = _safe_file_name(f.get("fileName"))
         if not name:
@@ -5507,17 +5146,17 @@ class Backend(QObject):
                 pass
 
     def syncDiskFiles(self, emit=True):
-        """مزامنة قائمة الملفات مع مجلد BadiCharts:
-        يستورد الملفات الموضوعة يدويًا، يحدّث الكود المتغير، يعتمد الملفات القديمة،
-        يوفر ملفات .badi بجوار ملفاتها الأصلية، ويحذف ما حُذف من المجلد."""
+        """Sync the file list with the BadiCharts folder:
+        imports manually dropped files, updates changed code, adopts legacy files,
+        pairs .badi files next to their originals, and removes what was deleted from the folder."""
         _ensure_badi_dirs()
         disk = self._disk_scan()
         changed = False
-        # فهرس القرص: (اسم منقح، نوع) → عنصر
+        # Disk index: (clean name, kind) → item
         disk_map = {}
         for it in disk:
             disk_map[(it["fileName"].lower(), it["kind"])] = it
-        # 1) اعتماد/تحديث ملفات المستخدم الموجودة في القائمة
+        # 1) Adopt/update user files already in the list
         for f in self._files:
             kind = self._norm_kind(f.get("kind"))
             if kind == "badi":
@@ -5527,12 +5166,12 @@ class Backend(QObject):
                 continue
             it = disk_map.get((name.lower(), kind))
             if it is not None:
-                if f.get("code") != it["code"]:      # القرص هو المرجع (تعديل خارجي)
+                if f.get("code") != it["code"]:      # The disk is the reference (external edit)
                     f["code"] = it["code"]
                     changed = True
             elif str(f.get("code") or "").strip():
-                self._write_entry_to_disk(f)          # اعتماد: ملف قديم ليس على القرص بعد
-        # 2) استيراد الملفات الجديدة من المجلد (ملفات وضعها المستخدم يدويًا)
+                self._write_entry_to_disk(f)          # Adopt: a legacy file not on disk yet
+        # 2) Import new files from the folder (files the user dropped manually)
         have = set()
         for f in self._files:
             have.add((_safe_file_name(f.get("fileName")).lower(), self._norm_kind(f.get("kind"))))
@@ -5543,7 +5182,7 @@ class Backend(QObject):
                                 "kind": kind, "code": it.get("code", ""), "enabled": False,
                                 "createdAt": int(time.time() * 1000), "path": it.get("path", "")})
             changed = True
-        # 3) حذف ما لم يعد موجودًا على القرص (حذف يدوي من المجلد)
+        # 3) Remove what no longer exists on disk (manual deletion from the folder)
         keep = []
         for f in self._files:
             kind = self._norm_kind(f.get("kind"))
@@ -5560,7 +5199,7 @@ class Backend(QObject):
                     continue
             keep.append(f)
         self._files = keep
-        # 4) ترتيب: ملف .badi يظهر مباشرة بجوار ملفه الأصلي (مثل ميتاتريدر) — بدون تغيير ترتيب البقية
+        # 4) Ordering: a .badi file shows right next to its original (like MetaTrader) — the rest keep their order
         twins = {}
         rest = []
         for f in self._files:
@@ -5584,16 +5223,16 @@ class Backend(QObject):
             _write_json(FILES_FILE, self._files)
             if emit:
                 self.filesChanged.emit()
-            self.myIndsChanged.emit()          # حدّث "مؤشراتي" في صفحة المؤشرات
+            self.myIndsChanged.emit()          # Update "my indicators" on the indicators page
         return changed
 
-    # ---------- الملفات ----------
+    # ---------- Files ----------
     @Slot(str)
     def saveFiles(self, files_json):
         try:
             data = json.loads(files_json)
             if isinstance(data, dict) and isinstance(data.get("files"), list):
-                data = data["files"]          # تقرير الصفحة يأتي مغلّفاً {v, files}
+                data = data["files"]          # The page report arrives wrapped as {v, files}
             if not isinstance(data, list):
                 return
             old = {f.get("id"): f for f in self._files if isinstance(f, dict)}
@@ -5605,16 +5244,16 @@ class Backend(QObject):
                 f["kind"] = self._norm_kind(f.get("kind"))
                 f["fileName"] = _safe_file_name(f.get("fileName"))
                 new.append(f)
-            # حذف من القرص: ملفات اختفت من القائمة أو غيّرت اسمها
+            # Delete from disk: files that vanished from the list or were renamed
             new_ids = {f["id"] for f in new}
             for fid, of in old.items():
                 if fid in new_ids:
                     nf = next((x for x in new if x["id"] == fid), None)
                     if nf and _safe_file_name(nf.get("fileName")) != _safe_file_name(of.get("fileName")):
-                        self._delete_entry_from_disk(of)   # إعادة تسمية → احذف الاسم القديم
+                        self._delete_entry_from_disk(of)   # Renamed → delete the old name
                 else:
-                    self._delete_entry_from_disk(of)       # حذف من المحرر → حذف من القرص
-            # كتابة كل ملف إلى مساره الحقيقي (فقط عند تغيّر الكود — لتجنب الكتابة الزائدة)
+                    self._delete_entry_from_disk(of)       # Deleted from the editor → delete from disk
+            # Write every file to its real path (only when the code changed — to avoid redundant writes)
             for f in new:
                 p = _disk_path_for(f) if self._norm_kind(f.get("kind")) != "badi" else None
                 if p:
@@ -5623,20 +5262,20 @@ class Backend(QObject):
                         self._write_entry_to_disk(f)
             self._files = new
             _write_json(FILES_FILE, self._files)
-            self.myIndsChanged.emit()          # حدّث "مؤشراتي" في صفحة المؤشرات
+            self.myIndsChanged.emit()          # Update "my indicators" on the indicators page
         except Exception as e:
             self._log("err", f"save: {e}")
 
     @Slot()
     def rescanFiles(self):
-        """فحص مجلد BadiCharts واستيراد أي ملفات جديدة وضعها المستخدم يدويًا."""
+        """Scan the BadiCharts folder and import any new files the user dropped manually."""
         if self.syncDiskFiles():
             self._log("info", "BadiCharts folder synced — indicators/tools reloaded")
         self.myIndsChanged.emit()
 
     @Slot()
     def seedTestInd(self):
-        """مؤشر تجريبي في مجلد BadiCharts/Indicators للفحص الآلي (اختبار الصورة المصغرة)."""
+        """Demo indicator in the BadiCharts/Indicators folder for automated testing (thumbnail test)."""
         try:
             os.makedirs(BADI_IND_DIR, exist_ok=True)
             p = os.path.join(BADI_IND_DIR, "Test RSI.js")
@@ -5648,7 +5287,7 @@ class Backend(QObject):
                 )
                 with open(p, "w", encoding="utf-8") as fh:
                     fh.write(code)
-            # ملف مشفر تجريبي بجوار أصله — لاختبار التشغيل الداخلي للمشفر في الفحص الآلي
+            # Demo encrypted file next to its original — to test internal encrypted execution in automated tests
             enc_p = os.path.join(BADI_IND_DIR, "Test Enc.badi")
             if not os.path.exists(enc_p):
                 enc_code = (
@@ -5664,8 +5303,8 @@ class Backend(QObject):
             self._log("err", "seedTestInd: " + str(e))
 
     def _on_dir_changed(self, _path):
-        """المستخدم وضع/حذف ملفًا في مجلد BadiCharts — اكتشاف فوري (طلب المستخدم).
-        تأخير بسيط حتى يكتمل النسخ، ثم إعادة فحص وتحديث صفحة المؤشرات."""
+        """The user added/removed a file in the BadiCharts folder — instant detection (user request).
+        A short delay lets the copy finish, then a rescan updates the indicators page."""
         try:
             self._watcher.addPath(BADI_IND_DIR)
             self._watcher.addPath(BADI_TOOL_DIR)
@@ -5679,9 +5318,9 @@ class Backend(QObject):
             self._log("info", "BadiCharts folder synced — indicators/tools reloaded")
         self.myIndsChanged.emit()
 
-    # ---------- مؤشراتي في صفحة المؤشرات + الصور المصغرة (طلب المستخدم) ----------
+    # ---------- My indicators on the indicators page + thumbnails (user request) ----------
     def _thumb_index(self):
-        """فهرس الصور المصغرة: اسم المؤشر بدون امتداد (صغير) → مسار الصورة."""
+        """Thumbnail index: indicator name without extension (lowercase) → image path."""
         idx = {}
         try:
             for n in os.listdir(BADI_THUMB_DIR):
@@ -5694,7 +5333,7 @@ class Backend(QObject):
 
     @Property(str, notify=myIndsChanged)
     def myIndsJson(self):
-        """كل مؤشراتك وأدواتك (المشفرة .badi أيضًا) — تظهر في صفحة المؤشرات."""
+        """All your indicators and tools (encrypted .badi too) — shown on the indicators page."""
         items = []
         thumbs = self._thumb_index()
         for f in self._files:
@@ -5709,8 +5348,8 @@ class Backend(QObject):
 
     @Slot(str, str)
     def saveIndThumb(self, file_name, data_url):
-        """لقطة المؤشر: تُحفظ عند الحفظ أو التشغيل الصريح وتُحدَّث كل مرة (طلب المستخدم).
-        لا تُلتقط إطلاقًا إن لم يُحفظ/يُشغَّل المؤشر من المستخدم."""
+        """Indicator screenshot: saved on explicit save/run and refreshed every time (user request).
+        Never captured unless the user actually saved/ran the indicator."""
         try:
             base = _safe_file_name(file_name).rsplit(".", 1)[0]
             if not base or not isinstance(data_url, str):
@@ -5718,7 +5357,7 @@ class Backend(QObject):
             if ";base64," not in data_url or "," not in data_url:
                 return
             raw = base64.b64decode(data_url.split(",", 1)[1], validate=False)
-            if len(raw) < 512 or len(raw) > 2_000_000:   # لقطة عالية الدقة مضغوطة — السقف أُرفع مع الدقة
+            if len(raw) < 512 or len(raw) > 2_000_000:   # High-resolution compressed screenshot — the cap was raised with the resolution
                 return
             os.makedirs(BADI_THUMB_DIR, exist_ok=True)
             path = os.path.join(BADI_THUMB_DIR, base + ".jpg")
@@ -5732,8 +5371,8 @@ class Backend(QObject):
 
     @Slot(str)
     def delMy(self, file_name):
-        """حذف مؤشر من بطاقات مؤشراتي (أيقونة سلة بجانب الاسم — طلب المستخدم):
-        يحذف الملف من القرص مع ملف .badi الشقيق وصورة المصغرة ثم يزامن القائمة."""
+        """Delete an indicator from the my-indicators cards (trash icon beside the name — user request):
+        deletes the file from disk with its sibling .badi and the thumbnail, then syncs the list."""
         try:
             name = _safe_file_name(str(file_name))
             if not name:
@@ -5765,7 +5404,7 @@ class Backend(QObject):
             except Exception:
                 pass
             if removed:
-                # شطب المدخل من القائمة قبل المزامنة حتى لا يعيد syncDiskFiles كتابته على القرص
+                # Strike the entry from the list before syncing so syncDiskFiles does not write it back to disk
                 try:
                     self._files = [f for f in self._files
                                    if not (_safe_file_name(f.get("fileName")).lower() == name.lower()
@@ -5782,8 +5421,8 @@ class Backend(QObject):
 
     @Slot(str, result=str)
     def shareIndicator(self, file_name):
-        """زر الإرسال (طلب المستخدم): لا تشفير — ينسخ ملف المؤشر الأصلي نفسه إلى
-        حافظة النظام كملف (يلصقه في أي مكان: تلجرام/مجلد) ثم يفتح تلجرام مباشرة."""
+        """Send button (user request): no encryption — copies the original indicator file itself to
+        the system clipboard as a file (paste it anywhere: Telegram/folder) then opens Telegram directly."""
         try:
             name = _safe_file_name(file_name)
             ent = next((f for f in self._files
@@ -5809,10 +5448,19 @@ class Backend(QObject):
             mime.setUrls([QUrl.fromLocalFile(path)])
             mime.setText(path)
             QGuiApplication.clipboard().setMimeData(mime)
-            # فتح تلجرام مباشرة بعد النسخ (طلب المستخدم) — تطبيق تلجرام إن وُجد وإلا الويب
+            # Open Telegram with the share sheet itself (user request): tg://msg_url opens
+            # the share window in the Telegram app to pick the chat directly — if the app is missing,
+            # a t.me/share link in the browser, else Telegram Web. Opening the app
+            # with no parameters shows nothing — here the share itself is passed (link + text).
             try:
-                if not QDesktopServices.openUrl(QUrl("tg://")):
-                    QDesktopServices.openUrl(QUrl("https://web.telegram.org/a/"))
+                _su = urllib.parse.quote("https://t.me/badicharts", safe="")
+                _st = urllib.parse.quote(
+                    "BadiCharts indicator — " + os.path.basename(path), safe="")
+                if not QDesktopServices.openUrl(QUrl(
+                        "tg://msg_url?url=" + _su + "&text=" + _st)):
+                    if not QDesktopServices.openUrl(QUrl(
+                            "https://t.me/share/url?url=" + _su + "&text=" + _st)):
+                        QDesktopServices.openUrl(QUrl("https://web.telegram.org/a/"))
             except Exception:
                 pass
             return json.dumps({"ok": True, "path": path})
@@ -5821,7 +5469,7 @@ class Backend(QObject):
 
     @Slot(result=str)
     def badiDirPath(self):
-        """مسار مجلد BadiCharts للعرض في الإعدادات."""
+        """BadiCharts folder path for display in Settings."""
         return BADI_DIR
 
     @Slot(str, result=str)
@@ -5831,7 +5479,7 @@ class Backend(QObject):
         code = {"js": JS_IND_TEMPLATE, "py": PY_IND_TEMPLATE, "jstool": JS_TOOL_TEMPLATE}[kind]
         base = {"js": "My Indicator", "py": "Python Indicator", "jstool": "My Tool"}[kind]
         norm = self._norm_kind(kind)
-        # اسم فريد داخل نفس النوع — حتى لا يتصادم ملفان بنفس الاسم على القرص
+        # Unique name within the same kind — so two files with the same name never collide on disk
         taken = {(str(f.get("fileName") or "").lower(), self._norm_kind(f.get("kind")))
                  for f in self._files}
         fname, n = f"{base}.{ext}", 2
@@ -5840,7 +5488,7 @@ class Backend(QObject):
             n += 1
         f = {"id": kind + "_" + sfx.lower(), "fileName": fname,
              "kind": norm, "code": code, "enabled": False}
-        self._write_entry_to_disk(f)          # يُحفظ فورًا في مجلد BadiCharts
+        self._write_entry_to_disk(f)          # Saved immediately into the BadiCharts folder
         self._files.append(f)
         self.filesChanged.emit()
         self.myIndsChanged.emit()
@@ -5849,14 +5497,14 @@ class Backend(QObject):
 
     @Slot(str, result=str)
     def addFromLib(self, key):
-        """إضافة مؤشر جاهز: ملف جديد باسم المكتبة + تشغيل فوري."""
+        """Add a library indicator: a new file named after the library entry + immediate run."""
         item = next((l for l in LIB if l["key"] == key), None)
         if not item:
             return "{}"
         sfx = random_suffix(6)
         f = {"id": "js_" + sfx.lower(), "fileName": f"{item['name']}.js",
              "kind": "indicator", "code": item["code"], "enabled": False}
-        self._write_entry_to_disk(f)          # يُحفظ فورًا في مجلد BadiCharts
+        self._write_entry_to_disk(f)          # Saved immediately into the BadiCharts folder
         self._files.append(f)
         self.filesChanged.emit()
         self.myIndsChanged.emit()
@@ -5868,7 +5516,7 @@ class Backend(QObject):
         _write_json(FILES_FILE, self._files)
         self._log("ok", T[self._lang]["savedall"])
 
-    # ---------- الرمز/الفريم/البث ----------
+    # ---------- Symbol / timeframe / feed ----------
     @Slot(str, str)
     def switch(self, asset, tf):
         self._asset = asset if any(a["name"] == asset for a in ASSETS["real"] + ASSETS["otc"]) else self._asset
@@ -5877,9 +5525,9 @@ class Backend(QObject):
         self._candles = generate_candles(self._asset, self._tf)
         self._tick = 0
         self._save_cfg()
-        # إعادة حساب كل مؤشرات بايثون المفعّلة على الشموع الجديدة فورًا
-        # (بدل انتظار أول تيك — وإلا اختفى الخط لأن القيم القديمة خارج نطاق السعر الجديد)
-        # الترتيب مهم: القيم أولًا ثم الدفع — تصل قيم المؤشرات مع الشموع في نفس اللحظة
+        # Recalculate every active Python indicator on the new candles immediately
+        # (instead of waiting for the first tick — otherwise the line vanished because the old values fell outside the new price range)
+        # Order matters: values first, then push — indicator values arrive with the candles in the same instant
         if self._py_mods:
             self._compute_py()
         self.candlesChanged.emit()
@@ -5890,26 +5538,26 @@ class Backend(QObject):
 
     @Slot(bool)
     def setLive(self, on):
-        # البث الحي دائم الآن (طلب المستخدم) — لا يمكن إيقافه من الصفحة
+        # Live feed is now permanent (user request) — it cannot be stopped from the page
         if not self._live:
             self._live = True
             self.liveChanged.emit()
             self._log("info", "Live feed started — " + self._asset + " " + self._tf)
 
     def _on_tick(self):
-        # التغذية الحية تعمل فقط عند تفعيل اللايف، أما تسويات الإشارات والصفقات فتعمل دائمًا
+        # Live feeding runs only while live is on; signal/trade settlements always run
         if self._live:
             cfg = self._asset_cfg()
             tf = max(5, self._tf_sec())
-            # شمعة جديدة عند مرور حد الفريم بالتوقيت الحقيقي لا بعدد التكات من الإقلاع —
-            # الانحراف عن حدود الدقيقة الحقيقية كان يجعل العدّ التنازلي يعلق على 00
-            # بقية الدقيقة (يعمل في أول شمعة ثم يتوقف — ملاحظة المستخدم)
+            # New candle when the timeframe boundary passes in real time, not by tick count since boot —
+            # drifting off real minute boundaries used to stick the countdown at 00
+            # for the rest of the minute (it worked on the first candle then stopped — user note)
             now = int(time.time())
             boundary = now - (now % tf)
             cur = self._candles[-1]
             if cur["t"] < boundary:
-                # الفريم انتهى فعلاً — أغلق الشمعة وافتح شمعة الحد الحقيقي،
-                # واملأ أي فجوة لو تأخرت التكة (نوم/تعليق النظام) بحد أقصى 500 شمعة
+                # The timeframe really ended — close the candle and open a candle at the true boundary,
+                # and fill any gap if a tick arrived late (system sleep/suspend), capped at 500 candles
                 gap = min(int((boundary - cur["t"]) // tf), 500)
                 for _ in range(gap):
                     self._candles.append(new_candle(self._candles[-1], tf, cfg["vol"]))
@@ -5917,13 +5565,13 @@ class Backend(QObject):
                     self._candles = self._candles[-1200:]
             else:
                 self._candles[-1] = step_candle(cur, cfg["vol"])
-            # الترتيب مهم: احسب قيم المؤشرات أولًا ثم ادفع الشمعة —
-            # الترتيب العكسي كان يرسم الشمعة الجديدة بدون قيمة المؤشر لشمعة كاملة
+            # Order matters: compute indicator values first, then push the candle —
+            # the reverse order drew the new candle without an indicator value for a full candle
             self._compute_py()
             self.candlesChanged.emit()
         self._check_sig_results()
 
-    # ---------- مؤشرات بايثون ----------
+    # ---------- Python indicators ----------
     _SAFE_BUILTINS = {"abs": abs, "min": min, "max": max, "len": len, "range": range,
                       "float": float, "int": int, "round": round, "sum": sum, "enumerate": enumerate,
                       "zip": zip, "list": list, "dict": dict, "sorted": sorted, "pow": pow,
@@ -5934,7 +5582,7 @@ class Backend(QObject):
         try:
             gl = dict(self._SAFE_BUILTINS)
             gl.update(PY_HELPERS)
-            exec(f["code"], gl)          # noqa: S102 — بيئة محلية مقيّدة
+            exec(f["code"], gl)          # noqa: S102 — restricted local sandbox
             for req in ("LABEL", "TYPE", "SETTINGS", "calculate"):
                 if req not in gl:
                     raise ValueError(f"missing {req}")
@@ -5978,7 +5626,7 @@ class Backend(QObject):
 
     @Slot(str, str, str, result=str)
     def compilePyOne(self, fid, file_name, code):
-        """ترجمة مؤشر بايثون واحد قادم من صفحة الويب المدمجة."""
+        """Translate a single Python indicator coming from the embedded web page."""
         f = {"id": fid, "fileName": file_name, "kind": "py", "code": code, "enabled": True}
         mod, err = self._compile_py(f)
         if err:
@@ -5993,7 +5641,7 @@ class Backend(QObject):
 
     @Slot(str, result=str)
     def libFile(self, key):
-        """كود مؤشر جاهز كملف جديد يحمل اسم المكتبة — تُنشئه صفحة الويب المدمجة."""
+        """Library indicator code as a new file carrying the library name — created by the embedded web page."""
         item = next((l for l in LIB if l["key"] == key), None)
         if not item:
             return "{}"
@@ -6002,8 +5650,8 @@ class Backend(QObject):
                            "kind": "indicator", "code": item["code"], "enabled": False})
 
     def boot_files_json(self):
-        """ملفات المستخدم بصيغة صفحة الويب (تُحقن في HTML عند الإقلاع).
-        ملفات .badi المشفرة تُدرج بجوار ملفاتها الأصلية — فك التشفير عند النقر فقط."""
+        """User files in web-page format (injected into the HTML at boot).
+        Encrypted .badi files are listed next to their originals — decrypted only on click."""
         src = self._files
         if isinstance(src, dict) and isinstance(src.get("files"), list):
             src = src["files"]
@@ -6024,7 +5672,7 @@ class Backend(QObject):
 
     @Slot(str, result=str)
     def compilePy(self, files_json):
-        """ترجمة كل ملفات بايثون المفعّلة — يستدعى بعد ▶ تشغيل ملف py."""
+        """Translate every active Python file — called after ▶ run on a py file."""
         try:
             data = json.loads(files_json)
         except Exception:
@@ -6052,16 +5700,16 @@ class Backend(QObject):
                                 "settings": mod["SETTINGS"]}
                 self._log("ok", f"{f['fileName']} (Python) {T[self._lang]['compileok']}")
                 self._compute_py()
-        # إزالة وحدات الملفات الموقوفة
+        # Remove modules of stopped files
         for f in self._files:
             if not f.get("enabled") and f["id"] in self._py_mods:
                 del self._py_mods[f["id"]]
         return json.dumps(out)
 
-    # ---------- الإشارات ----------
+    # ---------- Signals ----------
     @Slot(str, str, str, float, str, str)
     def fireSignal(self, fid, label, dir_, price, asset="", chats=""):
-        # asset: عملة الإشارة (من الماسح متعدد العملات أو الشارت) — chats: معرف المحادثة من المؤشر نفسه
+        # asset: the signal currency (from the multi-currency scanner or the chart) — chats: chat ID from the indicator itself
         if not price and self._candles:
             price = self._candles[-1]["c"]
         self._maybe_fire(fid, label, {"dir": dir_, "price": float(price),
@@ -6073,7 +5721,7 @@ class Backend(QObject):
         asset = str(sig.get("asset") or self._asset or "")
         cfg = self._asset_cfg(asset)
         on_chart = (asset == self._asset and bool(self._candles))
-        # عملة الشارت: وقت الشمعة الحالية — العملات الأخرى: آخر شمعة مكتملة بالفريم الحالي
+        # Chart currency: current candle time — other currencies: last completed candle of the current timeframe
         now_bar = self._candles[-1]["t"] if on_chart else \
             (int(datetime.now().timestamp()) - int(datetime.now().timestamp()) % max(5, self._tf_sec()))
         key = fid + ":" + asset + ":" + self._tf
@@ -6088,7 +5736,7 @@ class Backend(QObject):
         when = datetime.fromtimestamp(now_bar).strftime("%Y-%m-%d %H:%M:%S")
         chats = str(sig.get("chats") or "")
         self._send_signal(fid, label, sig["dir"], price_s, when, asset=asset, chats=chats)
-        # النتيجة (WIN/LOSS) تُحسب بعد انتهاء مدة الفريم — تُرسل للبطاقة وللبوت بنفس الستايل
+        # The result (WIN/LOSS) is computed after the timeframe duration ends — sent to the card and the bot in the same style
         expiry = (datetime.fromtimestamp(now_bar) + timedelta(seconds=self._tf_sec())).timestamp()
         self._sigpend.append({"asset": asset, "tf": self._tf, "dir": sig["dir"],
                               "entry": float(price), "expiry": expiry, "label": label,
@@ -6097,7 +5745,7 @@ class Backend(QObject):
     _fire_state = {}
 
     def _check_sig_results(self):
-        """تسوية الإشارات المعلّقة: مقارنة السعر عند انتهاء المدة بسعر الدخول."""
+        """Settle pending signals: compare the price at expiry with the entry price."""
         if not self._sigpend:
             return
         now = datetime.now().timestamp()
@@ -6109,7 +5757,7 @@ class Backend(QObject):
             if self._candles and sp["asset"] == self._asset and self._live:
                 exit_px = self._candles[-1]["c"]
             else:
-                # محاكاة حتمية بحجم تقلب الأصل (بيانات تجريبية — تعمل حتى بدون لايف)
+                # Deterministic simulation sized by the asset volatility (demo data — works even without live)
                 f = ((_hash(sp["asset"] + sp["tf"] + str(int(sp["expiry"]))) % 2000) - 1000) / 1000.0
                 exit_px = sp["entry"] * (1 + sp["vol"] * f * 3.0)
             exit_px = round(float(exit_px), sp["dec"])
@@ -6122,8 +5770,8 @@ class Backend(QObject):
         self._sigpend = still
 
     def _tg_result(self, sp, win, exit_px):
-        """رسالة نتيجة البوت — بنفس ستايل بطاقة الإشارة المصممة.
-        معرف المحادثة يأتي من المؤشر نفسه (طلب المستخدم) — والاحتياط إعداد التطبيق."""
+        """Bot result message — styled like the designed signal card.
+        The chat ID comes from the indicator itself (user request) — fallback is the app setting."""
         try:
             cfg = _read_json(CFG_FILE, {})
             token = cfg.get("token", "")
@@ -6153,7 +5801,7 @@ class Backend(QObject):
 
     @Slot(str)
     def chartShot(self, dataUrl):
-        """الشارت أرسل لقطة (data:image/png;base64,....)."""
+        """The chart sent a screenshot (data:image/png;base64,....)."""
         try:
             b64 = dataUrl.split(",", 1)[1]
             png = base64.b64decode(b64)
@@ -6173,7 +5821,7 @@ class Backend(QObject):
 
     @Slot()
     def requestShot(self):
-        """زر لقطة الشاشة (بدون إرسال)."""
+        """Screenshot button (without sending)."""
         self._pending = None
         self.needShot.emit()
 
@@ -6182,7 +5830,7 @@ class Backend(QObject):
     def _send_signal(self, fid, label, dir_, price, when, asset=None, chats=""):
         cfg = _read_json(CFG_FILE, {})
         token = cfg.get("token", "")
-        # معرف المحادثة يأتي من المؤشر نفسه (طلب المستخدم) — والاحتياط إعداد التطبيق القديم
+        # The chat ID comes from the indicator itself (user request) — fallback is the old app setting
         chats = str(chats or "").strip() or cfg.get("chats", "")
         asset = str(asset or self._asset or "")
         tmpl = TG_TMPL_DEFAULT
@@ -6200,7 +5848,7 @@ class Backend(QObject):
         if token and chats:
             self._pending = rec
             self.needShot.emit()
-            # احتياط إذا لم تصدر لقطة خلال 4 ثوانٍ — أرسل نصاً فقط
+            # Fallback if no screenshot arrives within 4 seconds — send text only
             def _fallback():
                 if self._pending is rec:
                     self._pending = None
@@ -6208,7 +5856,7 @@ class Backend(QObject):
             QTimer.singleShot(4000, _fallback)
         else:
             entry["sent"] = False
-            # معرف المحادثة يُدمج في كود المؤشر من مبرمجه — لا حقل له في صفحة البوت
+            # The chat ID is embedded in the indicator code by its developer — no field for it on the bot page
             entry["info"] = "no chat id — set chats in the indicator signal()" if token else "telegram not configured"
             self._hist.append(entry)
             self.histChanged.emit()
@@ -6258,7 +5906,50 @@ class Backend(QObject):
                            "tmpl": cfg.get("tmpl") or TG_TMPL_DEFAULT,
                            "attach": bool(cfg.get("attach", True))})
 
-    # ---------- BADI: المؤشرات المشفرة (المفتاح داخل التطبيق فقط) ----------
+    @Slot()
+    def badiBotBuyers(self):
+        """Fetch buyers from the Telegram bot (user request): the server fetches the user ID
+        the seller wants to sell to and it is embedded inside the indicator — no server card and no
+        manual input except as a fallback. Every user who talked to the bot appears here, and their BADI
+        ID is extracted automatically from their messages. The result arrives via buyersFetched (separate thread)."""
+        def run():
+            out = {"ok": False, "error": "", "buyers": []}
+            try:
+                tok = str(_read_json(CFG_FILE, {}).get("token") or "").strip()
+                if not tok:
+                    out["error"] = "notoken"
+                else:
+                    req = urllib.request.Request(
+                        "https://api.telegram.org/bot" + tok
+                        + "/getUpdates?limit=100&allowed_updates=%5B%22message%22%5D",
+                        headers={"User-Agent": "BadiCharts-Studio"})
+                    with urllib.request.urlopen(req, timeout=10) as resp:
+                        data = json.loads(resp.read().decode("utf-8", "ignore"))
+                    users = {}
+                    for upd in data.get("result") or []:
+                        msg = upd.get("message") or upd.get("edited_message") or {}
+                        frm = msg.get("from") or {}
+                        num = frm.get("id")
+                        if not num:
+                            continue
+                        ent = users.setdefault(int(num), {
+                            "name": ((frm.get("first_name") or "") + " "
+                                     + (frm.get("last_name") or "")).strip(),
+                            "user": ("@" + str(frm.get("username"))) if frm.get("username") else "",
+                            "uid": ""})
+                        for cand in re.findall(
+                                r"BADI-[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}",
+                                str(msg.get("text") or "").upper()):
+                            if not ent["uid"]:
+                                ent["uid"] = cand
+                    out["ok"] = True
+                    out["buyers"] = [dict(v, id=str(k)) for k, v in users.items()]
+            except Exception as e:
+                out["error"] = str(e)[:120]
+            self.buyersFetched.emit(json.dumps(out))
+        threading.Thread(target=run, daemon=True).start()
+
+    # ---------- BADI: encrypted indicators (the key stays inside the app only) ----------
     badiFpChanged = Signal()
 
     def _get_badi_fp(self):
@@ -6269,18 +5960,18 @@ class Backend(QObject):
 
     badiFp = Property(str, _get_badi_fp, notify=badiFpChanged)
 
-    # ---------- مظهر الشارت: خلفية/ألوان الشموع بحرية من زر الإعدادات ----------
+    # ---------- Chart appearance: background/candle colors freely from the settings button ----------
     chartThemeChanged = Signal()
 
     def _get_chart_theme_json(self):
-        """التخصيصات فقط (المفاتيح التي تغيّر المستخدم عن الافتراضي) — تُدفع للويب بدلالة استبدال."""
+        """Only the customizations (keys the user changed from the default) — pushed to the web as overrides."""
         ov = {k: v for k, v in self._chart_theme.items() if CHART_THEME_DEFAULTS.get(k) != v}
         return json.dumps(ov, ensure_ascii=False)
 
     chartThemeJson = Property(str, _get_chart_theme_json, notify=chartThemeChanged)
 
     def _get_chart_theme_full_json(self):
-        """كل قيم مظهر الشارت (الافتراضي + التخصيص) — للعرض في حقول الإعدادات."""
+        """All chart appearance values (defaults + customization) — for the Settings fields."""
         return json.dumps(self._chart_theme, ensure_ascii=False)
 
     chartThemeFullJson = Property(str, _get_chart_theme_full_json, notify=chartThemeChanged)
@@ -6290,7 +5981,7 @@ class Backend(QObject):
 
     @staticmethod
     def _hex_to_rgba(hex_color, alpha=0.5):
-        """تحويل #RRGGBB إلى rgba(...) — لتوليد لون الحجم من لون الشمعة تلقائيًا."""
+        """Convert #RRGGBB to rgba(...) — to derive the volume color from the candle color automatically."""
         h = hex_color.strip().lstrip("#")
         if len(h) == 3:
             h = "".join(c * 2 for c in h)
@@ -6304,7 +5995,7 @@ class Backend(QObject):
 
     @Slot(str)
     def setChartTheme(self, js):
-        """تطبيق ألوان الشارت المخصصة (أي لون hex/rgba بحرية — لا قوائم محدودة)."""
+        """Apply custom chart colors (any hex/rgba color freely — no fixed lists)."""
         try:
             d = json.loads(js)
         except Exception:
@@ -6316,7 +6007,7 @@ class Backend(QObject):
             if k in CHART_THEME_DEFAULTS and isinstance(v, str) and self._COLOR_RE.match(v.strip()):
                 self._chart_theme[k] = v.strip()
                 applied.add(k)
-        # لون الحجم يتبع لون الشمعة تلقائيًا (إن لم يُحدَّد صراحة وقُبل لون الشمعة)
+        # Volume color follows the candle color automatically (unless explicitly set and the candle color was accepted)
         for base, vol in (("bull", "bullVol"), ("bear", "bearVol")):
             if base in applied and vol not in d:
                 derived = self._hex_to_rgba(self._chart_theme[base], 0.5)
@@ -6327,35 +6018,35 @@ class Backend(QObject):
 
     @Slot()
     def resetChartTheme(self):
-        """إعادة ألوان الشارت إلى الافتراضي."""
+        """Reset chart colors to the defaults."""
         self._chart_theme = dict(CHART_THEME_DEFAULTS)
         self._save_cfg()
         self.chartThemeChanged.emit()
 
     def _badi_sandbox_check(self, code):
-        """فحص كود المؤشر المشفر قبل تحميله — فحص ثابت للأنماط الممنوعة (الملفات/
-        الشبكة/أجزاء التطبيق الداخلية) ثم تشغيله داخل QuickJS المعزولة.
-        يرجع رسالة خطأ أو None عند القبول."""
-        # 1) فحص ثابت: الملفات التي ينشئها التطبيق والخدمات وأجزاء المحرك الداخلية
-        #    لا يجوز للمؤشر المشفر أن يمرّ عليها — أي لمسة ترفض الملف كله (طلب المستخدم)
+        """Check encrypted indicator code before loading — a static scan for forbidden patterns (files/
+        network/internal app parts) then an isolated QuickJS run.
+        Returns an error message, or None when accepted."""
+        # 1) Static scan: the files the app creates, its services and internal engine parts
+        #    must never be touched by an encrypted indicator — any touch rejects the whole file (user request)
         try:
             if BADI_BANNED_RE.search(str(code or "")):
                 return BADI_MSGS[self._lang]["blocked"]
         except Exception:
             pass
-        # 2) فحص تشغيلي داخل QuickJS — لا نظام ملفات ولا شبكة هناك أصلًا
+        # 2) Runtime check inside QuickJS — no filesystem and no network there at all
         if not _HAS_QJS:
-            return None          # QuickJS غير متوفرة — يُحمَّل المؤشر ويظهر أي خطأ في كونسول المحرر
+            return None          # QuickJS unavailable — the indicator loads and any error shows in the editor console
         try:
             ctx = _quickjs.Context()
-            # عزل مشدد (طلب المستخدم): لا ملفات ولا شبكة أصلًا في QuickJS + حدود صارمة
-            # للذاكرة والوقت — أي كود خطير يتوقف داخل البيئة المعزولة ولا يلمس الجهاز.
+            # Strict isolation (user request): no files and no network at all in QuickJS + strict limits
+            # on memory and time — any dangerous code stops inside the sandbox and never touches the device.
             try:
                 ctx.set_memory_limit(64 * 1024 * 1024)     # 64MB
             except Exception:
                 pass
             try:
-                ctx.set_time_limit(6)                      # ثوانٍ — يوقف الحلقات اللانهائية
+                ctx.set_time_limit(6)                      # seconds — stops infinite loops
             except Exception:
                 pass
             ctx.eval(_QJS_STUBS)
@@ -6381,14 +6072,14 @@ class Backend(QObject):
             )
             out = str(ctx.eval(harness)).strip()
         except Exception:
-            return None          # فشل بيئة QuickJS نفسها — لا نمنع الاستيراد بسببها
+            return None          # The QuickJS environment itself failed — never block the import because of it
         if out == "OK":
             return None
         if out == "E:noc":
             return BADI_MSGS[self._lang]["noc"]
         msg = out[2:] if out.startswith("E:") else out
         low = msg.lower()
-        # مساعد غير موجود في البيئة المعزولة فقط (الشارت يوفر window.Indicators كاملًا) → يُقبل
+        # Helper missing only in the sandbox (the chart provides the full window.Indicators) → accepted
         if ("indicators" in low or "theme" in low or "not a function" in low
                 or "undefined" in low):
             return None
@@ -6396,12 +6087,12 @@ class Backend(QObject):
 
     @Slot(str, str, str, str, str, str, result=str)
     def badiExport(self, code, file_name, kind="indicator", license_ids="", paid_server="", paid_id=""):
-        """تشفير المؤشر وكتابة ملف .badi بجوار ملفه الأصلي في مجلد BadiCharts
-        (مثل ميتاتريدر: .mq5/.ex5 جنبًا إلى جنب) — النتيجة JSON.
-        يُكتب الملف الأصلي أولًا إن لم يكن على القرص، ثم الملف المشفر بجواره.
-        license_ids: معرفات المستخدمين (USER ID) المسموح لهم — مفصولة بفواصل/مسافات؛
-        فارغة = يعمل مع الجميع. لا يعمل الملف المشفر إلا على جهاز يطابق معرّفه (طلب المستخدم).
-        المفتاح لا يُكتب في الملف — الترخيص عبر المغلف المشفر نفسه."""
+        """Encrypt the indicator and write a .badi file next to its original in the BadiCharts folder
+        (like MetaTrader: .mq5/.ex5 side by side) — result is JSON.
+        The original file is written first if not on disk yet, then the encrypted file beside it.
+        license_ids: allowed USER IDs — separated by commas/spaces;
+        empty = works for everyone. The encrypted file runs only on a device matching its ID (user request).
+        The key is never written into the file — licensing travels inside the encrypted envelope itself."""
         lang = self._lang
         try:
             _ensure_badi_dirs()
@@ -6414,12 +6105,12 @@ class Backend(QObject):
             fname = _safe_file_name(file_name) or "Indicator.js"
             base = fname.rsplit(".", 1)[0]
             src = {"fileName": fname, "kind": kind, "code": code or ""}
-            src_path = self._write_entry_to_disk(src)   # حفظ المصدر أولًا (مثل حفظ .mq5 قبل الترجمة)
-            # مغلف مشفر: الكود + قائمة المعرفات المرخصة — المفتاح خارج الملف تمامًا
+            src_path = self._write_entry_to_disk(src)   # Save the source first (like saving .mq5 before compiling)
+            # Encrypted envelope: the code + the licensed ID list — the key stays completely outside the file
             env = {"t": "badi-ind", "name": base, "license": ids,
                    "created": int(time.time()), "code": code or ""}
-            # المؤشر المدفوع (طلب المستخدم): خادم المبرمج + معرف المؤشر عنده — يُدمان داخل
-            # المغلف المشفر نفسه فلا يمكن لأي سكريبت تغييرهما، والتحكم لاحقًا من الخادم فقط
+            # Paid indicator (user request): the developer server + the indicator ID on it — both are embedded
+            # inside the encrypted envelope itself so no script can change them; control later comes from the server only
             if str(paid_server or "").strip() or str(paid_id or "").strip():
                 pm = _norm_paid_manifest({"id": paid_id, "server": paid_server})
                 if not pm:
@@ -6430,7 +6121,7 @@ class Backend(QObject):
             path = os.path.join(d, base + ".badi")
             with open(path, "wb") as fh:
                 fh.write(blob)
-            self.syncDiskFiles()        # يُدرج الملف المشفر في القائمة بجوار ملفه الأصلي فورًا
+            self.syncDiskFiles()        # Inserts the encrypted file into the list next to its original immediately
             return json.dumps({"ok": True, "path": path, "src": src_path or ""})
         except BADIError as e:
             return json.dumps({"ok": False, "error": BADI_MSGS[lang].get(str(e), str(e))})
@@ -6439,7 +6130,7 @@ class Backend(QObject):
 
     @staticmethod
     def _parse_license_ids(raw):
-        """قائمة معرفات المشترين من نص مفصول بفواصل/مسافات — None إذا كانت الصيغة خاطئة."""
+        """Buyer ID list from comma/space-separated text — None when the format is wrong."""
         ids, seen = [], set()
         for tok in re.split(r"[,;\s]+", str(raw or "")):
             tok = tok.strip().upper()
@@ -6454,8 +6145,8 @@ class Backend(QObject):
 
     @Slot(str, result=str)
     def badiOpenName(self, name):
-        """فتح مؤشر مشفر من قائمة BadiCharts بالنقر عليه: فك التشفير داخل الذاكرة
-        بمفتاح التطبيق + فحص QuickJS — النتيجة JSON (كود جاهز للإضافة للمحرر)."""
+        """Open an encrypted indicator from the BadiCharts list by clicking it: decrypt in memory
+        with the app key + QuickJS check — result is JSON (code ready to add to the editor)."""
         lang = self._lang
         try:
             nm = _safe_file_name(name)
@@ -6471,11 +6162,11 @@ class Backend(QObject):
                 blob = fh.read()
             plain = BADI.decrypt(blob)
             code, lic, pmanifest, pname = _badi_payload(plain)
-            # بوابة الترخيص (طلب المستخدم): معرف المشتري المدمج يجب أن يطابق معرف هذا الجهاز
+            # Licensing gate (user request): the embedded buyer ID must match this device ID
             if _badi_license_denied(lic):
                 return json.dumps({"ok": False, "error": BADI_MSGS[lang]["license"] + _get_user_id()})
-            # بوابة المؤشرات المدفوعة (طلب المستخدم): تسجيل السجل في القاعدة المحمية
-            # + منع الفتح تمامًا عند انتهاء الاشتراك أو إيقاف المبرمج للمؤشر من خادمه
+            # Paid-indicators gate (user request): register the record in the protected database
+            # + block opening entirely when the subscription expired or the developer disabled the indicator from his server
             if pmanifest:
                 try:
                     paid_register(pmanifest, pname)
@@ -6497,7 +6188,7 @@ class Backend(QObject):
 
     @Slot(str, result=str)
     def badiImport(self, url):
-        """استيراد ملف .badi: فك التشفير بمفتاح التطبيق داخل الذاكرة + فحص QuickJS — النتيجة JSON."""
+        """Import a .badi file: decrypt with the app key in memory + QuickJS check — result is JSON."""
         lang = self._lang
         try:
             p = url
@@ -6512,11 +6203,11 @@ class Backend(QObject):
                 blob = fh.read()
             plain = BADI.decrypt(blob)
             code, lic, pmanifest, pname = _badi_payload(plain)
-            # بوابة الترخيص (طلب المستخدم): معرف المشتري المدمج يجب أن يطابق معرف هذا الجهاز
+            # Licensing gate (user request): the embedded buyer ID must match this device ID
             if _badi_license_denied(lic):
                 return json.dumps({"ok": False, "error": BADI_MSGS[lang]["license"] + _get_user_id()})
-            # بوابة المؤشرات المدفوعة (طلب المستخدم): تسجيل السجل في القاعدة المحمية
-            # + منع الفتح تمامًا عند انتهاء الاشتراك أو إيقاف المبرمج للمؤشر من خادمه
+            # Paid-indicators gate (user request): register the record in the protected database
+            # + block opening entirely when the subscription expired or the developer disabled the indicator from his server
             if pmanifest:
                 try:
                     paid_register(pmanifest, pname)
@@ -6536,43 +6227,43 @@ class Backend(QObject):
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)[:120]})
 
-    # ---------- لقطات الشاشة ----------
-    # ملحوظة أمان: لا توجد أي وصلة تُخرج مفتاح BADI من التطبيق — لا نسخ ولا حفظ ولا إرسال.
+    # ---------- Screenshots ----------
+    # Security note: no path of any kind exports the BADI key out of the app — no copy, no save, no send.
     @Slot(str)
     def saveShot(self, dataUrl):
         self.chartShot(dataUrl)
 
-    # ---------- الحافظة (احتياط للصق: يتيح للـ JS قراءة الحافظة عبر الجسر إن فشل navigator.clipboard) ----------
+    # ---------- Clipboard (paste fallback: lets JS read the clipboard through the bridge if navigator.clipboard fails) ----------
     @Slot(result=str)
     def clipboardText(self):
         return QGuiApplication.clipboard().text()
 
     @Slot(str)
     def copyText(self, text):
-        """نسخ نص إلى حافظة الجهاز — لمعرّف المستخدم في الشريط السفلي (طلب المستخدم)."""
+        """Copy text to the device clipboard — for the user ID in the bottom bar (user request)."""
         try:
             QGuiApplication.clipboard().setText(str(text or ""))
         except Exception:
             pass
 
-    # ---------- معرّف المستخدم الثابت BADI-XXXX-XXXX-XXXX (طلب المستخدم) ----------
+    # ---------- Fixed user ID BADI-XXXX-XXXX-XXXX (user request) ----------
     userId = Property(str, lambda self: _get_user_id(), constant=True)
-    """معرّف هذا الجهاز الثابت — يُعرض في الشريط السفلي ويُستخدم لترخيص المؤشرات المشفرة."""
+    """This device fixed ID — shown in the bottom bar and used to license encrypted indicators."""
 
-    # ---------- المؤشرات المدفوعة: بطاقة الإشعارات + قناة تحكم المبرمج (طلب المستخدم) ----------
+    # ---------- Paid indicators: notification card + developer control channel (user request) ----------
     @Property(list, notify=notifChanged)
     def notifs(self):
-        """قائمة إشعارات البطاقة الصغيرة — لا إشعارات جاهزة: المبرمج يرسلها من خادمه."""
+        """Notification list of the small card — no ready-made notifications: the developer sends them from his server."""
         return self._notifs
 
     @Property(int, notify=notifChanged)
     def notifsUnread(self):
-        """عدد غير المقروء — للشارة الحمراء على زر الإشعارات."""
+        """Unread count — for the red badge on the notifications button."""
         return sum(1 for n in self._notifs if not n.get("read"))
 
     @Slot()
     def notifsMarkAll(self):
-        """فتح البطاقة يعلم الكل مقروءًا فتختفي الشارة الحمراء."""
+        """Opening the card marks everything read, so the red badge disappears."""
         ch = False
         for n in self._notifs:
             if not n.get("read"):
@@ -6583,13 +6274,13 @@ class Backend(QObject):
 
     @Slot()
     def notifsClear(self):
-        """مسح كل الإشعارات من البطاقة."""
+        """Clear all notifications from the card."""
         if self._notifs:
             self._notifs = []
             self.notifChanged.emit()
 
     def _notif_push(self, text, ind=""):
-        """إشعار جديد: نص فقط ≤300 حرف — لا HTML ولا روابط ملفات (طلب المستخدم: تشديد الحماية)."""
+        """New notification: text only, ≤300 chars — no HTML and no file links (user request: hardened protection)."""
         t = re.sub(r"[\x00-\x1f]", " ", str(text or "")).strip()[:300]
         if not t:
             return
@@ -6600,9 +6291,9 @@ class Backend(QObject):
         self.notifChanged.emit()
 
     def _paid_poll(self):
-        """قناة تحكم المبرمج عبر خادمه (طلب المستخدم): استطلاع GET صغير لكل مؤشر مدفوع،
-        استجابة JSON فقط ≤16KB وأوامر بيضاء فقط — لا رفع ولا سحب ملفات إطلاقًا،
-        وأي استجابة تحوي ملفات/base64 → رفض كامل + حظر الخادم 10 دقائق."""
+        """Developer control channel through his server (user request): a small GET poll per paid indicator,
+        JSON response only, ≤16KB, allow-listed commands only — no file upload or download ever,
+        and any response containing files/base64 → full rejection + a 10-minute server ban."""
         try:
             recs = paid_records()
             today = _today_iso()
@@ -6629,7 +6320,7 @@ class Backend(QObject):
                         self._paid_block[rid] = time.time() + 600
                         continue
                     txt = raw.decode("utf-8", "ignore")
-                    # حماية صارمة: أي أثر ملفات/base64 في الاستجابة → رفض + حظر الخادم
+                    # Strict protection: any trace of files/base64 in the response → reject + ban the server
                     if re.search(r"base64|data:|file://|content-disposition|multipart", txt, re.I):
                         self._paid_block[rid] = time.time() + 600
                         continue
@@ -6641,12 +6332,12 @@ class Backend(QObject):
                         continue
                     self._paid_apply(rid, rec, data["cmds"])
                 except Exception:
-                    continue   # الخادم غير متاح — بلا إزعاج للمستخدم
+                    continue   # Server unavailable — no user annoyance
         except Exception:
             pass
 
     def _paid_apply(self, rid, rec, cmds):
-        """تنفيذ الأوامر البيضاء التي قررتها القاعدة: تشغيل/إيقاف عبر الجسر + إشعارات نصية."""
+        """Execute the allow-listed commands decided by the database: enable/disable through the bridge + text notifications."""
         try:
             toggles, notes = paid_apply_commands(rid, rec, cmds)
             for nm, on in toggles:
@@ -6658,8 +6349,8 @@ class Backend(QObject):
             pass
 
     def _paid_watch(self):
-        """مراقبة الاشتراك محليًا من القاعدة المحمية (طلب المستخدم): تذكير قبل الانتهاء
-        بـ 7/3/1 يوم، وعند الانتهاء: إشعار + إيقاف المؤشر حتى يجدد المبرمج من خادمه."""
+        """Monitor the subscription locally from the protected database (user request): a reminder before expiry
+        by 7/3/1 days, and at expiry: a notification + the indicator stops until the developer renews it from his server."""
         try:
             today = _today_iso()
             for rid, rec in list(paid_records().items()):
@@ -6689,8 +6380,8 @@ class Backend(QObject):
 
     @Slot(result=str)
     def openBadiDir(self):
-        """فتح مجلد BadiCharts على القرص (Indicators + Tools) — المستخدم يضع فيه
-        المؤشرات والأدوات مباشرة فيتعرّف عليها التطبيق تلقائيًا (طلب المستخدم)."""
+        """Open the BadiCharts folder on disk (Indicators + Tools) — the user drops
+        indicators and tools directly into it and the app recognizes them automatically (user request)."""
         try:
             _ensure_badi_dirs()
             QDesktopServices.openUrl(QUrl.fromLocalFile(BADI_DIR))
@@ -6698,7 +6389,7 @@ class Backend(QObject):
         except Exception:
             return ""
 
-    # ---------- الأيقونات والشعار ----------
+    # ---------- Icons and logo ----------
     @Slot(str, bool, result=str)
     def logo(self, name, dark):
         return logo_uri(name, dark)
@@ -6709,18 +6400,18 @@ class Backend(QObject):
 
     @Slot(bool, result=str)
     def mark(self, dark):
-        """علامة BadiCharts (الشمعتان فقط) — لصفحة الدخول الجديدة."""
+        """BadiCharts mark (the two candles only) — for the new login page."""
         p = LOGO_PAL[bool(dark)]
         svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="8 16 76 76">'
                + ICON_SVG.format(**p) + '</svg>')
         return "data:image/svg+xml;utf8," + urllib.parse.quote(svg)
-# ---------------------------------------------------------------- الواجهة (QML)
-# ---------------------------------------------------------------- واجهة الويب المدمجة (HTML داخل التطبيق)
-# الشارت هنا هو مكتبة BADI-CHARTS-V2 v2.13.0 نفسها والمحرر هو Monaco — كلاهما داخل صفحة HTML
-# تُكتب بجانب التطبيق عند الإقلاع وتُستعرض داخل النافذة عبر QtWebEngine.
+# ---------------------------------------------------------------- UI (QML)
+# ---------------------------------------------------------------- Embedded web UI (HTML inside the app)
+# The chart here is the BADI-CHARTS-V2 v2.17.1 library itself and the editor is Monaco — both inside an HTML page
+# written next to the app at boot and displayed inside the window through QtWebEngine.
 
 
-# يُحقن قبل سكربت الصفحة: أعلام التضمين + ملفات المستخدم + إخفاء أدوات السوق المكررة
+# Injected before the page script: embedding flags + user files + hiding the duplicated market tools
 BRIDGE_PRE = r"""<script>
 /* BadiCharts Studio — desktop bridge (pre) */
 window.__BADI_EMBEDDED = true;
@@ -6733,7 +6424,7 @@ window.__badiThemeKit = (function () {
     var n = parseInt(h, 16) || 0;
     return "rgba(" + ((n >> 16) & 255) + "," + ((n >> 8) & 255) + "," + (n & 255) + "," + a + ")";
   }
-  /* ألوان صفحة الويب ← ألوان تطبيق سطح المكتب (تتبعها وتتغير معها مباشرة) */
+  /* Web page colors ← desktop app colors (they follow them and change together directly) */
   function applyVars(t) {
     if (!t || !t.c) return;
     var s = document.documentElement.style, c = t.c;
@@ -6752,7 +6443,7 @@ window.__badiThemeKit = (function () {
     s.setProperty("--violet", c.g2);
     s.setProperty("--ok", c.good);
     s.setProperty("--err", c.bad);
-    /* شريط التمرير يتكيف مع الثيم: شبه أسود على الداكن وشبه أبيض على الفاتح (طلب المستخدم) */
+    /* The scrollbar adapts to the theme: near-black on dark and near-white on light (user request) */
     s.setProperty("--sbar", t.dark ? "#2e333c" : "#ccd4df");
     s.setProperty("--sbar-h", t.dark ? "#454b56" : "#aeb9c8");
     if (t.dark) {
@@ -6776,7 +6467,7 @@ window.__badiThemeKit = (function () {
     var m = document.querySelector('meta[name="color-scheme"]');
     if (m) m.setAttribute("content", t.dark ? "dark" : "light");
   }
-  /* خريطة ثيم الشارت (BADI-CHARTS setTheme) من ألوان التطبيق */
+  /* Chart theme map (BADI-CHARTS setTheme) from the app colors */
   function chartTheme(t) {
     if (!t || !t.c) return null;
     var c = t.c, dark = !!t.dark;
@@ -6796,7 +6487,7 @@ window.__badiThemeKit = (function () {
       currentPriceBull: c.good, currentPriceBear: c.bad
     };
   }
-  /* ثيم Monaco من ألوان التطبيق */
+  /* Monaco theme from the app colors */
   function monTheme(t) {
     if (!t || !t.c) return null;
     var c = t.c, dark = !!t.dark;
@@ -6836,16 +6527,16 @@ html.embedded #indBtn{display:inline-flex!important;align-items:center}
 html.embedded #shotBtn{display:grid!important}
 html.embedded .modal-opts{grid-template-columns:repeat(2,1fr)}</style>"""
 
-# يُحقن بعد سكربت الصفحة: جسر Python ↔ الصفحة
+# Injected after the page script: the Python ↔ page bridge
 BRIDGE_POST = r"""<script>
 /* ═══════════════ BadiCharts Studio — desktop bridge (post) ═══════════════
-   يربط صفحة HTML (شارت BADI-CHARTS v2.13.0 + محرر Monaco) بمحرك Python:
-   • الشموع تُدفع من Python (setCandles / pushTick) بدل المحاكاة المحلية
-   • مؤشرات Python تُرسم عبر pyMeta / setPy
-   • ملفات المستخدم تُزامَن مع التطبيق عبر BADI::files
-   • إشارات المؤشرات (signal) تُرسل إلى Python عبر BADI::signal
-   • لقطة الشارت تُرسل عبر BADI::shot عند الطلب
-   • ثيم التطبيق (داكن/فاتح) يُطبَّع على الصفحة فوراً عبر setTheme
+   connects the HTML page (BADI-CHARTS v2.17.1 chart + Monaco editor) to the Python engine:
+   • candles are pushed from Python (setCandles / pushTick) instead of local simulation
+   • Python indicators are drawn through pyMeta / setPy
+   • user files sync with the app through BADI::files
+   • indicator signals (signal) are sent to Python through BADI::signal
+   • the chart screenshot is sent through BADI::shot on demand
+   • the app theme (dark/light) is applied to the page immediately via setTheme
    ════════════════════════════════════════════════════════════════════════ */
 (function () {
 "use strict";
@@ -6855,14 +6546,14 @@ var SIG_DEFS = [];
 var SIG_SEEN = {};
 var PY = {};
 var PY_STARTED = {};
-/* BADI: المؤشرات المشفرة المحمّلة داخليًا — الكود لا يدخل قائمة الملفات ولا المحرر */
+/* BADI: encrypted indicators loaded internally — the code never enters the file list or the editor */
 var HID_IND = {};
 
 function send(cmd, obj) {
   try { console.log("BADI::" + cmd + " " + (typeof obj === "string" ? obj : JSON.stringify(obj))); } catch (e) {}
 }
-/* صفحة الاستوديو (سكربت الصفحة الرئيسي) تُبلّغ سطح المكتب عبر هذه البوابة:
-   حذف عملة من الشريط (×) وتبديل العملة بالنقر على الشريحة */
+/* The studio page (main page script) reports to the desktop through this gateway:
+   removing a currency from the strip (×) and switching the currency by clicking a chip */
 window.__badiSend = send;
 function reportFiles() {
   try {
@@ -6875,7 +6566,7 @@ function reportFiles() {
   } catch (e) {}
 }
 
-/* ---- شموع بصيغة مزدوجة: {t,o,h,l,c,v} ↔ {time,open,high,low,close,volume} ---- */
+/* ---- Candles in dual format: {t,o,h,l,c,v} ↔ {time,open,high,low,close,volume} ---- */
 function norm1(c) {
   if (!c) return c;
   if (c.time !== undefined && c.close !== undefined) {
@@ -6898,7 +6589,7 @@ function forceRecalc() {
   try {
     var pr = window.__badiPrimary ? window.__badiPrimary() : null;
     if (pr && pr.dataArr && pr.dataArr.length && pr.chart) {
-      pr.chart.update(Object.assign({}, pr.dataArr[pr.dataArr.length - 1]));   // نسخة — chart.update قد يعدّل الكائن
+      pr.chart.update(Object.assign({}, pr.dataArr[pr.dataArr.length - 1]));   // a copy — chart.update may mutate the object
     }
   } catch (e) {}
 }
@@ -6907,18 +6598,18 @@ function runSignals() {
   var pr = window.__badiPrimary ? window.__badiPrimary() : null;
   var dd = pr ? pr.dataArr : null;
   if (!dd || !dd.length) return;
-  if (Object.keys(SIG_SEEN).length > 4000) SIG_SEEN = {};   /* تنظيف دوري لمفاتيح التكرار */
+  if (Object.keys(SIG_SEEN).length > 4000) SIG_SEEN = {};   /* periodic cleanup of the dedup keys */
   for (var i = 0; i < SIG_DEFS.length; i++) {
     var s = SIG_DEFS[i];
     try {
       var v = s.def.calculate(dd, s.def.settings || {});
       var sig = s.def.signal(dd, v, s.def.settings || {});
       if (sig && sig.dir) {
-        /* chats = معرف المحادثة يأتي من المؤشر نفسه (طلب المستخدم) */
+        /* chats = the chat ID comes from the indicator itself (user request) */
         send("signal", { id: s.id, label: String(s.fileName || s.def.label || s.id),
                          dir: String(sig.dir), price: Number(sig.price || dd[dd.length - 1].close),
                          chats: String(sig.chats || "") });
-        /* نفس الإشارة تظهر في قائمة الإشارات يسار الشارت (بدون تكرار لنفس الشمعة) */
+        /* the same signal shows in the signals list left of the chart (no duplicate for the same candle) */
         try {
           if (window.__badiPushSignal) {
             var ck = String(s.id) + "|" + String(sig.dir) + "|" + String(dd[dd.length - 1].time);
@@ -6944,13 +6635,13 @@ function findFile(id) {
   return null;
 }
 
-/* ═══ ماسح الإشارات متعدد العملات (طلب المستخدم) ═══
-   المؤشر يحدد نطاق عملاته بإعداد scope في settings:
-   • scope: "added" → إشارات العملات المضافة إلى الشريط فقط
-   • scope: "high"  → العملات ذات نسبة الدفع الأعلى (settings.minPayout — ليست شرطًا تكون مضافة)
-   • scope: "all"   → كل العملات إذا أراد المستخدم
-   بدونه يعمل المؤشر على عملة الشارت فقط كما هو معتاد. الماسح يعمل كل ٣ ثوانٍ
-   على بيانات محاكاة محلية لكل عملة، ويرسل الإشارة لبطاقتها وإشعارات تلغرام. */
+/* ═══ Multi-currency signal scanner (user request) ═══
+   the indicator declares its currency scope with the scope setting in settings:
+   • scope: "added" → signals for the currencies added to the strip only
+   • scope: "high"  → the currencies with the highest payout (settings.minPayout — they do not have to be added)
+   • scope: "all"   → every currency if the user wants
+   without it the indicator runs on the chart currency only, as usual. The scanner runs every 3 seconds
+   on local simulation data per currency, and sends the signal to its card and the Telegram notifications. */
 function scanScopeAssets(scope, minPay) {
   if (scope === "added") return addedNames().slice();
   var bd = (typeof BOARD !== "undefined" && BOARD) ? BOARD : [];
@@ -6973,7 +6664,7 @@ function scanSignals() {
     var targets = scanScopeAssets(scope, s.def.settings.minPayout).slice(0, 40);
     for (var j = 0; j < targets.length; j++) {
       var nm = targets[j];
-      if (pr && nm === pr.asset) continue;          /* عملة الشارت تغطيها runSignals */
+      if (pr && nm === pr.asset) continue;          /* the chart currency is covered by runSignals */
       try {
         var cd = generateCandles(assetCfg(nm), tf, 300);
         if (!cd || cd.length < 30) continue;
@@ -6999,12 +6690,12 @@ function scanSignals() {
 }
 setInterval(function () { try { scanSignals(); } catch (e) {} }, 3000);
 
-/* ---- BADI: المؤشر المشفر يعمل داخليًا فقط — طلب المستخدم ----
-   الكود يُفك في ذاكرة بايثون بمفتاح التطبيق ثم يُمرّر هنا مباشرة:
-   • لا يُضاف لقائمة الملفات ولا يُفتح في المحرر ولا يُحفظ في أي مكان
-   • بطاقة المؤشر على الشارت بلا زر تعديل (إخفاء/إعدادات/حذف فقط)
-   • إشاراته (signal) تعمل مثل أي مؤشر آخر عبر SIG_DEFS
-   • لا يمكنه الوصول لملفات التطبيق — فحص الخطر يجري في QuickJS قبل الوصول هنا */
+/* ---- BADI: the encrypted indicator runs internally only — user request ----
+   the code is decrypted in Python memory with the app key then passed here directly:
+   • it is never added to the file list, never opened in the editor and never saved anywhere
+   • its card on the chart has no edit button (hide/settings/delete only)
+   • its signals (signal) work like any other indicator through SIG_DEFS
+   • it cannot reach app files — the danger scan runs in QuickJS before reaching here */
 function loadHiddenIndicator(o) {
   try {
     var id = String((o && o.id) || "");
@@ -7012,10 +6703,10 @@ function loadHiddenIndicator(o) {
     if (!id || !o || !o.code) return;
     var ch = aChart();
     if (!ch) { log("err", name + ": the chart is not ready yet — open a pane and retry"); return; }
-    /* مرة واحدة لكل شارت: التقاط removeIndicator لتنظيف إشارات المؤشر المحذوف */
+    /* Once per chart: intercept removeIndicator to clean up the removed indicator signals */
     if (!ch.__badiHidPatch) {
       ch.__badiHidPatch = true;
-      ch.__badiOrigRem = ch.removeIndicator.bind(ch);     /* الأصل يُحفظ على الشارت نفسه */
+      ch.__badiOrigRem = ch.removeIndicator.bind(ch);     /* the original is kept on the chart itself */
       ch.removeIndicator = function (rid) {
         if (HID_IND[rid]) {
           SIG_DEFS = SIG_DEFS.filter(function (x) { return x.id !== rid; });
@@ -7025,7 +6716,7 @@ function loadHiddenIndicator(o) {
       };
     }
     var origRem = ch.__badiOrigRem;
-    if (HID_IND[id]) {                    /* إعادة تحميل نفس المؤشر يستبدل النسخة القديمة */
+    if (HID_IND[id]) {                    /* reloading the same indicator replaces the old copy */
       try { origRem(id); } catch (e) {}
       SIG_DEFS = SIG_DEFS.filter(function (x) { return x.id !== id; });
       delete HID_IND[id];
@@ -7038,7 +6729,7 @@ function loadHiddenIndicator(o) {
     if (typeof r.def.render !== "function" && typeof r.def.calculate === "function")
       r.def.render = defaultLineRender;
     var g = guardDef({ id: id, fileName: name }, r.def);
-    ch.addIndicator(g, { icons: ["hide", "settings", "delete"] });   /* بلا زر التعديل — الكود لا يُفتح */
+    ch.addIndicator(g, { icons: ["hide", "settings", "delete"] });   /* no edit button — the code never opens */
     HID_IND[id] = { fileName: name };
     if (typeof r.def.signal === "function")
       SIG_DEFS.push({ id: id, fileName: name, def: r.def });
@@ -7056,7 +6747,7 @@ function pyStop(f) {
   send("stopy", { id: f.id });
 }
 
-/* ---- رقعات تُطبَّق قبل إقلاع الصفحة ---- */
+/* ---- Patches applied before the page boots ---- */
 var origLoadState = loadState;
 loadState = function () {
   origLoadState();
@@ -7140,8 +6831,8 @@ saveNow = function () { origSaveNow(); reportFiles(); };
 var origRenderEdToggle = renderEdToggle;
 renderEdToggle = function () { origRenderEdToggle(); send("editor", editorOpen ? "1" : "0"); };
 
-/* loadData أُزيلت من الصفحة — بيانات اللوحات محلية للوحات غير المغذاية،
-   واللوحة المغذاية (المطابقة لأصل المحرك) تستقبل شموعها عبر setCandles/pushTick */
+/* loadData removed from the page — panel data is local for non-fed panels,
+   and the fed panel (matching the engine asset) receives its candles via setCandles/pushTick */
 
 var origBuildStatic = buildStatic;
 buildStatic = function () {
@@ -7153,16 +6844,16 @@ buildStatic = function () {
         return '<button class="tf" data-tf="' + t + '">' + t + "</button>"; }).join("");
       document.querySelectorAll(".tf").forEach(function (b) {
         b.classList.toggle("on", b.dataset.tf === (mk.tf || "")); });
-      /* إعادة تطبيق حالة طي الفريمات بعد إعادة بناء الأزرار (طلب المستخدم) */
+      /* Re-apply the frames collapse state after rebuilding the buttons (user request) */
       if (typeof applyTfCollapse === "function") applyTfCollapse();
       live = (mk.live === undefined) ? true : !!mk.live;
     }
     window.CUR_ASSET = String((mk && mk.asset) || "");
   } catch (e) {}
 };
-/* الشريط الثاني (صفحة الويب): الفريم مملوك لمحرك Python في وضع سطح المكتب،
-   وأزرار بوت تلجرام/الخروج نُقلت إليه من الشريط العلوي للتطبيق.
-   الوضع الليلي/النهاري في الترويسة العليا فقط — والبث الحي يعمل دائمًا بلا زر (طلب المستخدم) */
+/* The second bar (web page): the timeframe is owned by the Python engine in desktop mode,
+   and the Telegram bot/logout buttons moved to it from the app top bar.
+   dark/light stays in the app top bar only — and the live feed always runs with no button (user request) */
 (function wireToolbar() {
   function click(id, fn) { var el = document.getElementById(id); if (el) el.addEventListener("click", fn); }
   click("indBtn", function () { send("page", "1"); });
@@ -7170,7 +6861,7 @@ buildStatic = function () {
   var tg = document.getElementById("tfGroup");
   if (tg) tg.addEventListener("click", function (e) {
     var b = e.target.closest(".tf");
-    /* الفريم يُدار من بايثون فقط للوحة المغذاية من المحرك — اللوحات الأخرى محلية */
+    /* The timeframe is managed by Python only for the engine-fed panel — other panels are local */
     var st = window.__badiPaneState ? window.__badiPaneState() : { active: 0, primary: 0 };
     if (b && st.active === st.primary) send("tf", b.dataset.tf);
   });
@@ -7180,12 +6871,12 @@ buildStatic = function () {
 
 window.addEventListener("beforeunload", function () { reportFiles(); });
 
-/* ---- توحيد بيئة المؤشرات (طبقة حماية لكل الأكواد) ----
-   شموع الشارت الداخلية تصل بالمفاتيح الطويلة (close/high/low) فقط، وأكواد المستخدم
-   والقوالب القديمة تستعمل المختصرة (c/h/l) — وTHEME في المكتبة v2.9.0 لا يحوي
-   good/bad/g1/g2/sub كما لا يوفر barW. نلفّ compileScript بحيث:
-   1) يصل calculate/signal شموع تحمل المجموعتين معًا
-   2) يصل render بمساعد h مُوسَّع (THEME كامل + barW) */
+/* ---- Unify the indicator environment (a protection layer for all code) ----
+   the chart internal candles arrive with the long keys (close/high/low) only, while user code
+   and old templates use the short ones (c/h/l) — and THEME in library v2.9.0 lacks
+   good/bad/g1/g2/sub and does not provide barW. We wrap compileScript so that:
+   1) calculate/signal receive candles carrying both key sets
+   2) render receives an extended h helper (full THEME + barW) */
 function patchIndicatorEnv() {
   if (window.__IND_ENV_PATCHED__) return;
   window.__IND_ENV_PATCHED__ = 1;
@@ -7236,17 +6927,17 @@ function patchIndicatorEnv() {
   } catch (e) {}
 }
 
-/* ---- مساعدات إضافية للمكتبة القديمة (stoch/atr) + API السوق للمؤشرات ---- */
+/* ---- Extra helpers for the old library (stoch/atr) + the market API for indicators ---- */
 function augmentIndicators() {
   try {
     window.Indicators = window.Indicators || {};
-    /* ═══ API السوق للمؤشرات (طلب المستخدم) ═══
-       المؤشر المبرمَج من المستخدم يستطيع الحصول على:
-       • Indicators.market.info([الزوج])  → {name, payout, open, otc} — نسبة الدفع + السوق مفتوح أم مغلق
-       • Indicators.market.assets()       → كل العملات مع نسبة الدفع وحالة السوق
-       • Indicators.market.added()        → العملات المضافة إلى الشريط فقط
-       • Indicators.market.current()      → عملة الشارت النشط الآن
-       حالة السوق: OTC والعملات الرقمية مفتوحة دائمًا — والفوركس مفتوح من الأحد 22:00 إلى الجمعة 22:00 UTC */
+    /* ═══ Market API for indicators (user request) ═══
+       a user-programmed indicator can obtain:
+       • Indicators.market.info([pair])  → {name, payout, open, otc} — the payout + whether the market is open
+       • Indicators.market.assets()       → every currency with its payout and market state
+       • Indicators.market.added()        → only the currencies added to the strip
+       • Indicators.market.current()      → the active chart currency right now
+       market state: OTC and crypto are always open — forex is open Sunday 22:00 to Friday 22:00 UTC */
     window.Indicators.market = {
       info: badiMarketInfo,
       current: function () { return String((aPane() && aPane().asset) || CUR_ASSET || ""); },
@@ -7291,11 +6982,11 @@ function augmentIndicators() {
   } catch (e) {}
 }
 
-/* حالة السوق مفتوح أم مغلق (محاكاة محلية): OTC والرقمية دائمًا — الفوركس الأحد 22:00 → الجمعة 22:00 UTC */
+/* Market open/closed state (local simulation): OTC and crypto always — forex Sunday 22:00 → Friday 22:00 UTC */
 function badiMarketOpen(name) {
   var n = String(name || "");
-  if (n.indexOf("OTC") >= 0) return true;            /* أزواج OTC مفتوحة دائمًا */
-  if (/BTC|ETH/.test(n)) return true;                /* العملات الرقمية مفتوحة دائمًا */
+  if (n.indexOf("OTC") >= 0) return true;            /* OTC pairs are always open */
+  if (/BTC|ETH/.test(n)) return true;                /* crypto currencies are always open */
   var d = new Date(), day = d.getUTCDay(), h = d.getUTCHours() + d.getUTCMinutes() / 60;
   return !((day === 6) || (day === 5 && h >= 22) || (day === 0 && h < 22));
 }
@@ -7307,12 +6998,12 @@ function badiMarketInfo(name) {
            open: badiMarketOpen(n), otc: n.indexOf("OTC") >= 0 };
 }
 
-/* تُستدعى تزامنيًا قبل DOMContentLoaded حتى تغطّي ملفات الإقلاع نفسها */
+/* Called synchronously before DOMContentLoaded so it covers the boot files too */
 patchIndicatorEnv();
 augmentIndicators();
 
-/* ---- طبقة مؤشرات Python داخل الشارت ----
-   الاسم المعروض على الشارت = اسم الملف الذي اختاره المستخدم (بدون الامتداد) */
+/* ---- Python indicator layer inside the chart ----
+   the name shown on the chart = the file name the user chose (without the extension) */
 function pyRegister(id, meta, fileName) {
   var label = String(fileName || (meta && meta.label) || id).replace(/\.(js|py)$/i, "");
   if (PY[id]) {
@@ -7362,7 +7053,7 @@ function pyRegister(id, meta, fileName) {
   forceRecalc();
 }
 
-/* ---- ثيم التطبيق → الصفحة: متغيرات CSS + ألوان الشارت + ثيم Monaco ---- */
+/* ---- App theme → page: CSS variables + chart colors + Monaco theme ---- */
 function defineMonAppThemes() {
   try {
     if (!window.monaco || !window.__badiThemeKit) return;
@@ -7376,18 +7067,18 @@ window.__badiDefineMonThemes = defineMonAppThemes;
 function applyAppTheme(t) {
   if (!t || !t.c || !window.__badiThemeKit) return;
   window.__BADI_APP_THEME__ = t;
-  /* لغة التطبيق تُمرَّر مع الثيم — شريط المعلومات السفلي يعرض متصل/مباشر بها */
+  /* The app language travels with the theme — the bottom info bar uses it for connected/live */
   if (t.lang) { window.__BADI_LANG__ = t.lang; try { document.documentElement.lang = t.lang; } catch (e) {} }
-  /* لغة التطبيق تغيّرت — حدّث تسميات تبويبا الإشارات/السجل والنصوص الفارغة */
+  /* The app language changed — refresh the Signals/History tab labels and the empty-state texts */
   try { if (typeof renderSignals === "function") renderSignals(); } catch (e) {}
   try { window.__badiThemeKit.applyVars(t); } catch (e) {}
   var ct = window.__badiThemeKit.chartTheme(t);
-  if (ct) ct = Object.assign({}, ct, window.__BADI_CHART_USER__ || {});   /* تخصيص المستخدم من الإعدادات فوق ألوان التطبيق */
+  if (ct) ct = Object.assign({}, ct, window.__BADI_CHART_USER__ || {});   /* user customization from Settings layered over the app colors */
   if (ct) window.__BADI_CHART_THEME__ = ct;
-  /* لون الشارت = لون التطبيق: يُطبَّق فورًا على كل اللوحات المفتوحة (ولوحة جديدة ترثه عند إنشائها) */
+  /* Chart color = app color: applied immediately to every open panel (and a new panel inherits it when created) */
   try {
     if (typeof panes !== "undefined" && panes && panes.forEach)
-      panes.forEach(function (p) { try { if (p.chart && typeof p.chart.setTheme === "function") p.chart.setTheme(ct); } catch (e) {} try { syncCdColor(p); } catch (e) {} });
+      panes.forEach(function (p) { try { if (p.chart && typeof p.chart.setTheme === "function") p.chart.setTheme(ct); } catch (e) {} });
   } catch (e) {}
   window.__BADI_MONACO_THEME__ = t.dark ? "badi-app-dark" : "badi-app-light";
   try {
@@ -7404,7 +7095,7 @@ function defineBadiApp() {
       try { if (window.__badiSetMarket) window.__badiSetMarket(m); } catch (e) {}
     },
     setAssets: function (list) {
-      /* قائمة العملات المضافة تديرها لوحة الإعدادات في التطبيق — تُدفع هنا وتُحدَّث الشرائح */
+      /* The added-currencies list is managed by the app settings panel — pushed here and the chips update */
       try {
         var arr = (typeof list === "string") ? JSON.parse(list) : (list || []);
         if (!Array.isArray(arr)) return;
@@ -7414,7 +7105,7 @@ function defineBadiApp() {
       } catch (e) {}
     },
     setSound: function (on) {
-      /* حالة أصوات الإشارات تُدار من لوحة إعدادات سطح المكتب أيضًا (طلب المستخدم) */
+      /* Signal sounds state is also managed from the desktop settings panel (user request) */
       try {
         soundOn = !!on;
         try { localStorage.setItem("badiSound", soundOn ? "1" : "0"); } catch (e) {}
@@ -7423,7 +7114,7 @@ function defineBadiApp() {
     },
     getSound: function () { return !!soundOn; },
     setStatusBar: function (on) {
-      /* إظهار/إخفاء شريط الحالة السفلي من لوحة الإعدادات (طلب المستخدم) */
+      /* Show/hide the bottom status bar from the settings panel (user request) */
       try {
         window.__BADI_UI__.sb = !!on;
         try { localStorage.setItem("badiStatusBar", window.__BADI_UI__.sb ? "1" : "0"); } catch (e) {}
@@ -7433,7 +7124,7 @@ function defineBadiApp() {
     },
     getStatusBar: function () { return !!(window.__BADI_UI__ && window.__BADI_UI__.sb); },
     setCd: function (on) {
-      /* إظهار/إخفاء العد التنازلي بجانب الشمعة الحية من لوحة الإعدادات (طلب المستخدم) */
+      /* Show/hide the countdown beside the live candle from the settings panel (user request) */
       try {
         window.__BADI_UI__.cd = !!on;
         try { localStorage.setItem("badiCd", window.__BADI_UI__.cd ? "1" : "0"); } catch (e) {}
@@ -7451,7 +7142,6 @@ function defineBadiApp() {
         if (!pr) return;
         pr.dataArr = normArr(arr || []);
         pr.chart.setData(pr.dataArr);
-        syncCdColor(pr);
         runSignals();
       } catch (e) { console.log("BADI::dbg setCandles ERR " + e); }
     },
@@ -7469,12 +7159,11 @@ function defineBadiApp() {
           } else pr.dataArr[pr.dataArr.length - 1] = k;
         }
         pr.chart.update(k);
-        syncCdColor(pr);
         runSignals();
       } catch (e) {}
     },
     setLive: function (on) {
-      /* البث الحي يعمل دائمًا الآن (طلب المستخدم) — يبقى مفعّلاً مهما وصل */
+      /* The live feed always runs now (user request) — it stays enabled no matter what arrives */
       live = true;
     },
     log: function (kind, text) { log(kind, text); },
@@ -7488,28 +7177,28 @@ function defineBadiApp() {
     runFile: function (id) { runFile(id); },
     stopFile: function (id) { toggleFile(id); },
     deleteFile: function (id) { deleteFile(id); },
-    /* إضافة مؤشر من صفحة المؤشرات إلى الشارت بالاسم (طلب المستخدم) */
+    /* Add an indicator from the indicators page to the chart by name (user request) */
     openRun: function (name) {
       try {
         var nm = String(name || "").toLowerCase();
         var f = files.find(function (x) { return String(x.fileName || "").toLowerCase() === nm && x.kind !== "badi"; });
         if (!f) return "no:" + name;
-        /* طلب المستخدم: زر الإضافة إلى الشارت يضيف المؤشر ويشغّله مباشرة —
-           لا يفتح المحرر إطلاقًا */
+        /* User request: the add-to-chart button adds the indicator and runs it immediately —
+           it never opens the editor */
         runFile(f.id, true);
         return "ok";
       } catch (e) { return "err"; }
     },
-    /* بيانات لقطة الشارت للمصغرة — يعيدها سطح المكتب عبر webCall (أضمن من الجسر للبيانات الكبيرة).
-       طلب المستخدم: لقطة المؤشر صافية بلا مؤشرات أخرى حتى لو كانت شغالة — تُخفى كل المؤشرات
-       الأخرى على الشارت المضيف، تُلتقط لقطة كاملة ثم يُعاد كل شيء كما كان في نفس الإطار */
+    /* Chart screenshot data for the thumbnail — returned by the desktop via webCall (safer than the bridge for large data).
+       user request: the indicator shot must be clean of other indicators even if they run — every other indicator
+       on the host chart is hidden, a full shot is captured, then everything is restored in the same frame */
     thumbData: function (name) {
       var NM = String(name || "").toLowerCase();
       var f = null;
       try {
         f = files.find(function (x) { return String(x.fileName || "").toLowerCase() === NM && x.kind !== "badi"; });
       } catch (e) {}
-      /* الشارت الذي يستضيف المؤشر نفسه — لا بالضرورة اللوحة النشطة */
+      /* The chart actually hosting the indicator — not necessarily the active panel */
       var host = null;
       if (f && f.id) {
         panes.forEach(function (p) {
@@ -7520,7 +7209,7 @@ function defineBadiApp() {
       if (!host) { try { host = aChart() || (panes[0] && panes[0].chart) || null; } catch (e) {} }
       var cv = host && host.canvas ? host.canvas : (window.__badiShotCanvas ? window.__badiShotCanvas() : null);
       if (!cv || cv.width < 60) return "";
-      /* إخفاء كل المؤشرات الأخرى قبل اللقطة (حتى لو كانت شغالة) */
+      /* Hide every other indicator before the shot (even if they are running) */
       var hidden = [];
       try {
         Array.from(host.activeIndicators).forEach(function (id) {
@@ -7528,10 +7217,10 @@ function defineBadiApp() {
           var s = host.indicatorStates ? host.indicatorStates.get(id) : null;
           if (s && s.visible !== false) { host.setIndicatorVisible(id, false); hidden.push(id); }
         });
-        host.render(performance.now());   /* إعادة رسم متزامنة بلا المؤشرات المخفية */
+        host.render(performance.now());   /* a synchronous redraw without the hidden indicators */
       } catch (e) {}
-      /* لقطة كاملة واضحة عالية الدقة (طلب المستخدم — الدقة أُرفعت): إعادة رسم حقيقية بدقة
-         مُضاعفة على backing الشارت نفسه بدل تكبير الصورة، ثم إعادة الدقة كما كانت */
+      /* A full sharp high-resolution shot (user request — resolution raised): a real redraw at
+         doubled resolution on the chart own backing instead of scaling the image, then the resolution is restored */
       var url = "";
       var d0 = (typeof host.dpr === "number" && host.dpr > 0) ? host.dpr : 1;
       try {
@@ -7550,14 +7239,14 @@ function defineBadiApp() {
           url = off.toDataURL("image/jpeg", 0.95);
         } catch (e2) {}
       }
-      /* إعادة الدقة وكل المؤشرات كما كانت فورًا */
+      /* Restore the resolution and every indicator as they were immediately */
       try { host.dpr = d0; } catch (e) {}
       hidden.forEach(function (id) { try { host.setIndicatorVisible(id, true); } catch (e) {} });
       try { host.render(performance.now()); } catch (e) {}
       return url;
     },
-    /* إعادة محاولة لقطة المصغرة عند فشل الأولى — حتى 5 مرات ثم يتوقف
-       (طلب المستخدم: اسم المؤشر يجب أن تُحفظ صورته ولو فشلت المحاولة الأولى) */
+    /* Retry the thumbnail shot if the first one fails — up to 5 attempts then stop
+       (user request: the indicator name must get its image even if the first attempt fails) */
     thumbRetry: function (name) {
       try {
         var key = String(name || "").toLowerCase();
@@ -7575,17 +7264,17 @@ function defineBadiApp() {
         var f = { id: fj.id, fileName: fj.fileName, kind: fj.kind || "indicator",
                   code: fj.code || "", enabled: false, createdAt: Date.now() };
         files.push(f);
-        /* طلب المستخدم: إضافة مؤشر من المكتبة بلا تشغيل تلقائي — يبقى مطفأً حتى يضغط المستخدم ▶ Run */
+        /* User request: adding a library indicator runs nothing automatically — it stays off until the user presses ▶ Run */
         openFile(f.id);
         scheduleSave();
       } catch (e) {}
     },
-    /* BADI: تشغيل مؤشر مشفر داخليًا — الكود لا يظهر للمستخدم إطلاقًا (طلب المستخدم) */
+    /* BADI: run an encrypted indicator internally — the code never shows to the user (user request) */
     loadHidden: function (fj) {
       try { loadHiddenIndicator((typeof fj === "string") ? JSON.parse(fj) : fj); } catch (e) {}
     },
     setFiles: function (list) {
-      /* دفع قائمة الملفات من التطبيق (بعد مزامنة مجلد BadiCharts) — مع حفظ التعديلات غير المحفوظة */
+      /* Push the file list from the app (after syncing the BadiCharts folder) — preserving unsaved edits */
       try {
         var arr = (typeof list === "string") ? JSON.parse(list) : (list || []);
         if (arr && Array.isArray(arr.files)) arr = arr.files;
@@ -7604,8 +7293,8 @@ function defineBadiApp() {
         renderTabs(); renderEdBar(); renderCodeArea();
       } catch (e) {}
     },
-    /* أمر التحكم البعيد من مبرمج المؤشر المدفوع عبر خادمه (طلب المستخدم):
-       تشغيل/إيقاف فقط — لا شيء آخر، ولا أي وصول لملفات أو للمفتاح من هذه القناة */
+    /* Remote control command from the paid-indicator developer via his server (user request):
+       enable/disable only — nothing else, and no access to files or the key through this channel */
     remoteSet: function (o) {
       try {
         o = (typeof o === "string") ? JSON.parse(o) : (o || {});
@@ -7629,7 +7318,7 @@ function defineBadiApp() {
         PY[id].values = series;
         PY[id].range = range;
         forceRecalc();
-        setTimeout(forceRecalc, 30);   // إعادة رسم ثانية بعد أن تصبح الشمعة الجديدة مرسومة
+        setTimeout(forceRecalc, 30);   // a second redraw after the new candle is actually drawn
       } catch (e) {}
     },
     pyError: function (id, err) {
@@ -7644,8 +7333,8 @@ function defineBadiApp() {
       try { if (PY[id] && window.__badiPCH()) { window.__badiPCH().removeIndicator(id); delete PY[id]; } } catch (e) {}
     },
     shot: function () {
-      /* لقطة الشارت بدقة أعلى (طلب المستخدم): إعادة رسم بدقة مُضاعفة مؤقتًا ثم
-         التصدير وإعادة الدقة كما كانت — تُستخدم لزر الكاميرا ومرفقات تلجرام */
+      /* Chart screenshot at higher resolution (user request): a temporary doubled-resolution redraw then
+         export and restore the original resolution — used by the camera button and Telegram attachments */
       try {
         var ch = (typeof aChart === "function") ? aChart() : null;
         var cv = ch && ch.canvas ? ch.canvas : (window.__badiShotCanvas ? window.__badiShotCanvas() : document.getElementById("chartCanvas"));
@@ -7660,7 +7349,7 @@ function defineBadiApp() {
     },
     sigResult: function (r) { try { if (window.__badiSigResult) window.__badiSigResult(r); } catch (e) {} },
     setChartTheme: function (ov) {
-      /* ألوان الشارت المخصصة من زر الإعدادات (أي لون بحرية) — قائمة استبدال كاملة، تُطبق فورًا */
+      /* Custom chart colors from the settings button (any color freely) — a full override list, applied immediately */
       try {
         if (!ov || typeof ov !== "object") return;
         window.__BADI_CHART_USER__ = Object.assign({}, ov);
@@ -7670,7 +7359,7 @@ function defineBadiApp() {
       } catch (e) {}
     },
     rescale: function () { rescaleNow(0); },
-    /* معرّف المستخدم الثابت BADI-XXXX-XXXX-XXXX — يُعرض في الشريط السفلي (طلب المستخدم) */
+    /* Fixed user ID BADI-XXXX-XXXX-XXXX — shown in the bottom bar (user request) */
     setUserId: function (id) {
       try {
         window.__BADI_UID__ = String(id || "");
@@ -7691,9 +7380,9 @@ function whenChart(cb, tries) {
   setTimeout(function () { whenChart(cb, (tries || 0) + 1); }, 60);
 }
 
-/* ---- إعادة حساب مقياس السعر عند ظهور الصفحة ----
-   أول setData قد يصل والصفحة مخفية (شاشة الدخول) فيُحسب النطاق على كانفس بعرض 0 —
-   نعيد setData مرة واحدة فقط عندما يكون النطاق منحلًا والصفحة ظاهرة (لكل اللوحات). */
+/* ---- Recalculate the price scale when the page becomes visible ----
+   the first setData may arrive while the page is hidden (login screen) so the range is computed on a zero-width canvas —
+   we re-run setData once only when the range is degenerate and the page is visible (for every panel). */
 function rescaleNow(tries) {
   try {
     if (!window.__badiPaneState || !window.__badiPaneState().n) return;
@@ -7717,7 +7406,7 @@ document.addEventListener("DOMContentLoaded", function () {
   augmentIndicators();
   whenChart(function () {
     defineBadiApp();
-    /* الجاهزية أولاً حتى يفتح المضيف بوابة webCall قبل بقية الرسائل */
+    /* Readiness first so the host opens the webCall gate before the rest of the messages */
     console.log("BADI::ready 1");
     reportFiles();
     for (var i = 0; i < files.length; i++) {
@@ -7733,24 +7422,17 @@ document.addEventListener("DOMContentLoaded", function () {
 </script>"""
 
 
-def _b64_decode(s):
-    raw = base64.b64decode("".join(s.split()))
-    if raw[:2] == b"\x1f\x8b":          # gzip (الصيغة القديمة)
-        raw = gzip.decompress(raw)
-    elif raw[:3] == b"\x5d\x00\x00":    # lzma alone (الصيغة الأصغر)
-        raw = lzma.decompress(raw)
-    return raw.decode("utf-8")
 
 
-# ---------------------------------------------------------------- شاشة الشعار (BadiCharts)
-# حركة ظهور الشعار نفسها المطلوبة تماماً: رسم الأيقونة خطاً خطاً + نبض الجسم +
-# صعود الحروف حرفاً حرفاً + لمعة العبور + ظهور السطر النصي (نسخة الديمو حرفياً).
+# ---------------------------------------------------------------- Splash screen (BadiCharts)
+# The exact requested logo reveal animation: drawing the icon stroke by stroke + body pulse +
+# letters rising one by one + the passing shine + the text line appearing (literally the demo version).
 SPLASH_HTML = r'''<!DOCTYPE html>
 <html lang="ar" dir="rtl">
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-        <title>BadiCharts — حركة ظهور الشعار</title>
+        <title>BadiCharts — Logo Reveal</title>
         <style>
             html,body {
                 height: 100%;
@@ -8052,11 +7734,9 @@ SPLASH_HTML = r'''<!DOCTYPE html>
 
 
 def build_embedded_html(boot_json, theme_json):
-    """صفحة الاستوديو المدمجة: studio.html + badi-chart.js المحلي + جسر سطح المكتب + ثيم التطبيق."""
+    """The embedded studio page: studio.html + the desktop bridge + the app theme.
+    The chart library loads directly from the official CDN link (owner request) — no local copy."""
     html = STUDIO_HTML
-    html = html.replace(
-        '<script src="https://cdn.jsdelivr.net/gh/salahbadi19/BADI-CHARTS-V2@v2.13.0/chart.js"></script>',
-        '<script src="badi-chart.js"></script>', 1)
     pre = BRIDGE_PRE.replace("__BOOT_JSON__", boot_json.replace("</", "<\\/"))
     pre = pre.replace("__THEME_JSON__", theme_json.replace("</", "<\\/"))
     html = html.replace("<body>", "<body>\n" + pre, 1)
@@ -8075,32 +7755,29 @@ def _write_if_changed(path, text):
         f.write(text)
 
 
-SPLASH_URL = ""   # يُضبط داخل ensure_web_files — رابط شاشة الشعار لصفحة QML
+SPLASH_URL = ""   # Set inside ensure_web_files — splash screen URL for the QML page
 
 
 def ensure_web_files(boot_json, theme_json):
-    """كتابة صفحة الويب + شاشة الشعار + مكتبة BADI المحلية بجانب التطبيق وإرجاع file:// URL."""
+    """Write the web page + the splash screen next to the app and return the file:// URL."""
     global SPLASH_URL
     html = build_embedded_html(boot_json, theme_json)
     try:
         dark = bool(json.loads(theme_json).get("dark"))
     except Exception:
         dark = True
-    # نفس ملف الديمو حرفياً — فقط ستيج الصفحة يأخذ ثيم التطبيق الحالي
-    # (تنبيه: الاستبدال على وسم الـ div نفسه — 'data-bg="light"' يظهر أيضاً في مُحدِّد CSS ويجب ألا يُلمس)
+    # Literally the same demo file — only the page stage takes the current app theme
+    # (caution: the replacement targets the div tag itself — 'data-bg="light"' also appears in a CSS selector and must stay untouched)
     splash = SPLASH_HTML.replace('<div class="stage" id="stage" data-bg="light">',
                                  '<div class="stage" id="stage" data-bg="' + ("dark" if dark else "light") + '">', 1)
-    lib = _b64_decode(BADI_LIB_B64)
     bases = [os.path.join(CFG_DIR, "web"),
              os.path.join(os.path.expanduser("~"), ".badi-charts", "web")]
     for base in bases:
         try:
             os.makedirs(base, exist_ok=True)
             hp = os.path.join(base, "studio.html")
-            lp = os.path.join(base, "badi-chart.js")
             sp = os.path.join(base, "splash.html")
             _write_if_changed(hp, html)
-            _write_if_changed(lp, lib)
             _write_if_changed(sp, splash)
             SPLASH_URL = QUrl.fromLocalFile(sp).toString()
             return QUrl.fromLocalFile(hp).toString()
@@ -8109,7 +7786,7 @@ def ensure_web_files(boot_json, theme_json):
     raise RuntimeError("cannot create the embedded web directory")
 
 
-# ---------------------------------------------------------------- الواجهة (QML)
+# ---------------------------------------------------------------- UI (QML)
 QML = r'''
 import QtQuick
 import QtQuick.Controls
@@ -8133,25 +7810,25 @@ ApplicationWindow {
         placeholderText: backend.c.sub
     }
 
-    // ───────────── الحالة ─────────────
+    // ───────────── State ─────────────
     property bool loggedIn: false
-    property bool splash: true           // شاشة الشعار عند الإقلاع (نقرة تُخفيها)
+    property bool splash: true           // Splash screen at boot (a click hides it)
     property int page: 0
-    property bool edOpen: false          // حالة المحرر داخل صفحة الويب (مرآة)
+    property bool edOpen: false          // Editor state inside the web page (mirror)
     property string filter: "all"
-    // جسر صفحة الويب المدمجة (BADI chart + Monaco)
+    // Embedded web page bridge (BADI chart + Monaco)
     property bool webReady: false
-    property bool webSound: true          // حالة أصوات الإشارات (مرآة صفحة الويب)
-    property bool webSB: true             // شريط الحالة السفلي (مرآة صفحة الويب)
-    property bool webCd: true             // العد التنازلي على الشارت (مرآة صفحة الويب)
+    property bool webSound: true          // Signal sounds state (web page mirror)
+    property bool webSB: true             // Bottom status bar (web page mirror)
+    property bool webCd: true             // Countdown on the chart (web page mirror)
     property bool webThemeDark: backend.dark
     property string lastAsset: ""
     property string lastTf: ""
     property int lastLen: -1
     property var filesAcc: ({})
-    property var pendingExport: null      // مؤشر معلّق ينتظر إدخال معرّف المشتري (ترخيص)
+    property var pendingExport: null      // Pending indicator waiting for the buyer ID input (licensing)
 
-    // ───────────── جسر صفحة الويب المدمجة ─────────────
+    // ───────────── Embedded web page bridge ─────────────
     function webCall(js, cb) {
         if (!win.webReady) return
         try { webView.runJavaScript(js, cb) } catch (e) { }
@@ -8159,7 +7836,7 @@ ApplicationWindow {
     function webLog(kind, text) {
         webCall("__badiApp.log(" + JSON.stringify(kind) + "," + JSON.stringify(text) + ")")
     }
-    /* فحص لون صالح — أي صيغة hex أو rgba بلا قوائم محدودة (الإعدادات) */
+    /* Valid color check — any hex or rgba form, no fixed lists (Settings) */
     function isColor(v) {
         var s = String(v || "").trim()
         if (/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(s)) return true
@@ -8177,7 +7854,7 @@ ApplicationWindow {
         win.pushTheme()
         webCall("__badiApp.setAssets(" + JSON.stringify(backend.added) + ")")
         webCall("__badiApp.setChartTheme(" + backend.chartThemeJson + ")")
-        /* معرّف المستخدم الثابت — يُعرض في الشريط السفلي ويُستخدم للترخيص (طلب المستخدم) */
+        /* Fixed user ID — shown in the bottom bar and used for licensing (user request) */
         webCall("__badiApp.setUserId(" + JSON.stringify(backend.userId) + ")")
         webCall("__badiApp.setMarket(" + JSON.stringify({ label: backend.assetLabel, tf: backend.tfLabel,
                  tfMs: backend.tfSec * 1000, dec: backend.dec }) + ");" +
@@ -8198,7 +7875,7 @@ ApplicationWindow {
             return
         }
         if (backend.candlesCount !== win.lastLen) win.lastLen = backend.candlesCount
-        /* شمعة جديدة واحدة أو تحديث الشمعة الأخيرة — دفعة خفيفة بدون إعادة ضبط العرض */
+        /* One new candle or an update of the last candle — a light push without resetting the view */
         webCall("__badiApp.pushTick(" + backend.lastTickJson + ")")
     }
     function filesAccPart(cmd, arg) {
@@ -8230,7 +7907,7 @@ ApplicationWindow {
         if (cmd === "editor") { win.edOpen = (arg === "1"); return }
         if (cmd === "page") {
             var p = Math.max(0, Math.min(2, parseInt(arg, 10) || 0))
-            /* زر تلجرام/المؤشرات في شريط الصفحة: نقرة ثانية تُعيد للاستوديو */
+            /* Telegram/Indicators button on the page bar: a second click returns to the studio */
             win.page = (p !== 0 && win.page === p) ? 0 : p
             return
         }
@@ -8249,10 +7926,10 @@ ApplicationWindow {
         if (cmd.indexOf("files~") === 0) { win.filesAccPart(cmd, arg); return }
         if (cmd === "rescan") { backend.rescanFiles(); return }
         if (cmd === "badi-open") { win.badiOpenByName(arg); return }
-        /* نسخ معرّف المستخدم من الشريط السفلي + فتح مجلد التطبيق (طلب المستخدم) */
+        /* Copy the user ID from the bottom bar + open the app folder (user request) */
         if (cmd === "copyuid") { backend.copyText(arg); win.webLog("ok", backend.s.uidCopied); return }
         if (cmd === "opendir") { var dp = backend.openBadiDir(); if (dp !== "") win.webLog("ok", backend.s.folderOpen + " — " + dp); return }
-        /* صورة المؤشر المصغرة: طلب التقاط واحد عند أول تشغيل (طلب المستخدم) */
+        /* Indicator thumbnail: a single capture request on first run (user request) */
         if (cmd === "badi-thumb") { win.grabThumb(arg); return }
         if (cmd === "signal") {
             var s = JSON.parse(arg)
@@ -8276,8 +7953,8 @@ ApplicationWindow {
     function takeShot() {
         webCall("__badiApp.shot()", function (res) { if (res && res.length > 32) backend.saveShot(res) })
     }
-    /* ───── BADI: تصدير المؤشر المشفر بجوار ملفه الأصلي في BadiCharts (مثل ميتاتريدر) واستيراده ─────
-       المفتاح 256-بت مدموج داخل التطبيق ولا يُكتب داخل ملف المؤشر أبدًا */
+    /* ───── BADI: export the encrypted indicator next to its original in BadiCharts (like MetaTrader) and import it ─────
+       The 256-bit key is fused inside the app and is never written into the indicator file */
     function badiExportPick() {
         win.webCall("(function(){ try { var f = activeFile(); return JSON.stringify({ n: f ? f.fileName : '', k: f ? f.kind : '', c: f ? f.code : '' }); } catch (e) { return '{}'; } })()",
                     function (res) {
@@ -8285,8 +7962,8 @@ ApplicationWindow {
                         try { o = JSON.parse(res || "{}") } catch (e) { o = {} }
                         if (!o.c || o.c.length < 2) { win.webLog("err", backend.s.badiEmpty); return }
                         if (o.k === "py") { win.webLog("err", backend.s.badiJsOnly); return }
-                        /* حوار ترخيص المشتري: معرّف المشتري يُدمج داخل الملف المشفر —
-                           لا يعمل المؤشر إلا على جهازه (طلب المستخدم) */
+                        /* Buyer licensing dialog: the buyer ID is embedded inside the encrypted file —
+                           the indicator runs only on his device (user request) */
                         win.pendingExport = { c: o.c, n: o.n || "indicator", k: o.k || "indicator" }
                         licField.text = ""
                         licPop.open()
@@ -8295,14 +7972,14 @@ ApplicationWindow {
     function badiExportConfirm() {
         var pe = win.pendingExport
         if (!pe) { licPop.close(); return }
-        var r = JSON.parse(backend.badiExport(pe.c, pe.n, pe.k, licField.text, paidSrvField.text.trim(), paidIdField.text.trim()))
+        var r = JSON.parse(backend.badiExport(pe.c, pe.n, pe.k, licField.text, "", ""))
         licPop.close()
         win.pendingExport = null
         if (r.ok) win.webLog("ok", backend.s.badiSaved + " ← " + r.path)
         else win.webLog("err", backend.s.badiFail + ": " + r.error)
     }
-    /* فتح ملف .badi من قائمة BadiCharts بالنقر عليه — فك التشفير داخل التطبيق بمفتاحه،
-       والتشغيل داخليًا مباشرة على الشارت: الكود لا يُفتح في المحرر ولا يُحفظ (طلب المستخدم) */
+    /* Open a .badi file from the BadiCharts list by clicking it — decrypted inside the app with its key,
+       and run internally on the chart right away: the code never opens in the editor and is never saved (user request) */
     function badiOpenByName(name) {
         var r = JSON.parse(backend.badiOpenName(String(name || "")))
         if (!r.ok) { win.webLog("err", backend.s.badiFail + ": " + r.error); return }
@@ -8317,7 +7994,7 @@ ApplicationWindow {
         win.page = 0
         win.webLog("ok", backend.s.badiOk + " — " + r.fileName)
     }
-    /* ── صورة المؤشر المصغرة: التقاط ذكي واحد عند أول تشغيل (طلب المستخدم) ── */
+    /* ── Indicator thumbnail: one smart capture on first run (user request) ── */
     function grabThumb(name) {
         win.webCall("__badiApp.thumbData(" + JSON.stringify(String(name)) + ")",
                     function (res) {
@@ -8327,9 +8004,9 @@ ApplicationWindow {
                             win.webCall("__badiApp.thumbRetry(" + JSON.stringify(String(name)) + ")")
                     })
     }
-    /* ── مؤشراتي: إضافة إلى الشارت + مشاركة عبر تلجرام (طلب المستخدم) ── */
+    /* ── My indicators: add to the chart + share via Telegram (user request) ── */
     function addMy(fileName, enc) {
-        if (enc) { win.badiOpenByName(fileName); return }   /* المشفر: فك التشفير داخليًا + تشغيل */
+        if (enc) { win.badiOpenByName(fileName); return }   /* Encrypted: decrypt internally + run */
         webCall("__badiApp.openRun(" + JSON.stringify(String(fileName)) + ")",
                 function (res) {
                     if (String(res || "").indexOf("no:") === 0)
@@ -8368,21 +8045,21 @@ ApplicationWindow {
         function onLiveChanged() { win.webCall("__badiApp.setLive(" + (backend.live ? "true" : "false") + ")") }
         function onDarkChanged() { win.pushTheme() }
         function onChartThemeChanged() {
-            /* ألوان الشارت تغيّرت من الإعدادات — طبّقها على الشارت فورًا */
+            /* Chart colors changed from Settings — apply them to the chart immediately */
             win.webCall("__badiApp.setChartTheme(" + backend.chartThemeJson + ")")
         }
         function onAddedChanged() {
             win.webCall("__badiApp.setAssets(" + JSON.stringify(backend.added) + ")")
         }
         function onFilesChanged() {
-            /* مزامنة مجلد BadiCharts أضافت/حذفت ملفات — ادفع القائمة الجديدة للصفحة */
+            /* BadiCharts folder sync added/removed files — push the new list to the page */
             win.webCall("__badiApp.setFiles(" + backend.filesJson + ")")
         }
         function onSigResult(js) {
             win.webCall("__badiApp.sigResult(" + js + ")")
         }
         function onPaidCmd(js) {
-            /* أمر التحكم البعيد الصالح (تشغيل/إيقاف) — يُنفذ في صفحة الويب فورًا (طلب المستخدم) */
+            /* Valid remote control command (enable/disable) — executed in the web page immediately (user request) */
             win.webCall("__badiApp.remoteSet(" + js + ")")
         }
     }
@@ -8391,7 +8068,7 @@ ApplicationWindow {
         if (win.dbgDir !== "") dbgT.restart()
     }
 
-    // وضع التقاط لقطات للفحص الآلي — يُفعَّل فقط بمتغير البيئة BADI_SHOTS
+    // Screenshot-capture mode for automated testing — enabled only via the BADI_SHOTS environment variable
     property string dbgDir: (typeof dbgShotDir !== "undefined") ? dbgShotDir : ""
     property int dbgStep: 0
     property var dbgCur: null
@@ -8419,9 +8096,9 @@ ApplicationWindow {
         if (s.idx !== undefined) win.page = s.idx
         if (s.act === "hidep") win.webCall("try { __badiApp.setSigHidden(true) } catch (e) {}")
         if (s.act === "showp") win.webCall("try { __badiApp.setSigHidden(false) } catch (e) {}")
-        /* فحص شامل: إضافة مؤشر للشارت + التقاط المصغرة التلقائي + تشغيل المشفر داخليًا */
+        /* Full test: add an indicator to the chart + automatic thumbnail capture + internal encrypted execution */
         if (s.act === "thumbtest") {
-            /* التأكد من وجود المؤشر التجريبي في المجلد ثم تشغيله لالتقاط المصغرة تلقائيًا */
+            /* Make sure the demo indicator exists in the folder, then run it to capture the thumbnail automatically */
             backend.seedTestInd()
             win.webCall('__badiApp.openRun("Test RSI.js")')
             win.webCall('setTimeout(function () { console.log("BADI::dbg enabled=" + JSON.stringify(files.filter(function (f) { return f.enabled; }).map(function (f) { return f.fileName; }))) }, 2600)')
@@ -8454,10 +8131,10 @@ ApplicationWindow {
         dbgT.restart()
     }
 
-    // ───────────── النوافذ ─────────────
-    // (إنشاء الملفات والحذف يُداران داخل صفحة الويب المدمجة)
+    // ───────────── Windows ─────────────
+    // (file creation and deletion are managed inside the embedded web page)
 
-    // ════════════════ الشريط العلوي الاقصى (الشعار + الحساب والرصيد + الإعدادات) ════════════════
+    // ════════════════ Top bar (logo + account/balance + settings) ════════════════
     header: Rectangle {
         height: 54
         color: backend.c.side
@@ -8477,12 +8154,12 @@ ApplicationWindow {
                 }
             }
             Item { Layout.fillWidth: true }
-            /* زرا الوضع الليلي/النهاري والإعدادات جنب بعض مباشرة (طلب المستخدم) */
+            /* Dark/light toggle and settings buttons right next to each other (user request) */
             IBtn {
                 iconName: backend.dark ? "sun" : "moon"
                 onClicked: backend.dark = !backend.dark
             }
-            /* زر الإشعارات جنب زر الإعدادات مباشرة + شارة حمراء بعدد غير المقروء (طلب المستخدم) */
+            /* Notifications button right next to the settings button + red badge with the unread count (user request) */
             IBtn {
                 id: notifBtn
                 visible: win.loggedIn
@@ -8507,7 +8184,7 @@ ApplicationWindow {
                 onClicked: settingsPop.open()
             }
             LangBox { }
-            /* زر قناة تلجرام — ظاهر دائمًا حتى قبل الدخول (واجهة الدخول الجديدة) */
+            /* Telegram channel button — always visible even before login (new login UI) */
             Rectangle {
                 Layout.preferredHeight: 32
                 Layout.preferredWidth: tgRow.implicitWidth + 22
@@ -8527,7 +8204,7 @@ ApplicationWindow {
         }
     }
 
-    // ════════════════ لوحة الإعدادات: إدارة عملات الشريط ════════════════
+    // ════════════════ Settings panel: managing strip currencies ════════════════
     Popup {
         id: settingsPop
         parent: Overlay.overlay
@@ -8537,7 +8214,7 @@ ApplicationWindow {
         padding: 0
         modal: true
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-        /* عند الفتح: قراءة حالة أصوات الإشارات الحقيقية من صفحة الويب */
+        /* On open: read the real signal-sounds state from the web page */
         onOpened: {
             win.webCall("__badiApp.getSound()", function (r) {
                 if (r !== undefined && r !== null) win.webSound = !!r
@@ -8553,9 +8230,9 @@ ApplicationWindow {
             radius: 16; color: backend.c.card
             border.width: 1; border.color: backend.c.border
         }
-        /* كل محتوى الإعدادات في تمرير واحد بشريط SlimBar رقيق بروح شريط المحرر —
-           كانت قائمة العملات تُسحق إلى ارتفاع صفر بسبب الأقسام الثابتة تحتها
-           (طلب المستخدم: شريط رقيق مثل تبع المحرر أو انزعه) */
+        /* All settings content in one scroll with a thin SlimBar in the spirit of the editor bar —
+           the currency list used to be crushed to zero height by the fixed sections under it
+           (user request: a thin bar like the editor one, or remove it) */
         Flickable {
             id: settScroll
             anchors.fill: parent; clip: true
@@ -8577,11 +8254,11 @@ ApplicationWindow {
                 }
                 Label { text: backend.s.sett; font.pixelSize: 16; font.bold: true; color: backend.c.fg }
                 Item { Layout.fillWidth: true }
-                /* زر إغلاق لوحة الإعدادات بأيقونة X (طلب المستخدم) */
+                /* Settings panel close button with an X icon (user request) */
                 IBtn { iconName: "x"; onClicked: settingsPop.close() }
             }
-            /* قائمة العملات أُزيلت من بطاقة الإعدادات نهائيًا — الإضافة والإزالة من قائمة + فقط (طلب المستخدم) */
-            /* ───── إعدادات أخرى: الوضع الليلي + اللغة + أصوات الإشارات (طلب المستخدم) ───── */
+            /* The currency list is finally removed from the settings card — adding/removing happens only from the + list (user request) */
+            /* ───── Other settings: dark mode + language + signal sounds (user request) ───── */
             Rectangle { Layout.fillWidth: true; height: 1; color: backend.c.border }
             RowLayout {
                 spacing: 8
@@ -8637,7 +8314,7 @@ ApplicationWindow {
                     }
                 }
             }
-            /* ───── مظهر الشارت: تغيير الخلفية وألوان الشموع بحرية (طلب المستخدم) ───── */
+            /* ───── Chart appearance: change the background and candle colors freely (user request) ───── */
             Rectangle { Layout.fillWidth: true; height: 1; color: backend.c.border }
             RowLayout {
                 spacing: 8
@@ -8669,7 +8346,7 @@ ApplicationWindow {
                         color: win.isColor(colorField.text.trim()) ? colorField.text.trim()
                              : (win.isColor(curVal) ? curVal : "transparent")
                         border.width: 1; border.color: backend.c.border
-                        /* النقر على المربّع يفتح نافذة اختيار لون حرة — بلا قوائم محدودة (طلب المستخدم) */
+                        /* Clicking a swatch opens a free color picker dialog — no fixed lists (user request) */
                         MouseArea {
                             anchors.fill: parent; hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
@@ -8698,10 +8375,10 @@ ApplicationWindow {
                     }
                 }
             }
-            /* ───── BADI: المفتاح المشفر يبقى داخل التطبيق — بصمته فقط تُعرض هنا ───── */
+            /* ───── BADI: the encryption key stays inside the app — only its fingerprint is shown here ───── */
             Rectangle { Layout.fillWidth: true; height: 1; color: backend.c.border }
             Label { text: backend.s.badiSect; font.pixelSize: 13; font.bold: true; color: backend.c.fg }
-            /* مجلد BadiCharts: المؤشرات والأدوات تُحفظ فيه كملفات حقيقية */
+            /* BadiCharts folder: indicators and tools are saved in it as real files */
             ColumnLayout {
                 Layout.fillWidth: true; spacing: 3
                 Label { text: backend.s.badiFolder + ":"; font.pixelSize: 11; color: backend.c.sub }
@@ -8722,7 +8399,7 @@ ApplicationWindow {
                     color: backend.c.fg; font.family: "monospace"
                 }
                 Item { Layout.fillWidth: true }
-                /* لا يوجد أي زر نسخ للمفتاح — المفتاح يبقى مخبأ داخل الكود فقط (طلب المستخدم) */
+                /* There is no key copy button of any kind — the key stays hidden inside the code only (user request) */
             }
             Label {
                 text: backend.s.badiHint; font.pixelSize: 10; color: backend.c.sub
@@ -8732,8 +8409,8 @@ ApplicationWindow {
         }
     }
 
-    /* ═══════ بطاقة الإشعارات الصغيرة (طلب المستخدم): ليست صفحة كبيرة — بطاقة تحت الزر.
-       بلا إشعارات جاهزة إطلاقًا: المبرمج يرسلها من خادمه عبر أمر notify فقط ═══════ */
+    /* ═══════ Small notification card (user request): not a full page — a card under the button.
+       No ready-made notifications at all: the developer sends them from his server via the notify command only ═══════ */
     Popup {
         id: notifPop
         parent: Overlay.overlay
@@ -8750,8 +8427,8 @@ ApplicationWindow {
         }
         contentItem: ColumnLayout {
             spacing: 10
-            /* رأس البطاقة (تصميم محسّن — طلب المستخدم): شارة جرس متدرجة + عنوان
-               + سطر حالة + عدّاد أحمر + إغلاق */
+            /* Card header (refined design — user request): gradient bell badge + title
+               + status line + red counter + close */
             RowLayout {
                 spacing: 10
                 Rectangle {
@@ -8783,7 +8460,7 @@ ApplicationWindow {
                 IBtn { iconName: "x"; onClicked: notifPop.close() }
             }
             Rectangle { Layout.fillWidth: true; height: 1; color: backend.c.border; opacity: 0.8 }
-            /* الحالة الفارغة — بطاقة أيقونة كبيرة أنيقة بدل جرس باهت صغير */
+            /* Empty state — an elegant large-icon card instead of a small faded bell */
             ColumnLayout {
                 visible: backend.notifs.length === 0
                 Layout.fillWidth: true
@@ -8821,7 +8498,7 @@ ApplicationWindow {
                     color: backend.c.bg
                     border.width: 1
                     border.color: modelData.read ? backend.c.border : Qt.rgba(0.08, 0.55, 0.96, 0.5)
-                    /* شريط جانبي أزرق للإشعار غير المقروء */
+                    /* Blue side strip for the unread notification */
                     Rectangle {
                         x: 0; y: 10
                         width: 3; height: parent.height - 20; radius: 2
@@ -8873,7 +8550,7 @@ ApplicationWindow {
         }
     }
 
-    /* نافذة اختيار لون حرة لألوان الشارت — أي لون وليس قوائم محدودة (طلب المستخدم) */
+    /* Free color picker window for chart colors — any color, not fixed lists (user request) */
     ColorDialog {
         id: chartColorPicker
         title: backend.s.pickColor
@@ -8887,7 +8564,7 @@ ApplicationWindow {
         }
     }
 
-    /* حوار اختيار ملف .badi المشفر — فك التشفير يجري داخل التطبيق بمفتاحه */
+    /* Encrypted .badi file picker dialog — decryption happens inside the app with its key */
     FileDialog {
         id: badiOpenDialog
         title: backend.s.badiImp
@@ -8895,13 +8572,30 @@ ApplicationWindow {
         onAccepted: win.badiImportAt(badiOpenDialog.selectedFile)
     }
 
-    /* ───── حوار ترخيص المؤشر المشفر (طلب المستخدم) ─────
-       البائع يضع معرّف المشتري (USER ID) ثم يشفّر — المؤشر لا يعمل إلا على جهاز
-       يطابق معرّفه المدمج. فارغ = يعمل مع الجميع. المعرف يُفحص صيغةً قبل التشفير. */
+    /* ───── Encrypted-indicator licensing dialog (user request) ─────
+       The seller enters the buyer USER ID then encrypts — the indicator runs only on a device
+       matching its embedded ID. Empty = works for everyone. The ID is format-checked before encryption. */
     Popup {
         id: licPop
         parent: Overlay.overlay
-        onOpened: { paidSrvField.text = ""; paidIdField.text = "" }
+        onOpened: {
+            licField.text = ""
+            buyersLbl.text = backend.s.buyersFetch
+            buyers = []
+            backend.badiBotBuyers()
+        }
+        property var buyers: []
+        function fillBuyers(js) {
+            var o = {}
+            try { o = JSON.parse(js || "{}") } catch (e) { o = {} }
+            if (!o.ok) { buyers = []; buyersLbl.text = backend.s.buyersErr; return }
+            buyers = o.buyers || []
+            buyersLbl.text = buyers.length ? backend.s.buyersTitle : backend.s.buyersNone
+        }
+        Connections {
+            target: backend
+            function onBuyersFetched(js) { licPop.fillBuyers(js) }
+        }
         anchors.centerIn: Overlay.overlay
         width: Math.min(430, win.width - 48)
         padding: 16
@@ -8949,45 +8643,63 @@ ApplicationWindow {
                 }
                 onAccepted: win.badiExportConfirm()
             }
-            /* حقول المؤشر المدفوع (طلب المستخدم): خادم المبرمج + معرف المؤشر عنده —
-               يُدمان داخل المغلف المشفر نفسه، والتحكم لاحقًا من خادمه فقط بأوامر بيضاء */
-            Label { text: backend.s.paidSrvLbl; font.pixelSize: 11; color: backend.c.sub
-                    wrapMode: Text.WordWrap; Layout.fillWidth: true }
-            TextField {
-                id: paidSrvField
+            /* Buyers from the bot (user request): the server fetches the buyer ID the seller wants
+               to sell to and embeds it directly inside the encrypted indicator — no server card,
+               the key is never shown, and the manual input below is a fallback only */
+            RowLayout {
+                Layout.fillWidth: true; spacing: 8
+                Label { id: buyersLbl; text: backend.s.buyersTitle; font.pixelSize: 11
+                        color: backend.c.sub; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                IBtn { iconName: "rotate"
+                       onClicked: { buyersLbl.text = backend.s.buyersFetch; backend.badiBotBuyers() } }
+            }
+            Rectangle {
                 Layout.fillWidth: true
-                implicitHeight: 38
-                font.pixelSize: 12
-                color: backend.c.fg
-                placeholderText: "https://your-server.com/badi/api"
-                placeholderTextColor: backend.c.sub
-                selectByMouse: true
-                leftPadding: 12; rightPadding: 12
-                background: Rectangle {
-                    radius: 10; color: backend.c.bg
-                    border.width: paidSrvField.activeFocus ? 2 : 1
-                    border.color: paidSrvField.activeFocus ? backend.c.accent : backend.c.border
+                implicitHeight: buyersCol.height + 10
+                visible: licPop.buyers.length > 0
+                color: backend.c.bg; radius: 10; border.width: 1; border.color: backend.c.border
+                Column {
+                    id: buyersCol
+                    anchors.left: parent.left; anchors.right: parent.right
+                    anchors.margins: 5
+                    spacing: 2
+                    Repeater {
+                        model: licPop.buyers
+                        delegate: Rectangle {
+                            required property var modelData
+                            width: buyersCol.width
+                            height: 28
+                            radius: 7
+                            color: buyMouse.containsMouse && modelData && modelData.uid
+                                   ? backend.c.accent : "transparent"
+                            RowLayout {
+                                anchors.fill: parent; anchors.leftMargin: 8; anchors.rightMargin: 8
+                                spacing: 6
+                                Label { text: (modelData.name || "") + (modelData.user ? "  " + modelData.user : "")
+                                        font.pixelSize: 11; color: backend.c.fg; elide: Text.ElideRight
+                                        Layout.fillWidth: true }
+                                Label { text: modelData.uid || "—"; font.pixelSize: 11
+                                        font.family: "monospace"; font.bold: true
+                                        color: buyMouse.containsMouse && modelData.uid
+                                               ? backend.c.card : backend.c.accent }
+                            }
+                            MouseArea {
+                                id: buyMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: modelData && modelData.uid
+                                             ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                onClicked: {
+                                    if (!modelData || !modelData.uid) return
+                                    var t = licField.text.trim()
+                                    licField.text = t ? t + ", " + modelData.uid : modelData.uid
+                                }
+                            }
+                        }
+                    }
                 }
             }
-            Label { text: backend.s.paidIdLbl; font.pixelSize: 11; color: backend.c.sub
-                    wrapMode: Text.WordWrap; Layout.fillWidth: true }
-            TextField {
-                id: paidIdField
-                Layout.fillWidth: true
-                implicitHeight: 38
-                font.pixelSize: 12; font.family: "monospace"
-                color: backend.c.fg
-                placeholderText: "PRO_SIGNAL_1"
-                placeholderTextColor: backend.c.sub
-                selectByMouse: true
-                leftPadding: 12; rightPadding: 12
-                background: Rectangle {
-                    radius: 10; color: backend.c.bg
-                    border.width: paidIdField.activeFocus ? 2 : 1
-                    border.color: paidIdField.activeFocus ? backend.c.accent : backend.c.border
-                }
-            }
-            /* معرّف هذا الجهاز — نسخة سريعة ليرسلها المشتري للبائع */
+            /* This device ID — quick copy so the buyer can send it to the seller */
             Rectangle {
                 Layout.fillWidth: true; implicitHeight: 40; radius: 10
                 color: backend.c.bg; border.width: 1; border.color: backend.c.border
@@ -9010,7 +8722,7 @@ ApplicationWindow {
         }
     }
 
-    /* تنبيه سريع (توست) — نتيجة المشاركة وغيرها */
+    /* Quick alert (toast) — the share result and others */
     Popup {
         id: toastPop
         parent: Overlay.overlay
@@ -9049,7 +8761,7 @@ ApplicationWindow {
         Timer { id: toastTimer; interval: 3600; onTriggered: toastPop.close() }
     }
 
-    /* عارض صورة المؤشر المكبر — بحجم الصفحة مع سهم رجوع (طلب المستخدم) */
+    /* Enlarged indicator-image viewer — page-sized with a back arrow (user request) */
     Popup {
         id: thumbPop
         parent: Overlay.overlay
@@ -9072,7 +8784,7 @@ ApplicationWindow {
             spacing: 10
             RowLayout {
                 spacing: 8
-                /* سهم الرجوع (اتجاهه يتبع لغة الواجهة) */
+                /* Back arrow (its direction follows the UI language) */
                 IBtn { iconName: backend.rtl ? "chevr" : "chevl"; onClicked: thumbPop.close() }
                 Label {
                     text: thumbPop.indName
@@ -9096,20 +8808,20 @@ ApplicationWindow {
         }
     }
 
-    // ════════════════ المحتوى ════════════════
+    // ════════════════ Content ════════════════
     StackLayout {
         id: mainStack
         anchors.fill: parent
         currentIndex: win.splash ? 0 : (win.loggedIn ? 2 : 1)
 
-        // ─────────── شاشة الشعار (BadiCharts) — حركة الظهور المطلوبة نفسها تماماً ───────────
-        // صفحة الديمو نفسها (splash.html): رسم الأيقونة خطاً خطاً، نبضة الجسم، صعود الحروف،
-        // اللمعة العابرة، ثم ظهور السطر النصي — نقرة تُخطي الشاشة.
+        // ─────────── Splash screen (BadiCharts) — the exact requested reveal animation ───────────
+        // The same demo page (splash.html): drawing the icon stroke by stroke, the body pulse, letters rising,
+        // the passing shine, then the text line appearing — a click skips the screen.
         Item {
             WebEngineView {
                 id: splashWeb
                 anchors.fill: parent
-                // splashUrl غير متاح في بعض سكربتات الفحص القديمة — احتياط حتى لا تنكسر
+                // splashUrl unavailable in some older test scripts — fallback so they do not break
                 url: (typeof splashUrl !== "undefined" && splashUrl) ? splashUrl : ""
                 backgroundColor: backend.dark ? "#000000" : "#FFFFFF"
             }
@@ -9117,9 +8829,9 @@ ApplicationWindow {
             Timer { interval: 3900; running: win.splash; onTriggered: win.splash = false }
         }
 
-        // ─────────── تسجيل الدخول — الواجهة الجديدة (طلب المستخدم) ───────────
-        // جهة تعريفية (شعار + شارة + عنوان كبير + مميزات) | فاصل | بطاقة الدخول
-        // فوقها خلفية حية: شبكة نقاط + توهج + شموع متحركة خفيفة
+        // ─────────── Login — the new UI (user request) ───────────
+        // Branding side (logo + badge + big title + features) | divider | login card
+        // with a live background behind: dot grid + glow + light animated candles
         Item {
             id: loginPage
             clip: true
@@ -9152,8 +8864,8 @@ ApplicationWindow {
             }
             Timer { id: fakeAuth; interval: 900; onTriggered: { loginPage.busy = false; loginPage.ok = true; win.loggedIn = true } }
 
-            // ── الخلفية ──
-            Rectangle { anchors.fill: parent; color: backend.c.bg }   /* أساس الصفحة */
+            // ── Background ──
+            Rectangle { anchors.fill: parent; color: backend.c.bg }   /* Page base */
             DotGrid { anchors.fill: parent }
             Glow {
                 width: 900; height: 900; y: -520
@@ -9173,13 +8885,13 @@ ApplicationWindow {
             }
             ChartBg { anchors.fill: parent }
 
-            // تذييل خفيف يملأ أسفل الصفحة
+            // Light footer filling the bottom of the page
             Row {
                 anchors.bottom: parent.bottom; anchors.bottomMargin: 14
                 anchors.horizontalCenter: parent.horizontalCenter
                 spacing: 10
                 opacity: loginPage.ease(2.5)
-                Label { text: "BADI STUDIO v2.13.0"; font.pixelSize: 10; font.bold: true
+                Label { text: "BADI STUDIO v2.17.1"; font.pixelSize: 10; font.bold: true
                         font.letterSpacing: 1.4; color: backend.c.sub }
                 Label { text: "·"; font.pixelSize: 10; color: backend.c.border }
                 Label { text: "© BadiCharts"; font.pixelSize: 10; color: backend.c.sub }
@@ -9192,14 +8904,14 @@ ApplicationWindow {
                 LayoutMirroring.enabled: backend.rtl
                 LayoutMirroring.childrenInherit: false
 
-                // ═════ الجهة التعريفية ═════
+                // ═════ Branding side ═════
                 ColumnLayout {
                     id: hero
                     Layout.fillWidth: true
                     Layout.alignment: Qt.AlignVCenter
                     spacing: 16
 
-                    // الشعار
+                    // Logo
                     Row {
                         Layout.alignment: loginPage.al
                         spacing: 10
@@ -9218,7 +8930,7 @@ ApplicationWindow {
                         }
                     }
 
-                    // شارة صغيرة نابضة
+                    // Small pulsing badge
                     Rectangle {
                         Layout.alignment: loginPage.al
                         implicitWidth: pillRow.implicitWidth + 28; implicitHeight: 30; radius: 15
@@ -9244,7 +8956,7 @@ ApplicationWindow {
                         }
                     }
 
-                    // العنوان الكبير
+                    // Big title
                     Label {
                         Layout.fillWidth: true
                         text: backend.s.h1 + "<br><font color='" + backend.c.accent + "'>" + backend.s.h2 + "</font>"
@@ -9257,7 +8969,7 @@ ApplicationWindow {
                         transform: Translate { y: (1 - loginPage.ease(1)) * 30 }
                     }
 
-                    // السطر التعريفي
+                    // Tagline
                     Label {
                         Layout.fillWidth: true; Layout.maximumWidth: 520
                         Layout.alignment: loginPage.al
@@ -9270,7 +8982,7 @@ ApplicationWindow {
                         transform: Translate { y: (1 - loginPage.ease(1.5)) * 30 }
                     }
 
-                    // شبكة المميزات 2×3
+                    // 2×3 features grid
                     GridLayout {
                         Layout.fillWidth: true; Layout.topMargin: 8
                         columns: 2; columnSpacing: 12; rowSpacing: 12
@@ -9314,7 +9026,7 @@ ApplicationWindow {
                     }
                 }
 
-                // فاصل عمودي متلاشى الطرفين
+                // Vertical divider fading at both ends
                 Rectangle {
                     Layout.preferredWidth: 1; Layout.preferredHeight: 400
                     Layout.alignment: Qt.AlignVCenter
@@ -9326,14 +9038,14 @@ ApplicationWindow {
                     }
                 }
 
-                // ═════ بطاقة الدخول ═════
+                // ═════ Login card ═════
                 Item {
                     id: cardWrap
                     Layout.preferredWidth: 400
                     Layout.preferredHeight: 520
                     Layout.alignment: Qt.AlignVCenter
                     property real shakeX: 0
-                    /* تحويل صريح إلى لون — c.card نص في بايثون ولا يحمل .r مباشرة */
+                    /* Explicit conversion to color — c.card is a string in Python and has no .r property directly */
                     readonly property color cc: backend.c.card
                     opacity: loginPage.ease(1)
                     transform: Translate { x: cardWrap.shakeX; y: (1 - loginPage.ease(1)) * 40 }
@@ -9404,7 +9116,7 @@ ApplicationWindow {
                             Keys.onReturnPressed: loginPage.attempt()
                         }
 
-                        // تذكّرني
+                        // Remember me
                         Item {
                             Layout.alignment: loginPage.al
                             implicitWidth: remRow.implicitWidth; implicitHeight: 26
@@ -9428,7 +9140,7 @@ ApplicationWindow {
                                         onClicked: loginPage.remember = !loginPage.remember }
                         }
 
-                        // رسالة الخطأ / النجاح
+                        // Error / success message
                         Label {
                             Layout.fillWidth: true; Layout.preferredHeight: 18
                             text: loginPage.ok ? backend.s.signinok : loginPage.err
@@ -9454,7 +9166,7 @@ ApplicationWindow {
             }
         }
 
-        // ─────────── التطبيق ───────────
+        // ─────────── The app ───────────
         RowLayout {
             spacing: 0
             LayoutMirroring.enabled: backend.rtl
@@ -9464,7 +9176,7 @@ ApplicationWindow {
                 currentIndex: win.page
 '''
 QML += r'''
-                // ═══════ 0 — الاستوديو: صفحة HTML مدمجة (شارت BADI-CHARTS v2.13.0 + محرر Monaco) ═══════
+                // ═══════ 0 — The studio: embedded HTML page (BADI-CHARTS v2.17.1 chart + Monaco editor) ═══════
                 Item {
                     WebEngineView {
                         id: webView
@@ -9475,12 +9187,12 @@ QML += r'''
                         settings.localContentCanAccessFileUrls: true
                         settings.focusOnNavigationEnabled: true
                         settings.javascriptCanAccessClipboard: true
-                        // ── الحافظة: منح إذن القراءة/الكتابة تلقائيًا حتى يعمل Ctrl+V داخل Monaco ──
+                        // ── Clipboard: grant read/write permission automatically so Ctrl+V works inside Monaco ──
                         onFeaturePermissionRequested: function (securityOrigin, feature) {
                             var clip = (typeof WebEngineView.ClipboardReadWrite !== "undefined") ? WebEngineView.ClipboardReadWrite : -1
                             webView.grantFeaturePermission(securityOrigin, feature, feature === clip)
                         }
-                        // javascriptCanPaste غير موجودة قبل Qt 6.8 — تُضاف ديناميكيًا فقط إن كانت متاحة
+                        // javascriptCanPaste does not exist before Qt 6.8 — added dynamically only when available
                         Component.onCompleted: {
                             try { if ("javascriptCanPaste" in settings) settings.javascriptCanPaste = true } catch (e) {}
                         }
@@ -9493,9 +9205,9 @@ QML += r'''
                         }
                         onRenderProcessTerminated: function (terminationStatus, exitCode) { webView.reload() }
                     }
-                    // احتياط اللصق: Ctrl+V يستدعي لصق Chromium الأصلي مباشرة — لا يحتاج أي إذن
-                    // ويعمل على كل الأنظمة. السياق مقصور على صفحة الاستوديو فقط
-                    // حتى لا يسرق اللصق من حقول النص في نوافذ QML الأخرى.
+                    // Paste fallback: Ctrl+V invokes the native Chromium paste directly — needs no permission
+                    // and works on every system. The context is restricted to the studio page only
+                    // so the paste cannot steal from text fields in other QML windows.
                     Shortcut {
                         sequences: [StandardKey.Paste]
                         context: Qt.WidgetWithChildrenShortcut
@@ -9503,7 +9215,7 @@ QML += r'''
                     }
                 }
 
-                // ═══════ 1 — المؤشرات: مؤشراتي (مجلد BadiCharts) + المكتبة الجاهزة ═══════
+                // ═══════ 1 — Indicators: my indicators (BadiCharts folder) + the ready library ═══════
                 Item {
                     id: pageInd
                     property var myInds: []
@@ -9512,9 +9224,9 @@ QML += r'''
                     }
                     function fileUrl(p) {
                         var s = String(p || "").replace(/\\/g, "/")
-                        if (/^[A-Za-z]:/.test(s)) s = "/" + s      /* ويندوز: C:/ → /C:/ */
+                        if (/^[A-Za-z]:/.test(s)) s = "/" + s      /* Windows: C:/ → /C:/ */
                         if (s.charAt(0) !== "/") s = "/" + s
-                        /* encodeURI: يشفّر الفراغات والأحرف الخاصة في أسماء الملفات */
+                        /* encodeURI: encodes spaces and special characters in file names */
                         return encodeURI("file://" + s)
                     }
                     Component.onCompleted: pageInd.refresh()
@@ -9525,7 +9237,7 @@ QML += r'''
                         LayoutMirroring.childrenInherit: true
                         RowLayout {
                             spacing: 10
-                            /* زر الرجوع إلى الشارت من صفحة المؤشرات (طلب المستخدم) */
+                            /* Back-to-chart button from the indicators page (user request) */
                             Btn { text: backend.s.backChart; iconName: backend.rtl ? "chevr" : "chevl"
                                   outline: true; implicitHeight: 34; font.pixelSize: 11
                                   onClicked: win.page = 0 }
@@ -9546,7 +9258,7 @@ QML += r'''
                                 id: indCol
                                 width: parent.width - 10
                                 spacing: 16
-                                // ─── مؤشراتي: كل ما في مجلد BadiCharts — يُكتشف تلقائيًا (طلب المستخدم) ───
+                                // ─── My indicators: everything in the BadiCharts folder — detected automatically (user request) ───
                                 ColumnLayout {
                                     Layout.fillWidth: true; spacing: 10
                                     RowLayout {
@@ -9580,8 +9292,8 @@ QML += r'''
                                                 border.color: modelData.enc ? Qt.rgba(0.08, 0.55, 0.96, 0.5) : backend.c.border
                                                 ColumnLayout {
                                                     anchors.fill: parent; anchors.margins: 12; spacing: 7
-                                                    /* الصورة المصغرة فوق اسم المؤشر — تُلتقط عند الحفظ فقط،
-                                                       والنقر عليها يكبّرها (طلب المستخدم) */
+                                                    /* The thumbnail above the indicator name — captured on save only,
+                                                       and clicking it enlarges it (user request) */
                                                     Rectangle {
                                                         id: thumbBox
                                                         Layout.fillWidth: true
@@ -9593,8 +9305,8 @@ QML += r'''
                                                         Image {
                                                             anchors.fill: parent
                                                             source: modelData.thumb ? pageInd.fileUrl(modelData.thumb) : ""
-                                                            /* المصغرة كاملة الظهور (طلب المستخدم): ملاءمة الأبعاد
-                                                               تُظهر محتوى اللقطة كله لا جزءًا مقصوصًا منه */
+                                                            /* Thumbnail fully visible (user request): fit sizing
+                                                               shows the whole shot content, not a cropped part */
                                                             fillMode: Image.PreserveAspectFit
                                                             smooth: true
                                                             asynchronous: true
@@ -9616,7 +9328,7 @@ QML += r'''
                                                             onClicked: thumbPop.openThumb(pageInd.fileUrl(modelData.thumb), modelData.fileName)
                                                         }
                                                     }
-                                                    /* اسم المؤشر + شارة التشفير — الحذف انتقل بجوار زر الإضافة (طلب المستخدم) */
+                                                    /* Indicator name + encryption badge — delete moved next to the add button (user request) */
                                                     RowLayout {
                                                         spacing: 6
                                                         Icon { visible: modelData.enc; name: "lock"; sz: 13; tint: backend.c.accent }
@@ -9637,15 +9349,15 @@ QML += r'''
                                                     Item { Layout.fillHeight: true }
                                                     RowLayout {
                                                         spacing: 8
-                                                        /* الإضافة إلى الشارت (المشفر يُفك داخليًا ويُشغل مباشرة) */
+                                                        /* Add to chart (the encrypted one is decrypted internally and runs immediately) */
                                                         Btn {
                                                             Layout.fillWidth: true; implicitHeight: 34
                                                             text: backend.s.add; iconName: "plus"; fs: 12
                                                             onClicked: win.addMy(modelData.fileName, modelData.enc)
                                                         }
-                                                        /* زر الحذف بجوار زر الإضافة مباشرة (طلب المستخدم) */
+                                                        /* Delete button right next to the add button (user request) */
                                                         IBtn { iconName: "trash"; onClicked: backend.delMy(modelData.fileName) }
-                                                        /* مشاركة عبر تلجرام — ينسخ ملف .badi المشفر */
+                                                        /* Share via Telegram — copies the encrypted .badi file */
                                                         IBtn { iconName: "send"; onClicked: win.shareMy(modelData.fileName) }
                                                     }
                                                 }
@@ -9654,7 +9366,7 @@ QML += r'''
                                     }
                                 }
                                 Rectangle { Layout.fillWidth: true; height: 1; color: backend.c.border; opacity: 0.6 }
-                                // ─── المكتبة الجاهزة ───
+                                // ─── Ready library ───
                                 RowLayout {
                                     spacing: 8
                                     Icon { name: "zap"; sz: 18; tint: backend.c.accent }
@@ -9709,7 +9421,7 @@ QML += r'''
                     }
                 }
 
-                // ═══════ 2 — الإشارات ═══════
+                // ═══════ 2 — Signals ═══════
                 Item {
                     id: sigPage
                     property string token: ""
@@ -9748,8 +9460,8 @@ QML += r'''
                                         text: sigPage.token
                                         onTextEdited: sigPage.token = text
                                     }
-                                    /* لا حقل لمعرف المحادثة ولا قالب رسالة هنا — معرف المحادثة
-                                       يضعه مبرمج المؤشر داخل كود المؤشر نفسه (طلب المستخدم) */
+                                    /* No chat ID or message template field here — the chat ID
+                                       is placed by the indicator developer inside the indicator code itself (user request) */
                                     Label {
                                         text: backend.s.tghint
                                         font.pixelSize: 11; color: backend.c.sub
@@ -9790,8 +9502,8 @@ QML += r'''
                                         Label { text: sigPage.status; font.pixelSize: 11; color: backend.c.good }
                                         Item { Layout.fillWidth: true }
                                     }
-                                    /* طلب المستخدم: بطاقة تحت زر الحفظ تعرض التوكن المحفوظ مختصرًا (يظهر قليلًا منه)
-                                       وبجانبه أيقونة حذف — وبوت واحد فقط: التوكن الجديد يستبدل السابق */
+                                    /* User request: a card under the save button showing the saved token shortened (only a small part of it)
+                                       with a delete icon beside it — and one bot only: a new token replaces the previous one */
                                     Rectangle {
                                         visible: sigPage.token !== ""
                                         Layout.fillWidth: true
@@ -9910,9 +9622,9 @@ QML += r'''
     }
 '''
 QML += r'''
-    // ════════════════ المكونات ════════════════
-    /* شريط تمرير رقيق وناعم لقوائم واجهة سطح المكتب — بروح شريط المحرر الرقيق
-       في صفحة الويب (طلب المستخدم: شريط العملات كان خشنًا فصار رقيقًا هكذا) */
+    // ════════════════ Components ════════════════
+    /* Thin smooth scrollbar for the desktop UI lists — in the spirit of the thin editor bar
+       in the web page (user request: the currency strip was rough so it became thin like this) */
     component SlimBar: ScrollBar {
         id: slim
         implicitWidth: 10
@@ -9922,7 +9634,7 @@ QML += r'''
         contentItem: Rectangle {
             implicitWidth: 6
             radius: 3
-            /* رمادي واضح مثل مقبض شريط المحرر في الويب، ويتوهج بلون التمييز عند السحب */
+            /* Clear gray like the editor scrollbar handle on the web, glowing with the accent color while dragged */
             color: slim.pressed ? backend.c.accent : backend.c.sub
             opacity: (slim.active || slim.hovered) ? 1.0 : 0.5
             Behavior on opacity { NumberAnimation { duration: 180 } }
@@ -9930,7 +9642,7 @@ QML += r'''
         }
     }
 
-    /* مفتاح صغير لأقسام الإعدادات — بلون التمييز عند التشغيل ورمادي عند الإيقاف */
+    /* Small toggle for settings sections — accent color when on, gray when off */
     component MiniSwitch: Rectangle {
         id: ms
         property bool on: false
@@ -10153,8 +9865,8 @@ QML += r'''
                             verticalAlignment: Text.AlignVCenter; leftPadding: 10 }
     }
 
-    /* ── مكونات صفحة الدخول الجديدة (طلب المستخدم) ── */
-    // حقل مع أيقونة + كشف كلمة المرور
+    /* ── New login page components (user request) ── */
+    // Field with icon + password reveal
     component IField: TextField {
         id: ifd
         selectByMouse: true
@@ -10191,9 +9903,9 @@ QML += r'''
         }
     }
 
-    // شبكة نقاط ناعمة محايدة
+    // Soft neutral dot grid
     component DotGrid: Canvas {
-        renderTarget: Canvas.Image        /* يضمن الشفافية في كل أنماط العرض */
+        renderTarget: Canvas.Image        /* guarantees transparency in every render mode */
         property color dc: backend.dark ? "#FFFFFF" : "#0A1A3A"
         onDcChanged: requestPaint()
         onWidthChanged: requestPaint()
@@ -10208,7 +9920,7 @@ QML += r'''
         }
     }
 
-    // توهّج لوني ناعم — SVG radial gradient: ناعم بلا حلقات ولا يحتاج إعادة رسم
+    // Soft color glow — SVG radial gradient: smooth, ringless and needs no redraw
     component Glow: Image {
         property color col: "#3B8BFF"
         property real amt: 0.2
@@ -10226,10 +9938,10 @@ QML += r'''
         asynchronous: false
     }
 
-    // شموع متحركة خفيفة في خلفية صفحة الدخول — تعمل فقط وهي ظاهرة
+    // Light animated candles in the login page background — running only while visible
     component ChartBg: Canvas {
         id: cv
-        renderTarget: Canvas.Image        /* يضمن الشفافية في كل أنماط العرض */
+        renderTarget: Canvas.Image        /* guarantees transparency in every render mode */
         property real off: 0
         property var cs: []
         property real amp: 0.2
@@ -10299,15 +10011,15 @@ QML += r'''
         }
     }
 
-    // الحساب والرصيد (الشريط العلوي الاقصى): نوع الحساب + الرصيد + بطاقة التبديل حقيقي/تجريبي
+    // Account and balance (the top bar): account type + balance + the real/demo switch card
 }
 '''
 
-# ══════════════════════════════ التشغيل ══════════════════════════════
+# ══════════════════════════════ Startup ══════════════════════════════
 if __name__ == "__main__":
     os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Basic")
-    # محرك الويب (Chromium): تسريع GPU على سطح المكتب (أخف وأسرع)،
-    # ووضع برمجي آمن تلقائياً في الحاويات/الفحص الآلي (BADI_SHOTS أو لينكس بدون شاشة)
+    # Web engine (Chromium): GPU acceleration on the desktop (lighter and faster),
+    # and automatic safe software mode in containers/automated tests (BADI_SHOTS or headless Linux)
     _soft = bool(os.environ.get("BADI_SHOTS")) or (
         sys.platform.startswith("linux") and not os.environ.get("DISPLAY"))
     os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS",
@@ -10316,7 +10028,7 @@ if __name__ == "__main__":
     app = QGuiApplication(sys.argv)
     app.setOrganizationName("BadiCharts")
     app.setApplicationName("BadiChartsStudio")
-    app.setWindowIcon(make_app_icon())   # شعار التطبيق في شريط العنوان وشريط المهام
+    app.setWindowIcon(make_app_icon())   # App logo in the title bar and taskbar
     engine = QQmlApplicationEngine()
     backend = Backend()
     engine.rootContext().setContextProperty("backend", backend)
@@ -10336,6 +10048,6 @@ if __name__ == "__main__":
 
 
 # ==========================================================================
-#  نهاية الكود — آخر سطر يعمل هو تشغيل التطبيق من PART 3 أعلاه.
+#  End of code — the last line that runs is launching the app from PART 3 above.
 #  END OF SOURCE — the app boots from the __main__ block of PART 3.
 # ==========================================================================
