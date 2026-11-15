@@ -36,6 +36,12 @@
 #     reachable from a Python indicator despite the safe-builtins list. The engine now pins
 #     __builtins__ to the safe set explicitly: import/files/network are genuinely unreachable,
 #     matching the closed-sandbox promise (verified by probe: import raises, open raises at call)
+#   • Bot START/STOP switch on the Telegram page (owner request): with a token saved a running
+#     switch appears — Start keeps the bot awake and sending everything (signals, WIN/LOSS
+#     results, script screenshots, composed images, each as its ONE merged message); Stop halts
+#     ALL Telegram sending until started again (signal cards and History results still work —
+#     only the sending holds; the state is persisted in config.json and survives restarts;
+#     the explicit Test button still works as the user's own diagnostic)
 #   • Indicator labels always readable (owner report): some indicator names were drawn with the
 #     indicator's own color — black text vanished on the dark theme and white text on the light
 #     theme. Every indicator label color is now auto-fitted to the active theme (contrast-checked
@@ -3058,6 +3064,8 @@ T = {
         "errEmpty": "Please enter your username and password.", "signing": "Signing in…", "signinok": "Signed in successfully",
         "tgsave1": "Saved bot token", "tgonly": "One bot only — saving a new token replaces the previous one.",
         "tgdel": "Delete the saved token", "tgcleared": "Saved token deleted",
+        "tgstate": "Bot sending", "tgon": "Running — signals, results and screenshots are being sent",
+        "tgoff": "Stopped — nothing is sent to Telegram", "tgstart": "Start", "tgstop": "Stop",
     },
     "ar": {
         "login": "تسجيل الدخول", "user": "اسم المستخدم", "pass": "كلمة المرور",
@@ -3136,6 +3144,8 @@ T = {
         "errEmpty": "يرجى إدخال اسم المستخدم وكلمة المرور.", "signing": "جارٍ الدخول…", "signinok": "تم الدخول بنجاح",
         "tgsave1": "توكن البوت المحفوظ", "tgonly": "بوت واحد فقط — عند حفظ توكن جديد يستبدل التوكن السابق.",
         "tgdel": "حذف التوكن المحفوظ", "tgcleared": "تم حذف التوكن المحفوظ",
+        "tgstate": "إرسال البوت", "tgon": "يعمل — الإشارات والنتائج واللقطات تُرسل",
+        "tgoff": "متوقف — لا يُرسل أي شيء إلى تلجرام", "tgstart": "تشغيل", "tgstop": "إيقاف",
     },
 }
 
@@ -6507,12 +6517,16 @@ class Backend(QObject):
 
     def _tg_result(self, sp, win, exit_px):
         """Bot result message — styled like the designed signal card.
-        The chat ID comes from the indicator itself (user request) — fallback is the app setting."""
+        The chat ID comes from the indicator itself (user request) — fallback is the app setting.
+        The History record was already emitted by the caller — here only the Telegram send:
+        when the bot is STOPPED (user request) the result message is not sent either."""
         try:
             cfg = _read_json(CFG_FILE, {})
             token = cfg.get("token", "")
             chats = str(sp.get("chats") or "") or cfg.get("chats", "")
             if not (token and chats):
+                return
+            if not self._bot_on():
                 return
             dirl = "▲ BUY" if sp["dir"] == "up" else "▼ SELL"
             text = (("✅ WIN" if win else "❌ LOSS") + f" | {sp['asset']} ({sp['tf']})\n"
@@ -6530,6 +6544,31 @@ class Backend(QObject):
     @Slot()
     def refreshPy(self):
         self._compute_py()
+
+    # ---------- Bot start/stop switch (user request) ----------
+    def _bot_on(self):
+        """Bot running state (user request): a start/stop switch on the Telegram bot page.
+        Running (default) → everything is sent exactly as before; STOPPED → nothing goes
+        to Telegram at all: signals, WIN/LOSS results, script screenshots and composed
+        images all hold. The explicit Test button still works — it is the user's own
+        diagnostic action on the bot page."""
+        try:
+            return bool(_read_json(CFG_FILE, {}).get("botOn", True))
+        except Exception:
+            return True
+
+    @Slot(bool)
+    def setBotOn(self, on):
+        """Start/stop the Telegram bot from the bot page — persisted in config.json."""
+        try:
+            cfg = _read_json(CFG_FILE, {})
+            cfg["botOn"] = bool(on)
+            _write_json(CFG_FILE, cfg)
+            self._log("ok" if on else "info",
+                      "Bot started — signals, results, screenshots and images will be sent" if on
+                      else "Bot stopped — nothing will be sent to Telegram until you start it again")
+        except Exception as e:
+            self._log("err", str(e))
 
     @Slot(str)
     def stopPy(self, fid):
@@ -6567,6 +6606,10 @@ class Backend(QObject):
             if "," in img:
                 img = img.split(",", 1)[1]
             png = base64.b64decode(img)
+            # Bot stopped (user request): script screenshots hold like every other send
+            if not self._bot_on():
+                self._log("info", "Bot stopped — screenshot not sent (press Start on the Telegram page)")
+                return
             caption = str(o.get("caption") or "").strip() or "Chart screenshot"
             cfg = _read_json(CFG_FILE, {})
             chats = str(o.get("chats") or "").strip() or cfg.get("chats", "")
@@ -6600,6 +6643,9 @@ class Backend(QObject):
             return json.dumps({"ok": False, "error": str(e)[:80]})
         if not png:
             return json.dumps({"ok": False, "error": "render failed"})
+        # Bot stopped (user request): composed images hold like every other send
+        if not self._bot_on():
+            return json.dumps({"ok": False, "error": "bot is stopped — press Start on the Telegram page"})
         caption = str(spec.get("caption") or "").strip() or "Chart screenshot"
         cfg = _read_json(CFG_FILE, {})
         chats = str(spec.get("chats") or "").strip() or cfg.get("chats", "")
@@ -6642,7 +6688,15 @@ class Backend(QObject):
                  "dir": dir_, "price": price, "sent": None, "info": ""}
         rec = {"entry": entry, "token": token, "chats": chats, "text": text, "attach": attach}
         self._log("info", f"⚡ {label}: {dir_.upper()} {asset} @ {price}")
-        if token and chats:
+        if token and chats and not self._bot_on():
+            # Bot stopped (user request): the signal card still appears on the chart and the
+            # result is still settled into History — but NOTHING is sent to Telegram
+            entry["sent"] = False
+            entry["info"] = "bot stopped — press Start on the Telegram page"
+            self._hist.append(entry)
+            self.histChanged.emit()
+            _write_json(os.path.join(CFG_DIR, "signals.json"), self._hist[-500:])
+        elif token and chats:
             self._pending = rec
             self.needShot.emit()
             # Fallback if no screenshot arrives within 4 seconds — send text only
@@ -6701,7 +6755,8 @@ class Backend(QObject):
         cfg = _read_json(CFG_FILE, {})
         return json.dumps({"token": cfg.get("token", ""), "chats": cfg.get("chats", ""),
                            "tmpl": cfg.get("tmpl") or TG_TMPL_DEFAULT,
-                           "attach": bool(cfg.get("attach", True))})
+                           "attach": bool(cfg.get("attach", True)),
+                           "botOn": bool(cfg.get("botOn", True))})
 
     # ---------- BADI: encrypted indicators (the key stays inside the app only) ----------
     badiFpChanged = Signal()
@@ -10457,10 +10512,12 @@ QML += r'''
                     id: sigPage
                     property string token: ""
                     property bool attach: true
+                    property bool botOn: true
                     property string status: ""
                     Component.onCompleted: {
                         var d = JSON.parse(backend.loadTg())
                         sigPage.token = d.token; sigPage.attach = d.attach
+                        sigPage.botOn = d.botOn !== false
                     }
                     ColumnLayout {
                         anchors.fill: parent; anchors.margins: 20; spacing: 12
@@ -10574,6 +10631,54 @@ QML += r'''
                                         text: backend.s.tgonly
                                         font.pixelSize: 10; color: backend.c.sub
                                         wrapMode: Text.WordWrap; Layout.fillWidth: true
+                                    }
+                                    /* User request: bot START/STOP switch — when started the bot never sleeps and
+                                       sends everything (signals, results, screenshots, images); when stopped
+                                       NOTHING is sent to Telegram until it is started again. The state is
+                                       persisted in config.json and survives app restarts */
+                                    Rectangle {
+                                        visible: sigPage.token !== ""
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: 52
+                                        radius: 12
+                                        color: backend.c.bg; border.width: 1; border.color: backend.c.border
+                                        RowLayout {
+                                            anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 12; spacing: 10
+                                            Rectangle {
+                                                width: 42; height: 22; radius: 11
+                                                color: sigPage.botOn ? backend.c.good : backend.c.hover
+                                                border.width: sigPage.botOn ? 0 : 1
+                                                border.color: backend.c.border
+                                                Behavior on color { ColorAnimation { duration: 120 } }
+                                                Rectangle {
+                                                    x: sigPage.botOn ? parent.width - width - 3 : 3
+                                                    width: 16; height: 16; radius: 8
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    color: "#FFFFFF"
+                                                    Behavior on x { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+                                                }
+                                                MouseArea {
+                                                    anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                                    onClicked: {
+                                                        sigPage.botOn = !sigPage.botOn
+                                                        backend.setBotOn(sigPage.botOn)
+                                                        sigPage.status = sigPage.botOn ? backend.s.tgstart : backend.s.tgstop
+                                                    }
+                                                }
+                                            }
+                                            ColumnLayout {
+                                                spacing: 0
+                                                Layout.fillWidth: true
+                                                Label { text: backend.s.tgstate; font.pixelSize: 9; font.bold: true; color: backend.c.sub }
+                                                Label {
+                                                    text: sigPage.botOn ? backend.s.tgon : backend.s.tgoff
+                                                    font.pixelSize: 11; font.bold: !sigPage.botOn
+                                                    color: sigPage.botOn ? backend.c.good : backend.c.bad
+                                                    Layout.fillWidth: true
+                                                    wrapMode: Text.WordWrap
+                                                }
+                                            }
+                                        }
                                     }
                                     Item { Layout.fillHeight: true }
                                 }
