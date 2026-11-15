@@ -30,12 +30,14 @@
 #   • Notifications card refined (owner report): the blue bell badge no longer touches the card
 #     edge — the whole popup content is inset with proper padding, header and list breathe
 #   • Chart screenshots from scripts (owner request): Indicators.shot() lets an indicator capture
-#     the chart itself and send it straight to Telegram — the script controls WHAT it captures:
-#     the whole pane, one pane or any region inside the chart (x/y/w/h + scale/format/quality) and
-#     where it goes (chats in the call or the bot settings). Hard security rule: the region is
-#     always clamped to the chart canvas — a script can never capture the app window, the desktop
-#     or the full screen (nothing outside the chart pixels can reach a script). Documented in
-#     guide section 10; Python-engine indicators keep attaching the chart shot to every signal
+#     the chart itself and send it straight to Telegram — the script controls everything: the
+#     whole pane, one pane or any region inside it (x/y/w/h), the candle width (candleW), which
+#     indicators appear (hide/show), scale/format/quality — the text rides ON the photo as its
+#     caption (ONE Telegram message, never a separate bubble) and nothing is saved to disk.
+#     New Indicators.colors() gives scripts the candle colors (bull/bear + volumes) and the chart
+#     background (bg/grid/axisText/crosshair/drawing). Hard security rule: the region is always
+#     clamped to the chart canvas — a script can never capture the app window, the desktop or the
+#     full screen (nothing outside the chart pixels can reach a script). Guide section 10 updated
 #   • Buyer licensing moved into the indicator script (owner request): the seller lists the buyer
 #     IDs inside the code — the BADI LICENSED USERS line, unlimited buyers, several lines allowed —
 #     the encrypt dialog no longer holds any ID field: it only shows the buyers found in the script
@@ -3891,7 +3893,9 @@ def random_suffix(n=6):
 
 
 def _tg_send(token, chats, text, png=None):
-    """Send to Telegram: text to every chat + optional image (multipart)."""
+    """Send to Telegram — ONE message per chat (user request): with an image the text is merged
+    into the photo itself as its caption (sendPhoto caption field — a single message in the
+    chat, never a separate text bubble); without an image the text goes as a plain message."""
     ok_count = 0
     errs = []
     chats = [c.strip() for c in chats.replace(";", ",").split(",") if c.strip()]
@@ -3899,12 +3903,15 @@ def _tg_send(token, chats, text, png=None):
         raise ValueError("empty bot token")
     if not chats:
         raise ValueError("no chat ids")
+    cap = (text or "").strip()
+    if len(cap) > 1024:                     # Telegram caption hard limit
+        cap = cap[:1024]
     for ch in chats:
         try:
             if png:
                 boundary = "----BadiCharts" + random_suffix(12)
                 body = b""
-                for k, v in [("chat_id", ch)]:
+                for k, v in [("chat_id", ch)] + ([("caption", cap)] if cap else []):
                     body += (f"--{boundary}\r\nContent-Disposition: form-data; name=\"{k}\"\r\n\r\n{v}\r\n").encode()
                 body += (f"--{boundary}\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"signal.png\"\r\n"
                          "Content-Type: image/png\r\n\r\n").encode() + png + b"\r\n"
@@ -4860,30 +4867,49 @@ GUIDE_JS = """/* ═════════════════════
      • Commands are checked against a strict allow-list inside the app — executing server code is impossible.
    ── 10) Chart screenshots from your script — Indicators.shot() + Telegram (new) ──
    Your indicator can capture the chart itself and send the picture to Telegram — and YOU
-   control exactly what is captured. It is never a forced full-app screenshot: you decide
-   the pane, the region and the resolution, and you may capture just a small piece.
+   control everything about the capture. It is never a forced full-app screenshot: you
+   decide the pane, the region, the candle width, which indicators appear, the resolution.
 
      Indicators.shot()                       → dataURL of the whole active chart pane
      Indicators.shot({ pane: 1 })            → a specific pane (0 = the first/top pane)
      Indicators.shot({ x, y, w, h })         → any region INSIDE the chart (pixels from
                                                the pane top-left corner)
+     Indicators.shot({ candleW: 18 })        → candle width for the capture (1..120 px —
+                                               the chart zoom is restored right after)
+     Indicators.shot({ hide: ['EMA Cross'] })→ capture WITHOUT the named indicators
+     Indicators.shot({ show: ['RSI'] })      → capture with ONLY the named indicators
      Indicators.shot({ scale: 2 })           → sharper capture (temporary 2x redraw,
                                                the chart resolution is restored right after)
      Indicators.shot({ format: 'png' })      → 'png' or 'jpeg' (default: jpeg)
      Indicators.shot({ quality: 0.95 })      → jpeg quality 0.5 .. 1 (default 0.92)
 
-   Send it straight to Telegram (the chart section — the chats of this indicator):
+   Send it straight to Telegram — the text and the picture travel as ONE message: the
+   text rides ON the photo as its caption (there is NO technical limitation — no separate
+   message is ever sent):
      Indicators.shot({ send: true,
-                       caption: 'EUR/USD — my setup',
+                       caption: 'EUR/USD — buy setup, 92% payout',   ← your message
                        chats: '@mychannel' });
    • chats is optional — without it the app uses the bot chat saved in the settings.
-   • caption is plain text only (no HTML).
+   • the caption is your custom text on the photo (Telegram caption, up to 1024
+     characters, plain text) — ONE single message in the chat: picture + text together.
    • send also RETURNS the dataURL, so you can keep a copy in your own logic too.
+   • NOTHING is saved to disk: the shot is captured, sent, done — the app writes no
+     file anywhere for script screenshots (user request).
 
-   Real example — send only your oscillator pane, sharp, exactly when a signal fires:
+   Candle + chart colors from a script (user request) — Indicators.colors():
+     Indicators.colors({ bull: '#22E08A',      ← bullish candle color
+                         bear: '#FF4D5E',      ← bearish candle color
+                         bg:   '#0b0e14' });   ← chart background color
+     also: bullVol / bearVol (candle volume colors), grid, axisText, crosshair, drawing —
+     any hex or rgba color, applied live on every chart pane, exactly like the settings
+     button. They survive dark/light switches because they sit on top of the theme.
+     Indicators.colors({ reset: true });       ← back to the app theme colors
+
+   Real example — candle colors + a sharp shot of your pane only, with one merged message:
      signal(candles, v, s) {
        if (v.crossed) {
-         Indicators.shot({ pane: 1, scale: 2, send: true,
+         Indicators.colors({ bull: '#22E08A', bear: '#FF4D5E' });
+         Indicators.shot({ pane: 1, scale: 2, candleW: 14, send: true,
                            caption: 'RSI cross — ' + candles[candles.length - 1].close,
                            chats: '@mychannel' });
        }
@@ -4900,8 +4926,8 @@ GUIDE_JS = """/* ═════════════════════
        chat) — the app never uploads it anywhere else.
      • Output is capped (~4 megapixels) and scale at 3x so a script cannot freeze the app
        with a giant capture.
-   Python-engine indicators (.py) already attach the chart screenshot to every signal
-   they send automatically — no extra call is needed there.
+   Python-engine indicators (.py) send every signal as ONE message too: the signal text
+   is merged into the chart screenshot as its caption, automatically.
    ═══════════════════════════════════════════════════════════════════════════ */
 
 return {
@@ -7275,7 +7301,7 @@ function augmentIndicators() {
         opts = opts || {};
         var pn = (typeof opts.pane === "number") ? panes[Math.max(0, Math.min(panes.length - 1, opts.pane))] : (aPane() || panes[0]);
         if (!pn || !pn.cv) return "";
-        var cv = pn.cv, ch = pn.chart || null;
+        var cv = pn.cv, ch = pn.chart || null, host = ch;
         var cw = cv.clientWidth || Math.round(cv.width / ((ch && ch.dpr) ? ch.dpr : 1)) || cv.width;
         var chh = cv.clientHeight || Math.round(cv.height / ((ch && ch.dpr) ? ch.dpr : 1)) || cv.height;
         if (cw < 20 || chh < 20) return "";
@@ -7284,11 +7310,36 @@ function augmentIndicators() {
         var y = Math.max(0, Math.min(chh - 10, Number(opts.y) || 0));
         var w = Math.max(20, Math.min(cw - x, Number(opts.w) || (cw - x)));
         var h = Math.max(20, Math.min(chh - y, Number(opts.h) || (chh - y)));
+        /* indicator visibility control (user request): hide:[names] removes those indicators
+           from the capture, show:[names] keeps ONLY those — everything restored right after */
+        var hidden = [];
+        if (host && host.indicatorStates && host.indicatorStates.forEach && typeof host.setIndicatorVisible === "function") {
+          var want = function (list) { return (list || []).map(function (s) { return String(s || "").toLowerCase().replace(/\.(badi|js)$/i, "").trim(); }).filter(function (s) { return s; }); };
+          var hideW = want(opts.hide), onlyW = (opts.show && opts.show.length) ? want(opts.show) : null;
+          if (hideW.length || onlyW) {
+            host.indicatorStates.forEach(function (st, id) {
+              if (!st || st.visible === false) return;
+              var pool = [String((st && st.def && st.def.label) || "")];
+              try { var f = files.find(function (xx) { return xx.id === id; }); if (f && f.fileName) pool.push(String(f.fileName)); } catch (e) {}
+              try { if (HID_IND[id] && HID_IND[id].fileName) pool.push(String(HID_IND[id].fileName)); } catch (e) {}
+              pool = pool.map(function (s) { return String(s).toLowerCase().replace(/\.(badi|js)$/i, "").trim(); });
+              var inList = function (list) { for (var i = 0; i < list.length; i++) if (pool.indexOf(list[i]) >= 0) return true; return false; };
+              if (onlyW) { if (!inList(onlyW)) { try { host.setIndicatorVisible(id, false); hidden.push(id); } catch (e) {} } }
+              else if (inList(hideW)) { try { host.setIndicatorVisible(id, false); hidden.push(id); } catch (e) {} }
+            });
+          }
+        }
+        /* candle width control (user request): a temporary barSpacing override for the capture —
+           the chart zoom is put back exactly as it was right after the shot */
+        var bsp0 = null;
+        if (ch && Number(opts.candleW) > 0) {
+          try { bsp0 = ch.barSpacing; ch.barSpacing = Math.max(1, Math.min(120, Number(opts.candleW))); } catch (e) { bsp0 = null; }
+        }
         /* optional sharper capture: a temporary higher-resolution redraw, restored right after */
         var scale = Math.max(1, Math.min(3, Number(opts.scale) || 1));
         var d0 = (ch && typeof ch.dpr === "number" && ch.dpr > 0) ? ch.dpr : 1;
-        if (ch && scale > 1) { try { ch.dpr = Math.min(3, d0 * scale); ch.render(performance.now()); } catch (e) {} }
-        else if (ch && ch.render) { try { ch.render(performance.now()); } catch (e) {} }
+        if (ch && scale > 1) { try { ch.dpr = Math.min(3, d0 * scale); } catch (e) {} }
+        if (ch && ch.render) { try { ch.render(performance.now()); } catch (e) {} }
         /* compose the region on an offscreen canvas (theme background behind transparent pixels) */
         var ratio = cv.width / Math.max(1, cv.clientWidth || cv.width);
         var ow = Math.round(w * ratio), oh = Math.round(h * ratio);
@@ -7304,13 +7355,18 @@ function augmentIndicators() {
           cx.fillRect(0, 0, ow, oh);
         } catch (e) {}
         cx.drawImage(cv, Math.round(x * ratio), Math.round(y * ratio), Math.round(w * ratio), Math.round(h * ratio), 0, 0, ow, oh);
-        if (ch && scale > 1) { try { ch.dpr = d0; ch.render(performance.now()); } catch (e) {} }
+        /* restore everything in the same frame: resolution, candle width, indicator visibility */
+        if (ch && scale > 1) { try { ch.dpr = d0; } catch (e) {} }
+        if (ch && bsp0 !== null) { try { ch.barSpacing = bsp0; } catch (e) {} }
+        hidden.forEach(function (id) { try { host.setIndicatorVisible(id, true); } catch (e) {} });
+        if (ch && ch.render) { try { ch.render(performance.now()); } catch (e) {} }
         var fmt = (String(opts.format || "jpeg").toLowerCase() === "png") ? "image/png" : "image/jpeg";
         var url = "";
         try { url = off.toDataURL(fmt, Math.max(0.5, Math.min(1, Number(opts.quality) || 0.92))); } catch (e) {}
         if (!url) return "";
         /* send straight to Telegram? the image is parked and the desktop pulls it (large data
-           travels through webCall — the safe path) — it lands only in the script chats */
+           travels through webCall — the safe path) — it lands only in the script chats, the
+           caption travels ON the photo as ONE message, and nothing is ever written to disk */
         if (opts.send) {
           window.__BADI_SCRIPT_SHOTS__ = window.__BADI_SCRIPT_SHOTS__ || {};
           var id = "ss" + Date.now().toString(36) + Math.floor(Math.random() * 10000).toString(36);
@@ -7319,6 +7375,30 @@ function augmentIndicators() {
         }
         return url;
       } catch (e) { return ""; }
+    };
+    /* ═══ Candle + chart colors from a script (user request) ═══
+       Indicators.colors({ bull:'#22E08A', bear:'#FF4D5E', bg:'#0b0e14', ... }) — the script
+       controls the candle colors and the chart background exactly like the settings button:
+       bull/bear candles, bullVol/bearVol volumes, bg background, grid, axisText, crosshair,
+       drawing — any hex/rgba, applied live on every chart pane. { reset:true } returns to the
+       app theme colors. Colors survive dark/light switches because they sit on top of the theme. */
+    window.Indicators.colors = function (ov) {
+      try {
+        if (!ov || typeof ov !== "object") return false;
+        var KEYS = ["bg", "bull", "bear", "bullVol", "bearVol", "grid", "axisText", "crosshair", "drawing"];
+        var user = {};
+        if (!ov.reset) {
+          KEYS.forEach(function (k) { if (typeof ov[k] === "string" && ov[k].trim()) user[k] = ov[k].trim(); });
+          if (!Object.keys(user).length) return false;
+          user = Object.assign({}, window.__BADI_CHART_USER__ || {}, user);
+        }
+        window.__BADI_CHART_USER__ = user;
+        var merged = Object.assign({}, window.__BADI_CHART_THEME__ || {}, user);
+        window.__BADI_CHART_THEME__ = merged;
+        panes.forEach(function (p) { try { if (p.chart && typeof p.chart.setTheme === "function") p.chart.setTheme(merged); } catch (e) {} });
+        try { if (window.__badiRefitIndicatorLabels) window.__badiRefitIndicatorLabels(); } catch (e) {}
+        return true;
+      } catch (e) { return false; }
     };
   } catch (e) {}
 }
