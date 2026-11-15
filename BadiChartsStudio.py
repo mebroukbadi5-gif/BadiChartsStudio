@@ -22,6 +22,17 @@
 #  (or BadiChartsStudio_readable.py — exactly the same result)
 #
 #  Latest updates (v2.17.1):
+#   • Buyer licensing moved into the indicator script (owner request): the seller lists the buyer
+#     IDs inside the code — the BADI LICENSED USERS line, unlimited buyers, several lines allowed —
+#     the encrypt dialog no longer holds any ID field: it only shows the buyers found in the script
+#     before embedding them inside the encrypted file; the USER ID stays in the bottom bar (copy)
+#   • Signals red badge = unread counter (owner request): it counts the signals that arrived while
+#     the card was closed and clears to zero the moment the user opens the signals card
+#   • Signals card design refined (owner request): a real title row (live dot + SIGNALS title +
+#     language-aware), a segmented Signals/History tabs control, and more precise card details
+#     (flag frame, uppercase row labels, direction-tinted top line)
+#   • Programming guide: a full new section 8 explaining buyer licensing inside the script —
+#     every step, every form of the marker line, unlimited buyers, re-encryption to change buyers
 #   • The white strip right of the price axis is gone for good — root cause fixed: the chart
 #     canvas stays CSS-driven so it always follows its container; opening the app in a smaller
 #     window and maximizing it no longer freezes the chart at its first size (owner report)
@@ -46,8 +57,9 @@
 #   • Fixed user ID BADI-XXXX-XXXX-XXXX in the bottom bar (click to copy):
 #     random per user, stored deep in hidden HMAC-signed locations and bound to the device —
 #     it cannot be changed or moved to another device or app
-#   • Encrypted-indicator licensing by ID: the seller enters the buyer ID in the encryption dialog
-#     and it is embedded inside the encrypted file — the indicator runs only on the matching device
+#   • Encrypted-indicator licensing by ID: the seller lists the buyer IDs inside the indicator
+#     script itself (the BADI LICENSED USERS line — unlimited buyers, edited freely) and they are
+#     embedded inside the encrypted file — the indicator runs only on a matching device
 #   • Open-app-folder button next to the editor button — the user drops indicators and tools into it
 #   • Settings: free color picker (clicking a swatch opens the color dialog) for every chart color
 # ==========================================================================
@@ -182,18 +194,24 @@ svg{vertical-align:middle;flex-shrink:0}
 
 /* ═══ Signals — side panel on the RIGHT (history of fired signals, black cards) ═══ */
 #sigPane{width:272px;flex-shrink:0;display:flex;flex-direction:column;background:var(--panel);border-right:1px solid var(--border)}
-#sigHead{display:flex;height:30px;flex-shrink:0;align-items:center;gap:6px;padding:0 10px;font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--t-dim);border-bottom:1px solid var(--border);overflow:hidden}
+/* Refined header (user request): a real title row with a live dot + a segmented tabs control below */
+#sigHead{flex-shrink:0;display:flex;flex-direction:column;gap:7px;padding:8px 10px 9px;border-bottom:1px solid var(--border)}
+.sig-hrow{display:flex;align-items:center;gap:7px;min-width:0;height:22px}
+#sigDot{width:7px;height:7px;border-radius:50%;flex-shrink:0;background:#22E08A;box-shadow:0 0 7px rgba(34,224,138,.65);animation:sigdot 2.4s ease-in-out infinite}
+@keyframes sigdot{0%,100%{opacity:1}50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){#sigDot{animation:none}}
+#sigTitle{font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--t-mid);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* Hide button inside the card header — clear border in the button color so it stays clearly visible */
 #sigHead .ibtn{width:22px;height:22px;border-radius:6px;color:var(--accent-h);border-color:var(--acc-bd);background:var(--acc-soft)}
 #sigHead .ibtn:hover{background:var(--acc-bd)}
 /* Fixed open/close card button that never disappears + small red count badge 1 2 3 (user request) */
 #sigShow{position:relative;flex-shrink:0}
 #sigBadge{position:absolute;top:-4px;inset-inline-end:-4px;min-width:15px;height:15px;border-radius:8px;background:#FF4D5E;color:#fff;font-size:9px;font-weight:800;line-height:15px;text-align:center;padding:0 4px;direction:ltr;font-style:normal;box-shadow:0 1px 4px rgba(0,0,0,.45);pointer-events:none}
-#sigHead .chip{height:15px;padding:0 6px;font-size:9px}
-/* Signals panel tabs: Signals (running now) + History (finished with their result) — user request */
-.sig-tab{display:inline-flex;height:20px;align-items:center;gap:4px;flex-shrink:1;min-width:0;max-width:122px;padding:0 8px;border-radius:999px;border:1px solid transparent;background:transparent;color:var(--t-dim);font-size:9.5px;font-weight:800;letter-spacing:.04em;cursor:pointer;transition:.15s;text-transform:uppercase;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+/* Signals panel tabs: a segmented control — Signals (running now) + History (finished with their result) — user request */
+#sigTabs{display:flex;gap:3px;padding:3px;border-radius:10px;background:var(--panel3);border:1px solid var(--border)}
+.sig-tab{flex:1;display:inline-flex;height:21px;align-items:center;justify-content:center;gap:5px;min-width:0;padding:0 10px;border-radius:7px;border:1px solid transparent;background:transparent;color:var(--t-dim);font-size:10px;font-weight:800;letter-spacing:.05em;cursor:pointer;transition:.15s;text-transform:uppercase;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .sig-tab b{font-size:9px;opacity:.65;font-weight:800}
-.sig-tab:hover{color:var(--t-mid);background:var(--panel3)}
+.sig-tab:hover{color:var(--t-mid);background:var(--panel2)}
 .sig-tab.on{color:var(--accent-h);background:var(--acc-soft);border-color:var(--acc-bd)}
 #sigList{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;gap:8px;padding:9px}
 /* Signal card — refined design: always black + a direction strip on the edge,
@@ -204,13 +222,14 @@ svg{vertical-align:middle;flex-shrink:0}
   border-color:color-mix(in srgb,var(--sc) 35%,#1b2227);
   box-shadow:0 10px 24px -14px color-mix(in srgb,var(--sc) 70%,#000)}
 .sigcard::before{content:"";position:absolute;inset:0 auto 0 0;width:3px;background:var(--sc);opacity:.85}
+.sigcard::after{content:"";position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,var(--sc) 0%,transparent 60%);opacity:.5}
 .sigcard:hover{border-color:color-mix(in srgb,var(--sc) 55%,#1b2227);transform:translateY(-1px)}
 .sigcard.sell{--sc:#FF4D5E;--scbg:rgba(255,77,94,.26)}
 .sigcard.pop{animation:sigpop .9s ease-out}
 @keyframes sigpop{0%{box-shadow:0 0 0 0 var(--scbg)}100%{box-shadow:0 0 0 14px transparent}}
 @media (prefers-reduced-motion:reduce){.sigcard.pop{animation:none}}
-.sig-top{display:flex;direction:ltr;align-items:center;justify-content:space-between;gap:8px;margin:0 0 1px}
-.sig-badge{display:inline-flex;align-items:center;gap:5px;background:var(--sc);color:#04100A;font-weight:800;font-size:10.5px;padding:3px 9px;border-radius:999px;letter-spacing:.4px}
+.sig-top{display:flex;direction:ltr;align-items:center;justify-content:space-between;gap:8px;margin:0 0 2px}
+.sig-badge{display:inline-flex;align-items:center;gap:5px;background:var(--sc);color:#04100A;font-weight:800;font-size:10px;padding:3px 10px;border-radius:999px;letter-spacing:.8px}
 .sigcard.sell .sig-badge{color:#1b0407}
 .sig-badge svg{width:11px;height:11px}
 .sig-res{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:999px;font-weight:800;font-size:10.5px;letter-spacing:.5px}
@@ -218,12 +237,13 @@ svg{vertical-align:middle;flex-shrink:0}
 .sig-res.win{background:rgba(34,224,138,.16);color:#22E08A}
 .sig-res.loss{background:rgba(255,77,94,.16);color:#FF4D5E}
 .sig-etime{font-size:10.5px;font-weight:700;color:var(--sc);direction:ltr;white-space:nowrap}
-.sig-pair{display:flex;align-items:center;gap:7px;font-size:16.5px;font-weight:800;letter-spacing:.3px;margin:5px 0 6px;color:#F2F5F3;white-space:nowrap}
-.sig-pair .aflag{width:22px;height:12px;border-radius:2px}
-.sig-rows{border-top:1px solid #1E272D;padding-top:4px;display:flex;flex-direction:column;gap:1px}
-.sig-row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:3px 0;font-size:11px}
-.sig-row span{color:#8D9993;flex-shrink:0;display:inline-flex;align-items:center;gap:5px}
-.sig-row b{font-weight:600;color:#F2F5F3;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:ltr;text-align:right}
+/* Card title (user request — needs precision): flag in a clean frame + tighter pair typography */
+.sig-pair{display:flex;align-items:center;gap:8px;font-size:15.5px;font-weight:800;letter-spacing:.3px;margin:6px 0 8px;color:#F2F5F3;white-space:nowrap}
+.sig-pair .aflag{width:21px;height:13px;border-radius:3px;box-shadow:0 0 0 1px rgba(255,255,255,.14)}
+.sig-rows{border-top:1px solid rgba(255,255,255,.08);padding-top:5px;display:flex;flex-direction:column;gap:1px}
+.sig-row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:3px 0;font-size:10.5px}
+.sig-row span{color:#7E8C85;font-size:9px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;flex-shrink:0;display:inline-flex;align-items:center;gap:5px}
+.sig-row b{font-weight:700;color:#F2F5F3;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:ltr;text-align:right}
 .sig-row .sig-ind{color:#B79CFF;font-weight:700}
 .sig-empty{font-size:10.5px;line-height:17px;color:var(--t-dim3);padding:4px 2px}
 /* Signals panel hide/show — hide button inside the card header
@@ -412,7 +432,7 @@ svg{vertical-align:middle;flex-shrink:0}
     <section id="chartPane">
       <div id="chartBar">
         <div class="cbar-top">
-          <!-- User request: one fixed button to open and close the signals card that never disappears + red badge with the signal count -->
+          <!-- User request: one fixed button to open and close the signals card that never disappears + red badge with the UNREAD signal count (clears when the card opens) -->
           <button id="sigShow" class="ibtn" title="Open or close the signals panel" aria-label="Open or close the signals panel"><i id="sigBadge" hidden></i></button>
           <!-- Currency-list open button: next to the two arrows and sized like the signals-card button (user request) -->
           <button id="assetAdd" class="ibtn" title="Add or remove currencies" aria-label="Open the currency list"></button>
@@ -430,12 +450,18 @@ svg{vertical-align:middle;flex-shrink:0}
         <!-- ═══ Signals panel on the left side (user request): two tabs — current signals + history ═══ -->
         <aside id="sigPane">
           <div id="sigHead">
-            <button id="sigTabSig" class="sig-tab on" type="button"></button>
-            <button id="sigTabHist" class="sig-tab" type="button"></button>
-            <span class="grow"></span>
-            <button id="sigSound" class="ibtn ghost" title="Mute or unmute the signal sounds" aria-label="Toggle signal sounds"></button>
-            <button id="sigClear" class="ibtn ghost" title="Clear the signals list" aria-label="Clear signals"></button>
-            <button id="sigHide" class="ibtn" title="Hide the signals panel" aria-label="Hide the signals panel"></button>
+            <div class="sig-hrow">
+              <i id="sigDot" aria-hidden="true"></i>
+              <span id="sigTitle">Signals</span>
+              <span class="grow"></span>
+              <button id="sigSound" class="ibtn ghost" title="Mute or unmute the signal sounds" aria-label="Toggle signal sounds"></button>
+              <button id="sigClear" class="ibtn ghost" title="Clear the signals list" aria-label="Clear signals"></button>
+              <button id="sigHide" class="ibtn" title="Hide the signals panel" aria-label="Hide the signals panel"></button>
+            </div>
+            <div id="sigTabs">
+              <button id="sigTabSig" class="sig-tab on" type="button"></button>
+              <button id="sigTabHist" class="sig-tab" type="button"></button>
+            </div>
           </div>
           <div id="sigList" class="custom-scroll"></div>
         </aside>
@@ -2285,6 +2311,9 @@ function toggleSound() {
    Demo card: always black + BUY/SELL badge + pair flag + duration, indicator and time,
    and the WIN/LOSS result arrives from the engine after the timeframe ends. Clicking it opens its currency chart */
 var SIGS = [];
+/* Red badge = UNREAD signals (user request): it counts the signals that arrived while the card was
+   closed (or while the History tab was shown) and drops to zero the moment the user opens the card */
+var SIG_UNREAD = 0;
 /* Active signals-panel tab: "sig" = signals running now, "hist" = finished history (user request) */
 var SIG_TAB = "sig";
 function setSigTab(tab) {
@@ -2292,9 +2321,14 @@ function setSigTab(tab) {
   const a = $("sigTabSig"), b = $("sigTabHist");
   if (a) a.classList.toggle("on", SIG_TAB === "sig");
   if (b) b.classList.toggle("on", SIG_TAB === "hist");
+  /* Back on the running-signals tab with the card open = everything is seen — clear the badge */
+  if (SIG_TAB === "sig") {
+    const p = $("sigPane");
+    if (p && !p.classList.contains("off")) SIG_UNREAD = 0;
+  }
   renderSignals();
 }
-/* Tab labels with the count of each section — Arabic/English following the app language */
+/* Tab labels with the count of each section + the panel title — Arabic/English following the app language */
 function updateSigTabs() {
   const ar = window.__BADI_LANG__ === "ar";
   let pend = 0, done = 0;
@@ -2302,6 +2336,8 @@ function updateSigTabs() {
   const a = $("sigTabSig"), b = $("sigTabHist");
   if (a) a.innerHTML = (ar ? "الإشارات" : "Signals") + " <b>" + pend + "</b>";
   if (b) b.innerHTML = (ar ? "السجل" : "History") + " <b>" + done + "</b>";
+  const tEl = $("sigTitle");
+  if (tEl) tEl.textContent = ar ? "الإشارات" : "Signals";
 }
 /* Signal card stylable from the indicator itself (user request):
    signal({…, card: "free HTML"}) or card:{html, bg, accent, color} — the card is not fixed */
@@ -2324,6 +2360,10 @@ window.__badiPushSignal = function (s) {
                    durSec: Number(s.durSec || 0), result: null,
                    card: normSigCard(s.card) });
     if (SIGS.length > 60) SIGS.length = 60;
+    /* Unread badge: a signal that arrives while the card is closed (or the History tab is on)
+       is unread — the badge clears when the user actually sees the signals list (user request) */
+    const sp = $("sigPane");
+    if (!sp || sp.classList.contains("off") || SIG_TAB !== "sig") SIG_UNREAD++;
     renderSignals();
     playSignal(s.dir === "down" ? "sell" : "buy");
   } catch (e) {}
@@ -2387,13 +2427,13 @@ function sigCard(g) {
     + '<div class="sig-row"><span>' + (window.__BADI_LANG__ === "ar" ? "الدخول" : "Entry") + "</span><b>" + etime + " · " + (isFinite(g.price) ? g.price : "—") + "</b></div>"
     + "</div></article>";
 }
-/* Red count badge on the open/close card button — small 1 2 3 number by the running signal count (user request) */
+/* Red count badge on the open/close card button — unread signals (user request):
+   counts what arrived while the card was closed, clears the moment the user opens it */
 function updateSigBadge() {
   const bd = $("sigBadge");
   if (!bd) return;
-  const n = SIGS.filter((g) => !g.result && !g.expired).length;
-  bd.textContent = n > 99 ? "99+" : String(n);
-  bd.hidden = n === 0;
+  bd.textContent = SIG_UNREAD > 99 ? "99+" : String(SIG_UNREAD);
+  bd.hidden = SIG_UNREAD === 0;
 }
 function renderSignals() {
   const box = $("sigList");
@@ -2570,7 +2610,7 @@ function bindEvents() {
   /* Signals/History tabs — user request */
   $("sigTabSig").addEventListener("click", function () { setSigTab("sig"); });
   $("sigTabHist").addEventListener("click", function () { setSigTab("hist"); });
-  $("sigClear").addEventListener("click", function () { SIGS = []; renderSignals(); });
+  $("sigClear").addEventListener("click", function () { SIGS = []; SIG_UNREAD = 0; renderSignals(); });
   $("emptyNew").addEventListener("click", openNewModal);
   $("optIndicator").addEventListener("click", function () {
     wzKind = "indicator";
@@ -2612,6 +2652,8 @@ function bindEvents() {
   function setSigHidden(off) {
     const p = $("sigPane");
     if (p) p.classList.toggle("off", !!off);
+    /* Opening the card = the user has seen the signals — the red badge must disappear (user request) */
+    if (!off) { SIG_UNREAD = 0; updateSigBadge(); }
     try { localStorage.setItem("badiSigHidden", off ? "1" : "0"); } catch (e) {}
     /* Chart width changed — re-layout the canvas (the library only listens to window.resize) */
     try { window.dispatchEvent(new Event("resize")); } catch (e) {}
@@ -2858,11 +2900,10 @@ T = {
         "badiSaved": "Encrypted indicator saved", "badiEmpty": "There is no code to encrypt",
         "badiJsOnly": "Only JavaScript indicators can be encrypted", "badiOk": "Loaded — runs internally, its code stays hidden",
         "badiFail": "BADI import failed", "badiHint": "The 256-bit key is fused into the app — it is never written to any file, never shown and cannot be copied. The encrypted indicator runs inside the chart directly: its code never opens in the editor and is never saved anywhere. The .badi file sits next to the real indicator file — like MetaTrader.",
-        "licTitle": "Encrypt indicator — buyer license", "licHint": "The buyer's USER ID is fetched automatically from your Telegram bot — click his name above to embed it into the encrypted indicator. The manual field below is a fallback only (multiple IDs: commas). Empty = works for everyone.",
-        "licOk": "Encrypt", "licCancel": "Cancel", "yourUid": "Your USER ID:",
-        "buyersTitle": "Buyers from your Telegram bot — click one to embed his USER ID into the indicator:",
-        "buyersFetch": "Fetching buyers from the bot…",
-        "buyersNone": "No buyers yet — the buyer opens your bot and sends his USER ID, then reopen this dialog.", "buyersErr": "Could not fetch buyers — save the bot token in settings first",
+        "licTitle": "Encrypt indicator", "licHint": "Buyer licensing is written inside the indicator script itself — not in this card: add the marker line BADI LICENSED USERS with the buyer IDs (unlimited users, comma separated, over several lines too). Every buyer copies his USER ID from the bottom bar of his own screen and sends it to you. The full how-to is in the programming guide.",
+        "licOk": "Encrypt", "licCancel": "Cancel",
+        "licIdsTitle": "Buyers declared in the script — embedded inside the encrypted file:",
+        "licIdsNone": "No BADI LICENSED USERS line in the script — the encrypted file will work for everyone.",
         "uidCopied": "USER ID copied to clipboard", "folderOpen": "App folder opened",
         "badiFolder": "Indicators folder", "badiFolderHint": "Created indicators and tools are saved here as real files — you can also drop your own files into these folders and the app loads them automatically.",
         "chartLook": "Chart appearance", "lookHint": "Type any color freely (hex like #22E08A or rgba) — not limited to presets. Changes apply instantly and are saved.",
@@ -2937,11 +2978,10 @@ T = {
         "badiSaved": "تم حفظ المؤشر المشفر", "badiEmpty": "لا يوجد كود لتشفيره",
         "badiJsOnly": "التشفير لمؤشرات JavaScript فقط — ملفات Python غير مدعومة", "badiOk": "تم التحميل — يعمل داخليًا وكودــه مخفي",
         "badiFail": "فشل استيراد BADI", "badiHint": "المفتاح 256-بت مدموج داخل التطبيق — لا يُكتب أبدًا في أي ملف، ولا يُعرض، ولا يمكن نسخه. المؤشر المشفر يعمل داخل الشارت مباشرة: كودــه لا يُفتح في المحرر ولا يُحفظ في أي مكان. الملف المشفر .badi يُحفظ بجوار ملف المؤشر الأصلي — مثل ميتاتريدر.",
-        "licTitle": "تشفير المؤشر — ترخيص المشتري", "licHint": "معرّف المشتري يُجلب تلقائيًا من بوت تلجرام — انقر على اسمه بالأعلى ليُدمَج داخل المؤشر المشفر مباشرة. الحقل اليدوي بالأسفل احتياط فقط (لعدة معرفات: فاصلة). اتركه فارغًا ليعمل مع الجميع.",
-        "licOk": "تشفير", "licCancel": "إلغاء", "yourUid": "معرّفك (USER ID):",
-        "buyersTitle": "المشترون من بوت تلجرام — انقر على مشترٍ لدمج معرّفه داخل المؤشر:",
-        "buyersFetch": "جلب المشترين من البوت…",
-        "buyersNone": "لا مشترين بعد — المشتري يفتح بوتك ويرسل له معرّفه ثم أعد فتح هذه النافذة.", "buyersErr": "تعذّر جلب المشترين — احفظ توكن البوت في الإعدادات أولًا",
+        "licTitle": "تشفير المؤشر", "licHint": "ترخيص المشترين يُكتب داخل سكربت المؤشر نفسه — لا في هذه البطاقة: أضف السطر الخاص BADI LICENSED USERS واكتب بعده معرّفات المشترين (عدد غير محدود، بفواصل، وعلى عدة أسطر أيضًا). كل مشترٍ ينسخ معرّفه من الشريط السفلي في شاشته ويرسله لك. الشرح الكامل في دليل البرمجة.",
+        "licOk": "تشفير", "licCancel": "إلغاء",
+        "licIdsTitle": "المشترون المعلنون في السكربت — سيُدمجون داخل الملف المشفر:",
+        "licIdsNone": "لا يوجد سطر BADI LICENSED USERS في السكربت — الملف المشفر سيعمل مع الجميع.",
         "uidCopied": "تم نسخ معرّف المستخدم", "folderOpen": "تم فتح مجلد التطبيق",
         "badiFolder": "مجلد المؤشرات", "badiFolderHint": "المؤشرات والأدوات التي تنشئها تُحفظ هنا كملفات حقيقية — ويمكنك أن تضع ملفاتك مباشرة في هذه المجلدات وسيتعرف عليها التطبيق تلقائيًا.",
         "chartLook": "مظهر الشارت", "lookHint": "اكتب أي لون بحرية (hex مثل #22E08A أو rgba) — ليست الألوان محدودة بقوائم. التغيير يُطبق فورًا ويُحفظ.",
@@ -3969,8 +4009,9 @@ class BADI:
 #    the system) signed with HMAC-SHA256 and bound to this device fingerprint — it cannot be
 #    changed or moved to another device or app: copying the storage file to another device is
 #    rejected (the fingerprint does not match) and a new ID is generated automatically. Any tampering breaks the signature.
-#  • The seller embeds the buyer ID inside the encrypted indicator (.badi) — and the indicator runs only on
-#    the device matching its embedded ID (checked inside the app at decryption).
+#  • The seller lists the buyer IDs inside the indicator script (the BADI LICENSED USERS line —
+#    unlimited buyers) and they are embedded inside the encrypted indicator (.badi) — the indicator
+#    runs only on the device matching one of the embedded IDs (checked inside the app at decryption).
 BADI_UID_RE = re.compile(r"^BADI-[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}$")
 BADI_UID_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"   # No 0/O/1/I to avoid confusion
 # The signing secret is derived from the app master key — never written to any file and never shown
@@ -4157,6 +4198,47 @@ def _badi_license_denied(license_ids):
     if not ids:
         return False
     return _get_user_id().upper() not in ids
+
+
+_BADI_UID_TOKEN_RE = re.compile(r"BADI-[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}")
+_BADI_LIC_MARK_RE = re.compile(r"BADI[_\s\-]?LICENSED[_\s\-]?USERS", re.I)
+
+
+def _parse_script_licenses(code):
+    """Buyer USER IDs declared inside the indicator script itself (user request):
+    the seller lists the buyers in the code — one marker line, unlimited buyers — instead of a
+    dialog card (a card cannot hold more than a few users and hides the list from the seller):
+
+        /* BADI LICENSED USERS: BADI-2R2Y-GEET-NPUN, BADI-8F3K-2T9W-5H1D */   ← block comment
+        // BADI LICENSED USERS: BADI-2R2Y-GEET-NPUN                          ← line comment
+        const BADI_LICENSED_USERS = ["BADI-2R2Y-GEET-NPUN"];                  ← JS constant
+
+    Only the statement/comment carrying the marker is parsed — any other ID written elsewhere in
+    the code is ignored. Continuation lines are followed while they end with a comma/opening
+    bracket (multi-line lists). Returns a clean uppercase list, order preserved."""
+    out, seen = [], set()
+    try:
+        lines = str(code or "").splitlines()
+        for li, ln in enumerate(lines):
+            if not _BADI_LIC_MARK_RE.search(ln):
+                continue
+            seg = [ln]
+            j = li
+            while j + 1 < len(lines) and len(seg) < 32:
+                t = re.sub(r"[/*]", "", seg[-1]).strip()
+                if t.endswith(",") or t.endswith("[") or t.endswith("(") or t.endswith(":"):
+                    j += 1
+                    seg.append(lines[j])
+                else:
+                    break
+            blob = " ".join(seg).upper()
+            for tok in _BADI_UID_TOKEN_RE.findall(blob):
+                if tok not in seen:
+                    seen.add(tok)
+                    out.append(tok)
+    except Exception:
+        pass
+    return out
 
 
 # ═══════════ Paid indicators — protected database + developer control through his server (user request) ═══════════
@@ -4582,8 +4664,48 @@ GUIDE_JS = """/* ═════════════════════
      The result is computed automatically: when the timeframe duration ends the entry is
      compared with the exit (WIN/LOSS)
 
-   ── 8) Paid indicators — the developer controls his indicator through his server (new) ──
-   When encrypting the indicator (the licensing window) there are two paid fields:
+   ── 8) Selling your indicator — buyer licensing by ID (BADI LICENSED USERS) ─
+   The buyer list lives INSIDE the indicator script itself — never in a dialog card.
+   A card can hold only one or two users, but in the script you control the list freely
+   and can license unlimited buyers. The full flow, step by step:
+
+     1) Every device has a fixed USER ID (BADI-XXXX-XXXX-XXXX) shown in the bottom bar of
+        the app screen. The buyer clicks it — it is copied to the clipboard — and sends it
+        to you however you like (Telegram, WhatsApp, email...).
+     2) In the indicator script add the marker line followed by your buyers' IDs.
+        All three forms below are accepted — the IDs are read from the marker statement only,
+        any other ID written elsewhere in the code is ignored:
+
+          /* BADI LICENSED USERS: BADI-2R2Y-GEET-NPUN, BADI-8F3K-2T9W-5H1D */
+          // BADI LICENSED USERS: BADI-2R2Y-GEET-NPUN
+          const BADI_LICENSED_USERS = ["BADI-2R2Y-GEET-NPUN", "BADI-8F3K-2T9W-5H1D"];
+
+        Unlimited buyers: keep writing IDs separated by commas — over several lines too:
+
+          /* BADI LICENSED USERS:
+             BADI-2R2Y-GEET-NPUN,
+             BADI-8F3K-2T9W-5H1D,
+             BADI-4M2P-7K9X-8Q6R */
+
+     3) Click the lock button (Encrypt the indicator). The dialog shows the buyers found in
+        the script, then confirm and the whole list is embedded INSIDE the encrypted .badi
+        file (AES-256-GCM). Nothing is written in the clear and the key never leaves the app.
+     4) The encrypted indicator runs only on a device whose USER ID is in the list. On any
+        other device it refuses to run and shows that device's own ID so the buyer can send
+        it to you. An empty list (no marker line) = the file works for everyone.
+
+     Notes:
+     • To add or remove a buyer later: edit the script, change the line, encrypt again —
+       the license travels inside the file; there is no server and no account involved.
+     • The check runs inside the app before the code starts — the encrypted code itself
+       never sees the license list, so it cannot be read, forged or stripped out.
+     • IDs are format-checked: BADI-XXXX-XXXX-XXXX (letters/digits, no 0/O/1/I to avoid
+       confusion) — a wrongly typed ID is simply never matched, so copy, never retype.
+     • Combine this with section 9 (paid indicators) to add a server-side subscription
+       on top of the per-device license.
+
+   ── 9) Paid indicators — the developer controls his indicator through his server (new) ──
+   When the indicator is encrypted, two paid fields can be embedded with it:
      Paid control server : https://your-server/badi/api   (https only — optional)
      Paid indicator ID   : PRO_SIGNAL_1             (letters, digits and _ . - only)
    Both fields are embedded inside the encrypted envelope itself — no script can change them.
@@ -4847,7 +4969,6 @@ class Backend(QObject):
     myIndsChanged = Signal()               # My-indicators list on the indicators page changed (user request)
     notifChanged = Signal()                # Notification card changed (user request)
     paidCmd = Signal(str)                  # Valid remote control command: enable/disable a paid indicator (user request)
-    buyersFetched = Signal(str)            # Buyers list fetched from the Telegram bot (user request)
 
     def __init__(self):
         super().__init__()
@@ -5920,49 +6041,6 @@ class Backend(QObject):
                            "tmpl": cfg.get("tmpl") or TG_TMPL_DEFAULT,
                            "attach": bool(cfg.get("attach", True))})
 
-    @Slot()
-    def badiBotBuyers(self):
-        """Fetch buyers from the Telegram bot (user request): the server fetches the user ID
-        the seller wants to sell to and it is embedded inside the indicator — no server card and no
-        manual input except as a fallback. Every user who talked to the bot appears here, and their BADI
-        ID is extracted automatically from their messages. The result arrives via buyersFetched (separate thread)."""
-        def run():
-            out = {"ok": False, "error": "", "buyers": []}
-            try:
-                tok = str(_read_json(CFG_FILE, {}).get("token") or "").strip()
-                if not tok:
-                    out["error"] = "notoken"
-                else:
-                    req = urllib.request.Request(
-                        "https://api.telegram.org/bot" + tok
-                        + "/getUpdates?limit=100&allowed_updates=%5B%22message%22%5D",
-                        headers={"User-Agent": "BadiCharts-Studio"})
-                    with urllib.request.urlopen(req, timeout=10) as resp:
-                        data = json.loads(resp.read().decode("utf-8", "ignore"))
-                    users = {}
-                    for upd in data.get("result") or []:
-                        msg = upd.get("message") or upd.get("edited_message") or {}
-                        frm = msg.get("from") or {}
-                        num = frm.get("id")
-                        if not num:
-                            continue
-                        ent = users.setdefault(int(num), {
-                            "name": ((frm.get("first_name") or "") + " "
-                                     + (frm.get("last_name") or "")).strip(),
-                            "user": ("@" + str(frm.get("username"))) if frm.get("username") else "",
-                            "uid": ""})
-                        for cand in re.findall(
-                                r"BADI-[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}",
-                                str(msg.get("text") or "").upper()):
-                            if not ent["uid"]:
-                                ent["uid"] = cand
-                    out["ok"] = True
-                    out["buyers"] = [dict(v, id=str(k)) for k, v in users.items()]
-            except Exception as e:
-                out["error"] = str(e)[:120]
-            self.buyersFetched.emit(json.dumps(out))
-        threading.Thread(target=run, daemon=True).start()
-
     # ---------- BADI: encrypted indicators (the key stays inside the app only) ----------
     badiFpChanged = Signal()
 
@@ -6104,8 +6182,9 @@ class Backend(QObject):
         """Encrypt the indicator and write a .badi file next to its original in the BadiCharts folder
         (like MetaTrader: .mq5/.ex5 side by side) — result is JSON.
         The original file is written first if not on disk yet, then the encrypted file beside it.
-        license_ids: allowed USER IDs — separated by commas/spaces;
-        empty = works for everyone. The encrypted file runs only on a device matching its ID (user request).
+        license_ids: extra allowed USER IDs — separated by commas/spaces (optional fallback);
+        the main source is the script itself: the BADI LICENSED USERS line (see _parse_script_licenses).
+        Empty = works for everyone. The encrypted file runs only on a device matching its ID (user request).
         The key is never written into the file — licensing travels inside the encrypted envelope itself."""
         lang = self._lang
         try:
@@ -6113,9 +6192,15 @@ class Backend(QObject):
             kind = self._norm_kind(kind)
             if kind == "badi":
                 return json.dumps({"ok": False, "error": BADI_MSGS[lang]["notbadi"]})
-            ids = self._parse_license_ids(license_ids)
-            if ids is None:
+            # Buyer licensing lives in the script now (user request): the BADI LICENSED USERS line —
+            # unlimited buyers, the seller edits it freely. Manual license_ids stay as a fallback.
+            ids = _parse_script_licenses(code)
+            manual = self._parse_license_ids(license_ids)
+            if manual is None:
                 return json.dumps({"ok": False, "error": BADI_MSGS[lang]["uidbad"]})
+            for tok in manual:
+                if tok not in ids:
+                    ids.append(tok)
             fname = _safe_file_name(file_name) or "Indicator.js"
             base = fname.rsplit(".", 1)[0]
             src = {"fileName": fname, "kind": kind, "code": code or ""}
@@ -6156,6 +6241,12 @@ class Backend(QObject):
                 seen.add(tok)
                 ids.append(tok)
         return ids
+
+    @Slot(str, result=str)
+    def badiScriptLicenses(self, code):
+        """The buyer USER IDs declared in the indicator script (the BADI LICENSED USERS line) —
+        the encrypt dialog shows them so the seller confirms exactly who will be embedded."""
+        return json.dumps({"ok": True, "ids": _parse_script_licenses(code)})
 
     @Slot(str, result=str)
     def badiOpenName(self, name):
@@ -7840,7 +7931,7 @@ ApplicationWindow {
     property string lastTf: ""
     property int lastLen: -1
     property var filesAcc: ({})
-    property var pendingExport: null      // Pending indicator waiting for the buyer ID input (licensing)
+    property var pendingExport: null      // Pending indicator waiting for the encrypt confirmation
 
     // ───────────── Embedded web page bridge ─────────────
     function webCall(js, cb) {
@@ -7976,17 +8067,17 @@ ApplicationWindow {
                         try { o = JSON.parse(res || "{}") } catch (e) { o = {} }
                         if (!o.c || o.c.length < 2) { win.webLog("err", backend.s.badiEmpty); return }
                         if (o.k === "py") { win.webLog("err", backend.s.badiJsOnly); return }
-                        /* Buyer licensing dialog: the buyer ID is embedded inside the encrypted file —
-                           the indicator runs only on his device (user request) */
+                        /* Encrypt dialog: buyer IDs are declared inside the script (BADI LICENSED
+                           USERS) and embedded inside the encrypted file at confirmation (user request) */
                         win.pendingExport = { c: o.c, n: o.n || "indicator", k: o.k || "indicator" }
-                        licField.text = ""
                         licPop.open()
                     })
     }
     function badiExportConfirm() {
         var pe = win.pendingExport
         if (!pe) { licPop.close(); return }
-        var r = JSON.parse(backend.badiExport(pe.c, pe.n, pe.k, licField.text, "", ""))
+        /* Buyer IDs come from the script itself (BADI LICENSED USERS) — parsed inside badiExport */
+        var r = JSON.parse(backend.badiExport(pe.c, pe.n, pe.k, "", "", ""))
         licPop.close()
         win.pendingExport = null
         if (r.ok) win.webLog("ok", backend.s.badiSaved + " ← " + r.path)
@@ -8586,30 +8677,22 @@ ApplicationWindow {
         onAccepted: win.badiImportAt(badiOpenDialog.selectedFile)
     }
 
-    /* ───── Encrypted-indicator licensing dialog (user request) ─────
-       The seller enters the buyer USER ID then encrypts — the indicator runs only on a device
-       matching its embedded ID. Empty = works for everyone. The ID is format-checked before encryption. */
+    /* ───── Encrypt-indicator dialog (user request) ─────
+       Buyer licensing lives INSIDE the indicator script now (the BADI LICENSED USERS line —
+       unlimited buyers, edited freely by the seller) — never in a dialog card. This dialog only
+       confirms the encryption and shows the buyers found in the script before embedding them.
+       Every buyer copies his USER ID from the bottom bar of his own screen (click to copy). */
     Popup {
         id: licPop
+        objectName: "licPop"   /* reachable for automated tests */
         parent: Overlay.overlay
         onOpened: {
-            licField.text = ""
-            buyersLbl.text = backend.s.buyersFetch
-            buyers = []
-            backend.badiBotBuyers()
+            var r = {}
+            try { r = JSON.parse(backend.badiScriptLicenses((win.pendingExport || {}).c || "")) } catch (e) { r = {} }
+            licIds = (r && r.ok && r.ids) ? r.ids : []
+            licIdsLbl.text = licIds.length ? backend.s.licIdsTitle : backend.s.licIdsNone
         }
-        property var buyers: []
-        function fillBuyers(js) {
-            var o = {}
-            try { o = JSON.parse(js || "{}") } catch (e) { o = {} }
-            if (!o.ok) { buyers = []; buyersLbl.text = backend.s.buyersErr; return }
-            buyers = o.buyers || []
-            buyersLbl.text = buyers.length ? backend.s.buyersTitle : backend.s.buyersNone
-        }
-        Connections {
-            target: backend
-            function onBuyersFetched(js) { licPop.fillBuyers(js) }
-        }
+        property var licIds: []
         anchors.centerIn: Overlay.overlay
         width: Math.min(430, win.width - 48)
         padding: 16
@@ -8638,91 +8721,48 @@ ApplicationWindow {
                 font.pixelSize: 11; color: backend.c.sub
                 wrapMode: Text.WordWrap; Layout.fillWidth: true
             }
-            TextField {
-                id: licField
-                Layout.fillWidth: true
-                implicitHeight: 42
-                font.pixelSize: 13; font.bold: true; font.letterSpacing: 1
-                font.family: "monospace"
-                color: backend.c.fg
-                placeholderText: "BADI-7K9X-4M2P-8Q6R, BADI-8F3K-2T9W-5H1D"
-                placeholderTextColor: backend.c.sub
-                verticalAlignment: TextInput.AlignVCenter
-                selectByMouse: true
-                leftPadding: 12; rightPadding: 12
-                background: Rectangle {
-                    radius: 10; color: backend.c.bg
-                    border.width: licField.activeFocus ? 2 : 1
-                    border.color: licField.activeFocus ? backend.c.accent : backend.c.border
-                }
-                onAccepted: win.badiExportConfirm()
-            }
-            /* Buyers from the bot (user request): the server fetches the buyer ID the seller wants
-               to sell to and embeds it directly inside the encrypted indicator — no server card,
-               the key is never shown, and the manual input below is a fallback only */
-            RowLayout {
-                Layout.fillWidth: true; spacing: 8
-                Label { id: buyersLbl; text: backend.s.buyersTitle; font.pixelSize: 11
-                        color: backend.c.sub; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                IBtn { iconName: "rotate"
-                       onClicked: { buyersLbl.text = backend.s.buyersFetch; backend.badiBotBuyers() } }
-            }
+            /* Buyers declared in the script (BADI LICENSED USERS) — read-only confirmation of
+               exactly who will be embedded inside the encrypted file (user request) */
+            Label { id: licIdsLbl; text: backend.s.licIdsNone; font.pixelSize: 11
+                    color: backend.c.sub; wrapMode: Text.WordWrap; Layout.fillWidth: true }
             Rectangle {
                 Layout.fillWidth: true
-                implicitHeight: buyersCol.height + 10
-                visible: licPop.buyers.length > 0
+                implicitHeight: licIdsCol.height + 10
+                visible: licPop.licIds.length > 0
                 color: backend.c.bg; radius: 10; border.width: 1; border.color: backend.c.border
                 Column {
-                    id: buyersCol
+                    id: licIdsCol
                     anchors.left: parent.left; anchors.right: parent.right
                     anchors.margins: 5
                     spacing: 2
                     Repeater {
-                        model: licPop.buyers
+                        model: licPop.licIds
                         delegate: Rectangle {
                             required property var modelData
-                            width: buyersCol.width
-                            height: 28
+                            width: licIdsCol.width
+                            height: 26
                             radius: 7
-                            color: buyMouse.containsMouse && modelData && modelData.uid
-                                   ? backend.c.accent : "transparent"
-                            RowLayout {
-                                anchors.fill: parent; anchors.leftMargin: 8; anchors.rightMargin: 8
-                                spacing: 6
-                                Label { text: (modelData.name || "") + (modelData.user ? "  " + modelData.user : "")
-                                        font.pixelSize: 11; color: backend.c.fg; elide: Text.ElideRight
-                                        Layout.fillWidth: true }
-                                Label { text: modelData.uid || "—"; font.pixelSize: 11
-                                        font.family: "monospace"; font.bold: true
-                                        color: buyMouse.containsMouse && modelData.uid
-                                               ? backend.c.card : backend.c.accent }
-                            }
+                            color: idMouse.containsMouse ? backend.c.accent : "transparent"
                             MouseArea {
-                                id: buyMouse
+                                id: idMouse
                                 anchors.fill: parent
                                 hoverEnabled: true
-                                cursorShape: modelData && modelData.uid
-                                             ? Qt.PointingHandCursor : Qt.ArrowCursor
-                                onClicked: {
-                                    if (!modelData || !modelData.uid) return
-                                    var t = licField.text.trim()
-                                    licField.text = t ? t + ", " + modelData.uid : modelData.uid
-                                }
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: backend.copyText(modelData)
+                            }
+                            RowLayout {
+                                anchors.fill: parent; anchors.leftMargin: 9; anchors.rightMargin: 8
+                                spacing: 6
+                                Rectangle { width: 6; height: 6; radius: 3
+                                            color: idMouse.containsMouse ? backend.c.card : backend.c.accent }
+                                Label { text: modelData; font.pixelSize: 12
+                                        font.family: "monospace"; font.bold: true
+                                        color: backend.c.fg; elide: Text.ElideRight
+                                        Layout.fillWidth: true }
+                                IBtn { iconName: "copy"; onClicked: backend.copyText(modelData) }
                             }
                         }
                     }
-                }
-            }
-            /* This device ID — quick copy so the buyer can send it to the seller */
-            Rectangle {
-                Layout.fillWidth: true; implicitHeight: 40; radius: 10
-                color: backend.c.bg; border.width: 1; border.color: backend.c.border
-                RowLayout {
-                    anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 8; spacing: 8
-                    Label { text: backend.s.yourUid; font.pixelSize: 11; color: backend.c.sub }
-                    Label { text: backend.userId; font.pixelSize: 13; font.bold: true
-                            color: backend.c.accent; Layout.fillWidth: true; elide: Text.ElideRight }
-                    IBtn { iconName: "copy"; onClicked: backend.copyText(backend.userId) }
                 }
             }
             RowLayout {
