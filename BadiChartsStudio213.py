@@ -82,7 +82,7 @@ def qx_print_welcome():
     print()
     print(f"\033[96m{'═' * 62}\033[0m")
     print(f"\033[97m\033[1m  QX Console — Quotex Candles & Assets\033[0m\033[0m")
-    print(f"\033[2m  v23 · assets list live · browser-style history (v15) + legacy fallback · no snapshot json · every-tick\033[0m")
+    print(f"\033[2m  v25 · candles auto-saved to candles/<asset>_<tf>.json · typed assets + days · loud fetch log\033[0m")
     print(f"\033[96m{'═' * 62}\033[0m")
     print()
 
@@ -1439,7 +1439,9 @@ def logmsg(msg: str):
     _log_to_file(line)
     # If live table is active, queue the message instead of printing directly
     # to avoid corrupting the redrawn table
-    if '_STATUS_MESSAGES_QUEUE' in globals() and globals()['_STATUS_MESSAGES_QUEUE'] is not None:
+    # v24: كان الشرط is not None صحيحاً دائماً (القائمة تُعرَّف []) فتُحبس كل الرسائل
+    # في الطابور ولا تُطبع أثناء التحميل — الآن: طابور فقط أثناء عرض الجدول الحي
+    if globals().get('LIVE_TABLE_ACTIVE') and '_STATUS_MESSAGES_QUEUE' in globals() and globals()['_STATUS_MESSAGES_QUEUE'] is not None:
         try:
             globals()['_STATUS_MESSAGES_QUEUE'].append(line)
             # keep last 5 messages
@@ -2298,17 +2300,23 @@ def _print_payout_table(entries):
 
 # ===== v17: حفظ شموع كل عملة في ملف JSON بجانب السكربت فور اكتمال جلبها =====
 def _save_candles_json(asset, source_label="fetch"):
-    """يحفظ شموع العملة في JSON باسم: <العملة>_<الفريم>_<عدد الشموع>.json
-    مثال: BRLUSD_otc_5S_720.json — ويُطبع مسار الملف بعد الحفظ."""
+    """v25: يحفظ شموع العملة في JSON داخل مجلد candles بجوار السكربت
+    باسم ثابت: candles/<العملة>_<الفريم>.json مثل candles/BRLUSD_otc_5S.json
+    (يُستبدل الملف بأحدث البيانات في كل تشغيل) ويُطبع المسار بعد الحفظ."""
     try:
         candles = sorted(list(asset.candles), key=lambda c: c.get('time', 0))
         if not candles:
             return None
         count = len(candles)
-        out_dir = Path(__file__).resolve().parent
+        out_dir = Path(__file__).resolve().parent / "candles"
+        out_dir.mkdir(parents=True, exist_ok=True)
         tf_label = _current_period_label()
         safe_symbol = str(asset.api_symbol).strip().replace(" ", "_")
-        path = out_dir / f"{safe_symbol}_{tf_label}_{count}.json"
+        path = out_dir / f"{safe_symbol}_{tf_label}.json"
+        try:
+            _hm = f"{HISTORY_METHOD} (browser-style v15)" if _use_browser_history() else f"{HISTORY_METHOD} (legacy)"
+        except Exception:
+            _hm = "unknown"
         payload = {
             "asset": asset.api_symbol,
             "display": pretty_asset_name(asset.api_symbol),
@@ -2316,7 +2324,7 @@ def _save_candles_json(asset, source_label="fetch"):
             "period_seconds": PERIOD_SECONDS,
             "is_subsecond": bool(IS_SUBSECOND),
             "count": count,
-            "history_method": "v17-parallel-1s" if PERIOD_SECONDS < 60 else "parallel-history-load",
+            "history_method": _hm,
             "source": source_label,
             "host": QX_HOST,
             "fetched_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -2325,7 +2333,7 @@ def _save_candles_json(asset, source_label="fetch"):
         }
         with open(path, "w", encoding="utf-8") as _f:
             json.dump(payload, _f, ensure_ascii=False, indent=2)
-        logmsg(f"[json] saved {path.name} ({count} candles)")
+        logmsg(f"[json] saved candles/{path.name} ({count} candles)")
         return path
     except Exception as e:
         logmsg(f"[json] save failed for {getattr(asset, 'symbol', '?')}: {e}")
@@ -2432,6 +2440,7 @@ LONG_DISCONNECT_THRESHOLD = 3600        # 3600s = 1
 # . : .
 GAP_FILL_SUMMARY = ""  # ( mt4_gap_filler)
 _STATUS_MESSAGES_QUEUE = []  # queue for log messages during live table (avoid corrupting redraw)
+LIVE_TABLE_ACTIVE = False  # v24: True فقط أثناء عرض الجدول الحي — logmsg يطبع مباشرة خارج الجدول
 GAP_FILL_ACTIVE = False  # True
 
 def _asyncio_loop_exception_handler(loop, context):
@@ -3027,7 +3036,7 @@ async def _fetch_1s_sequential_fallback(api_symbol, display_name, target_1s_coun
 
 # ===== BROWSER-STYLE HISTORY (v15) =====
 HISTORY_METHOD = "browser"           # "browser" = الجديدة ، "legacy" = الأصلية
-HIST_DEBUG = True                    # True = يطبع مفاتيح كل رد (للتشخيص) — أعد False بعد التأكد
+HIST_DEBUG = False                   # True = يطبع مفاتيح كل رد (للتشخيص فقط)
 SUBSECOND_HISTORY_SECONDS = 3600     # ساعة كاملة للفريمات الفرعية
 BROWSER_CHUNK_1S = 3000              # offset المتصفح عند period=1
 BROWSER_CHUNK_MIN_CANDLES = 60       # M1 => 60*60 = 3600 مثل المتصفح
@@ -3099,6 +3108,9 @@ async def browser_style_history(api_symbol, period, seconds_back, chunk=None, ti
     points = []
     empty = 0
     batches = 0
+    _t0_hist = time.time()
+    logmsg(f"[hist:{api_symbol}] start: period={period}s, back {seconds_back:.0f}s "
+           f"({seconds_back / 86400.0:.2f} days), chunk={chunk}")
     while cursor > target:
         if not getattr(api.state, 'check_accepted_connection', False):
             break
@@ -3133,8 +3145,14 @@ async def browser_style_history(api_symbol, period, seconds_back, chunk=None, ti
                 progress(min(end_ts - cursor, seconds_back), seconds_back)
             except Exception:
                 pass
+        # v24: سجل تحميل ظاهر لكل دفعة — الكود كان صامتاً لأن logmsg يُحبس في الطابور
+        _h_done = min(end_ts - cursor, seconds_back)
+        _h_pct = (_h_done / seconds_back * 100.0) if seconds_back > 0 else 100.0
+        logmsg(f"[hist:{api_symbol}] batch #{batches}: +{len(pts)} pts, total {len(points)} "
+               f"({_h_pct:.0f}%) back {_h_done:.0f}s/{seconds_back:.0f}s — {time.time() - _t0_hist:.1f}s")
         await asyncio.sleep(0.05)
     points = [p for p in points if p[0] >= target]
+    logmsg(f"[hist:{api_symbol}] done: {len(points)} points in {time.time() - _t0_hist:.1f}s ({batches} batches)")
     return _bucketize(points, 1 if period == 1 else period)
 
 async def _subsecond_history_browser(asset):
@@ -5217,18 +5235,31 @@ if __name__ == "__main__":
     # لأن النظام يجلب period=1 ويُجمّع محلياً — عدد الأيام غير ذي معنى هنا
     # ════════════════════════════════════════════════════════════════════
     if PERIOD_SECONDS < 60:
-        # الفريمات الفرعية (5S/10S/15S/30S): قيمة ثابتة بدون سؤال
-        if _use_browser_history():
-            SUBSECOND_HISTORY_CANDLES = SUBSECOND_HISTORY_SECONDS // PERIOD_SECONDS
-            globals()['SUBSECOND_HISTORY_CANDLES'] = SUBSECOND_HISTORY_CANDLES
+        # v24: المستخدم يدخل عدد أيام الشموع بنفسه (كانت ساعة ثابتة في وضع المتصفح)
+        _sub_days_raw = ""
+        try:
+            _sub_days_raw = input(f"{Colors.CYAN}  Days of candle history (e.g. 1 = full day, 0.5 = half) [default=1]: {Colors.RESET}").strip()
+        except EOFError:
+            _sub_days_raw = ""
+        try:
+            _sub_days = float(_sub_days_raw) if _sub_days_raw else 1.0
+        except ValueError:
+            _sub_days = 1.0
+        if _sub_days <= 0:
+            _sub_days = 1.0
+        globals()['SUBSECOND_HISTORY_SECONDS'] = max(int(_sub_days * 86400), PERIOD_SECONDS)
+        SUBSECOND_HISTORY_CANDLES = globals()['SUBSECOND_HISTORY_SECONDS'] // PERIOD_SECONDS
+        globals()['SUBSECOND_HISTORY_CANDLES'] = SUBSECOND_HISTORY_CANDLES
+        # v24: سعة الذاكرة تستوعب العدد المطلوب (كانت 4000 ثابتة)
+        globals()['SUBSECOND_MAX_CANDLES'] = max(SUBSECOND_MAX_CANDLES, SUBSECOND_HISTORY_CANDLES + 500)
         INITIAL_CANDLES = SUBSECOND_HISTORY_CANDLES
         HISTORY_DAYS = (INITIAL_CANDLES * PERIOD_SECONDS) / 86400.0 * 1.15
         FETCH_DURATION_SECONDS = int(86400 * HISTORY_DAYS)
         globals()['INITIAL_CANDLES'] = INITIAL_CANDLES
         globals()['HISTORY_DAYS'] = HISTORY_DAYS
         globals()['FETCH_DURATION_SECONDS'] = FETCH_DURATION_SECONDS
-        # رسالة قصيرة بدل قائمة كاملة
-        print(f"{Colors.DIM}  Sub-second timeframe: auto history ({INITIAL_CANDLES} candles, {HISTORY_DAYS:.2f} days){Colors.RESET}\n")
+        print(f"{Colors.GREEN}  History: {_sub_days:g} day(s) = {globals()['SUBSECOND_HISTORY_SECONDS']}s -> "
+              f"{SUBSECOND_HISTORY_CANDLES} candles ({'browser method' if _use_browser_history() else 'legacy method'}){Colors.RESET}\n")
     else:
         # الفريمات 60s+: نسأل المستخدم عن عدد الأيام
         _default_days = (1000 * PERIOD_SECONDS) / 86400.0 * 1.15  # +15% margin
@@ -5267,6 +5298,66 @@ if __name__ == "__main__":
     # (تم حذف كتلة Dashboard بناءً على طلب المستخدم — الترحيب + القوائم كافية)
 
     # ════════════════════════════════════════════════════════════════════
+    # ════════════════════════════════════════════════════════════════════
+    # STAGE 3b: Select Assets (v24) — إدخال اسم العملة يدوياً
+    # صيغ مقبولة: BRL/USD · OTC | USDARS_otc | usd/ars | EURUSD
+    # عدة أزواج مفصولة بفاصلة — Enter مباشرة = القائمة الافتراضية كاملة
+    # ════════════════════════════════════════════════════════════════════
+    def _norm_asset_query(q):
+        s = str(q).upper().replace("·", " ").replace("/", " ").replace("_", " ")
+        s = " ".join(s.split())
+        is_otc = "OTC" in s
+        s = s.replace("OTC", "")
+        s = "".join(s.split())
+        return s, is_otc
+
+    def _resolve_asset_query(raw):
+        """يرجع (رمز العملة، ملاحظة أو None)"""
+        base, is_otc = _norm_asset_query(raw)
+        if not base or not base.isalpha() or not base.isascii():
+            return None, None
+        for name in ASSET_LIST:
+            nb, _ = _norm_asset_query(name)
+            if nb == base:
+                if not is_otc and not name.lower().endswith("_otc"):
+                    return name, None
+                if is_otc and name.lower().endswith("_otc"):
+                    return name, None
+                if not is_otc and name.lower().endswith("_otc"):
+                    return name, f"القائمة المحلية OTC فقط — استُخدمت {name}"
+        guess = base + ("_otc" if is_otc else "")
+        return guess, "غير موجودة في القائمة المحلية — سيُتحقق منها بعد الاتصال"
+
+    print(f"{Colors.BOLD}  STAGE 3b: Select Assets{Colors.RESET}")
+    print(f"  {Colors.DIM}Default list: {len(ASSET_LIST)} OTC pairs. Examples: BRL/USD · OTC, USDARS_otc, EURUSD{Colors.RESET}")
+    _typed = ""
+    try:
+        _typed = input(f"{Colors.CYAN}  Enter asset name(s), comma-separated (Enter = default list): {Colors.RESET}").strip()
+    except EOFError:
+        _typed = ""
+    if _typed:
+        _resolved, _not_found = [], []
+        for _part in _typed.replace(";", ",").split(","):
+            _part = _part.strip()
+            if not _part:
+                continue
+            _sym, _note = _resolve_asset_query(_part)
+            if _sym:
+                _resolved.append(_sym)
+                if _note:
+                    print(f"  {Colors.YELLOW}  note: {_note}{Colors.RESET}")
+            else:
+                _not_found.append(_part)
+        if _not_found:
+            print(f"  {Colors.RED}  غير موجود / unrecognized: {', '.join(_not_found)}{Colors.RESET}")
+        if _resolved:
+            globals()['ASSET_LIST'] = _resolved
+            print(f"  {Colors.GREEN}  Assets selected ({len(_resolved)}): {', '.join(_resolved)}{Colors.RESET}\n")
+        else:
+            print(f"  {Colors.YELLOW}  لا مدخلات صالحة — استمرار بالقائمة الافتراضية ({len(ASSET_LIST)} أزواج){Colors.RESET}\n")
+    else:
+        print(f"  {Colors.GREEN}  Using default list ({len(ASSET_LIST)} assets){Colors.RESET}\n")
+
     # STAGE 4: Domain — التعرف التلقائي على البلد عبر IP (بدون قائمة يدوية)
     #   بنغلاديش (BD)   -> market-qx.info   (نطاق بنغلاديش)
     #   أي دولة أخرى    -> quotex.com       (النطاق الرسمي العالمي)
@@ -5322,6 +5413,18 @@ if __name__ == "__main__":
         print(f"{Colors.RED}  [asset_list] failed: {_e_list}{Colors.RESET}")
     if not _ASSET_LIST_PRINTED:
         print(f"{Colors.YELLOW}  [asset_list] لم تُطبع القائمة بعد — ستحاول مراقبة الدفع جلبها تلقائياً خلال لحظات{Colors.RESET}")
+    # v24: تحقق من العملات المُدخلة يدوياً ضد القائمة الحية من الخادم
+    try:
+        _live_names = {e.get("asset") for e in _instruments_snapshot() if e.get("asset")}
+        if _live_names:
+            for _a in ASSET_LIST:
+                if _a not in _live_names:
+                    _base = _a.replace("_otc", "")
+                    _sugg = sorted(n for n in _live_names if n.startswith(_base[:4]))[:3]
+                    print(f"{Colors.YELLOW}  [asset_check] {_a} غير موجودة في القائمة الحية! مقترحات: "
+                          f"{', '.join(_sugg) if _sugg else '-'}{Colors.RESET}")
+    except Exception:
+        pass
     # v19: بدء مراقبة الدفع/الحالة فوراً بعد الدخول (كانت تبدأ بعد اكتمال حلقة
     # جلب الشموع كلها — نقلتها إلى هنا بناءً على طلب المستخدم حتى تُطبع
     # القائمة وتُحدَّث أثناء البث لا بعده)
@@ -5331,6 +5434,7 @@ if __name__ == "__main__":
 
     # ===== FIX 8: 1 — =====
     print(f"\n{Colors.CYAN}{'═'*60}{Colors.RESET}")
+    globals()['LIVE_TABLE_ACTIVE'] = False  # v24: أثناء التحميل السجل يطبع مباشرة
     print(f"{Colors.BOLD}  SECTION 1: CANDLE FETCHING ({total_assets} assets, {INITIAL_CANDLES} candles each){Colors.RESET}")
     print(f"{Colors.CYAN}{'═'*60}{Colors.RESET}\n")
 
@@ -5653,12 +5757,14 @@ if __name__ == "__main__":
         # To preserve live ticks, merge them back after fetch.
         # (handled inside realtime_stream which appends to asset.candles)
 
-        # v17: حفظ شموع العملة في ملف JSON فور اكتمال جلبها (نفس مجلد السكربت)
-        # الاسم: <العملة>_<الفريم>_<عدد الشموع>.json مثل BRLUSD_otc_5S_720.json
+        # v25: حفظ شموع العملة في ملف JSON فور اكتمال جلبها (مجلد candles/)
+        # الاسم الثابت: candles/<العملة>_<الفريم>.json مثل candles/BRLUSD_otc_5S.json
         try:
-            _save_candles_json(asset, source_label="startup_fetch")
-        except Exception:
-            pass
+            _saved_path = _save_candles_json(asset, source_label="startup_fetch")
+            if _saved_path is None and asset.candles:
+                print(f"\n{Colors.YELLOW}  [json] save returned None for {symbol} (unexpected){Colors.RESET}")
+        except Exception as _je:
+            print(f"\n{Colors.YELLOW}  [json] save failed for {symbol}: {_je}{Colors.RESET}")
         # ===== FIX 7: cooldown — =====
         # . keepalive_loop .
         if FETCH_COOLDOWN_EVERY > 0 and idx > 0 and idx % FETCH_COOLDOWN_EVERY == 0 and idx < total_assets:
@@ -5832,6 +5938,7 @@ if __name__ == "__main__":
         sys.stdout.flush()
 
     # Initial draw
+    globals()['LIVE_TABLE_ACTIVE'] = True  # v24: الجدول الحي بدأ — logmsg يلحق بالطابور بدل الطباعة
     _draw_live_table(first_draw=True)
     print()
     print(f"{Colors.CYAN}Live streaming active. Press Enter for menu, Ctrl+C to stop.{Colors.RESET}")
