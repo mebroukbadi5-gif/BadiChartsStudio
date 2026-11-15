@@ -22,6 +22,20 @@
 #  (or BadiChartsStudio_readable.py — exactly the same result)
 #
 #  Latest updates (v2.17.1):
+#   • Python programming guide (owner request): a full guide for the PYTHON language is now seeded
+#     next to the JS one — BadiCharts_Python_Guide.py, 100% English, and it is itself a working
+#     Bollinger indicator. It covers the whole Python engine: the .py indicator structure
+#     (LABEL/TYPE/SETTINGS/calculate + get_range/signal), the short candle keys {"t","o","h","l","c","v"},
+#     the injected helpers (sma/ema/rsi + math) and the safe builtins, overlay vs pane, the automatic
+#     line drawing, Telegram signals (a chats id per indicator + automatic WIN/LOSS settlement), the
+#     automatic chart screenshot on every signal (ONE message — the text rides on the photo), the
+#     closed sandbox (no import/files/network — that is what keeps the device safe) and error
+#     debugging. The JS guide got a new section 13 pointing to it
+#   • Python sandbox hardened (found while writing the guide): exec() silently injects the REAL
+#     builtins when the globals dict has no __builtins__ key — so "import os" and friends were
+#     reachable from a Python indicator despite the safe-builtins list. The engine now pins
+#     __builtins__ to the safe set explicitly: import/files/network are genuinely unreachable,
+#     matching the closed-sandbox promise (verified by probe: import raises, open raises at call)
 #   • Indicator labels always readable (owner report): some indicator names were drawn with the
 #     indicator's own color — black text vanished on the dark theme and white text on the light
 #     theme. Every indicator label color is now auto-fitted to the active theme (contrast-checked
@@ -5175,6 +5189,17 @@ GUIDE_JS = """/* ═════════════════════
      • NOTHING is saved to disk — the picture is composed, sent, done.
      • Caps (2000x2000, ~4 megapixels, 500 commands, 2000-char text, ~12000-char command list)
        so a script cannot freeze the app.
+
+   ── 13) Python indicators — a second language runs in the desktop (new) ────
+   The app executes PYTHON indicators too: a .py file with LABEL / TYPE / SETTINGS /
+   calculate() (+ optional get_range / signal) runs in the Python engine inside the
+   desktop — its lines are drawn on the same chart and its signals reach Telegram
+   exactly like the JavaScript ones, with the chart screenshot attached automatically
+   to every signal message (ONE message — the text rides on the photo).
+   The Python sandbox is closed (no import / no files / no network) so a Python
+   indicator can only compute and signal — never touch the device or the screen.
+   The full Python guide is seeded next to this file: BadiCharts_Python_Guide.py —
+   it is itself a working Bollinger indicator; open it from the indicators list.
    ═══════════════════════════════════════════════════════════════════════════ */
 
 return {
@@ -5250,9 +5275,155 @@ return {
   }
 };"""
 
+PY_GUIDE_FILE_NAME = "BadiCharts_Python_Guide.py"
+
+GUIDE_PY = '''# ═══════════════════════════════════════════════════════════════════════════
+#  BadiCharts Python Guide — indicators in the Python language (full explanation)
+#  ═══════════════════════════════════════════════════════════════════════════
+#
+#  This file is a real Python indicator that runs in the app's Python engine — the full
+#  explanation is in the comments below. Enable it from the indicators list and you will
+#  see Bollinger Bands (middle / upper / lower) drawn over the candles, updating live.
+#
+#  ── 1) What a Python indicator is ──────────────────────────────────────────
+#  A .py file placed in the BadiCharts/Indicators folder (or created with the new-file
+#  wizard) runs INSIDE the desktop app, in the Python engine — pure Python, no browser
+#  involved on its side:
+#    • The file name (without .py) is the name shown on the chart and in the signals.
+#    • While the live feed ticks, the engine calls calculate() over and over and pushes
+#      the fresh values to the chart — the lines update in real time, nothing else to do.
+#    • It is re-run on every save and on every symbol/timeframe switch.
+#    • Enable/disable it from the indicators list exactly like the JavaScript ones.
+#
+#  ── 2) Structure of a Python indicator ─────────────────────────────────────
+#  Required (the engine refuses the file without them):
+#    LABEL                 : the indicator name (the chart label comes from the file name)
+#    TYPE                  : 'overlay' → drawn over the candles on the price scale
+#                            'pane'    → its own window under the chart (RSI-style)
+#    SETTINGS              : a dict of your parameters — passed to calculate as s
+#    calculate(candles, s) → the values (see section 3)
+#  Optional:
+#    get_range(values) → (min, max)      fix the pane window range (only for 'pane')
+#    signal(candles, values) → a signal dict or None   (see section 6)
+#
+#  ── 3) calculate(candles, s) — the calculation ─────────────────────────────
+#    candles : the candle array — SHORT keys in Python:
+#                [{"t": epoch-seconds, "o": open, "h": high, "l": low,
+#                  "c": close, "v": volume}, ...]
+#              newest candle LAST; the engine keeps about 1200–1500 of them.
+#    s       : a fresh copy of SETTINGS on every call — read s["period"], s["mult"]...
+#    returns : {"Name": [values...], ...} — one chart line per key, each list aligned
+#              index-by-index with the candles
+#              or a plain list [values...] → drawn as one line named "Value".
+#    Use None for the warm-up part of a line (it is simply not drawn) — never 0:
+#    a 0 would paint a fake line at the bottom of the chart.
+#    Values are rounded to 8 decimals; NaN/inf arrive on the chart as None automatically.
+#
+#  ── 4) Ready-made helpers injected into every script ───────────────────────
+#    sma(v, p)     simple moving average      → list, None during warm-up
+#    ema(v, p)     exponential moving average
+#    rsi(v, p)     relative strength index
+#    math          the whole math module (sqrt, pow, pi, atan2, ...)
+#    Safe builtins: abs, min, max, len, range, float, int, round, sum, enumerate,
+#                   zip, list, dict, sorted, pow  +  True / False / None
+#
+#  ── 5) The sandbox — what a Python indicator can and cannot do ─────────────
+#  The Python engine is a closed sandbox, BY DESIGN — it keeps the user's device safe:
+#    • NO import statement — no os, sys, time, requests... only the helpers above
+#    • NO files, NO folders, NO internet, NO access to the app, the screen or the system
+#  A Python indicator computes numbers and raises signals — that is exactly all it needs.
+#  For the drawing/capturing superpowers use a JavaScript indicator: the JS guide
+#  (BadiCharts_Programming_Guide.js, sections 10–12) covers chart screenshots,
+#  a private virtual chart and free image composition.
+#
+#  ── 6) signal(candles, values) — signals + Telegram ────────────────────────
+#  Called right after every calculate(). Return a dict to fire a signal:
+#      {"dir": 'up' or 'down',
+#       "price": candles[-1]["c"],
+#       "chats": '@yourchannel or -1001234567890',   ← this indicator's Telegram chat
+#       "asset": 'EUR/USD'}                          ← optional: another currency
+#  or None for no signal. Notes:
+#    • The same candle + same direction never repeats — no double messages.
+#    • The signal card appears on the chart; when the timeframe candle ends the result
+#      (WIN/LOSS) is settled automatically — into the History tab and to the same chat.
+#    • "chats" here overrides the bot-settings chat for THIS indicator only.
+#    • values is the series dict your calculate returned (None during warm-up) —
+#      check the tail values before trusting them.
+#
+#  ── 7) Screenshots — the chart picture rides on every signal ───────────────
+#  Every signal message carries THE CHART SCREENSHOT automatically — ONE Telegram
+#  message, the signal text rides ON the photo as its caption — when "attach chart
+#  screenshot" is on in the bot settings; with it off the signal goes as text only.
+#  You do not capture anything yourself: the desktop grabs the chart at the exact
+#  moment the signal fires. From a Python indicator capturing anything else is
+#  impossible (closed sandbox — section 5); JavaScript scripts have full manual
+#  control of screenshots (Indicators.shot / render / compose / composePy).
+#
+#  ── 8) Errors & debugging ──────────────────────────────────────────────────
+#    • A file that does not compile is disabled and the error shows in the editor
+#      console — fix it and run again.
+#    • A runtime error in calculate/signal logs twice, then the engine goes quiet
+#      about it ("errors hidden (persistent)") — the line simply stops updating.
+#    • There is no print() in the sandbox — debug by returning extra series (draw
+#      them), by checking the console messages, and by testing on one indicator first.
+#
+#  ── 9) The working example inside this file ────────────────────────────────
+#  Bollinger Bands computed with sma + math (no imports needed): the middle band is a
+#  simple moving average, the outer bands are ± mult × the standard deviation. The
+#  signal() at the end is neutral (returns None) so the guide stays quiet — the
+#  commented lines show the exact shape of a real signal. Copy this file, rename it
+#  and start from here.
+#
+#  Quick reference ───────────────────────────────────────────────────────────
+#    LABEL / TYPE / SETTINGS / calculate()         required
+#    get_range(values) → (min, max)                optional — pane type only
+#    signal(candles, values) → dict or None        optional — Telegram signals
+#    sma / ema / rsi / math                        injected helpers
+#    candles[i]["t"|"o"|"h"|"l"|"c"|"v"]           the candles (short keys!)
+#    return {"Name": [values...]}                  one chart line per key
+# ═══════════════════════════════════════════════════════════════════════════
+
+LABEL = "BADI PY Guide"
+TYPE = "overlay"
+SETTINGS = {"period": 20, "mult": 2.0, "color": "#22E08A"}
+
+
+def calculate(candles, s):
+    closes = [c["c"] for c in candles]
+    n = len(closes)
+    p = max(2, int(s.get("period", 20)))
+    mult = float(s.get("mult", 2.0))
+    mid = sma(closes, p)
+    upper = [None] * n
+    lower = [None] * n
+    for i in range(n):
+        m = mid[i]
+        if m is None:
+            continue
+        acc = 0.0
+        for j in range(i - p + 1, i + 1):
+            d = closes[j] - m
+            acc += d * d
+        sd = math.sqrt(acc / p)
+        upper[i] = m + mult * sd
+        lower[i] = m - mult * sd
+    return {"middle": mid, "upper": upper, "lower": lower}
+
+
+def signal(candles, values):
+    # A real signal looks like this — neutral here (None) so the guide stays quiet:
+    # low = values["lower"][-1]
+    # if low is not None and candles[-1]["c"] <= low:
+    #     return {"dir": "up", "price": candles[-1]["c"], "chats": "@mychannel"}
+    # up = values["upper"][-1]
+    # if up is not None and candles[-1]["c"] >= up:
+    #     return {"dir": "down", "price": candles[-1]["c"], "chats": "@mychannel"}
+    return None
+'''
+
 
 def _seed_guide_file():
-    """Write the programming-and-drawing guide file into the Indicators folder (once) — English file name (user request)."""
+    """Write the programming guides (JS + Python) into the Indicators folder (once) — English file names (user request)."""
     try:
         # Migration: delete old copies with the Arabic name if any exist
         for old in LEGACY_GUIDE_FILES:
@@ -5262,18 +5433,19 @@ def _seed_guide_file():
                     os.remove(op)
                 except Exception:
                     pass
-        p = os.path.join(BADI_IND_DIR, GUIDE_FILE_NAME)
-        cur = ""
-        if os.path.exists(p):
-            try:
-                with open(p, "r", encoding="utf-8") as fh:
-                    cur = fh.read()
-            except Exception:
-                cur = ""
-        # The guide is rewritten when its content changes — so the new paid-indicators section reaches every user
-        if cur.strip() != GUIDE_JS.strip():
-            with open(p, "w", encoding="utf-8") as fh:
-                fh.write(GUIDE_JS + "\n")
+        for gname, gcontent in ((GUIDE_FILE_NAME, GUIDE_JS), (PY_GUIDE_FILE_NAME, GUIDE_PY)):
+            p = os.path.join(BADI_IND_DIR, gname)
+            cur = ""
+            if os.path.exists(p):
+                try:
+                    with open(p, "r", encoding="utf-8") as fh:
+                        cur = fh.read()
+                except Exception:
+                    cur = ""
+            # The guide is rewritten when its content changes — so the new paid-indicators section reaches every user
+            if cur.strip() != gcontent.strip():
+                with open(p, "w", encoding="utf-8") as fh:
+                    fh.write(gcontent + "\n")
     except Exception:
         pass
 
@@ -6140,6 +6312,12 @@ class Backend(QObject):
         try:
             gl = dict(self._SAFE_BUILTINS)
             gl.update(PY_HELPERS)
+            # Pin the builtins explicitly: exec() would otherwise inject the REAL builtins
+            # dict into globals when the key is missing — and then import/open/os/network
+            # were all reachable from an indicator script (the "sandbox" was cosmetic).
+            # With __builtins__ set to the safe set only, import raises ImportError and
+            # the closed-sandbox promise in the Python guide is actually true.
+            gl["__builtins__"] = dict(self._SAFE_BUILTINS)
             exec(f["code"], gl)          # noqa: S102 — restricted local sandbox
             for req in ("LABEL", "TYPE", "SETTINGS", "calculate"):
                 if req not in gl:
