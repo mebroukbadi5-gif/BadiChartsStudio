@@ -22,6 +22,13 @@
 #  (or BadiChartsStudio_readable.py — exactly the same result)
 #
 #  Latest updates (v2.17.1):
+#   • Indicator labels always readable (owner report): some indicator names were drawn with the
+#     indicator's own color — black text vanished on the dark theme and white text on the light
+#     theme. Every indicator label color is now auto-fitted to the active theme (contrast-checked
+#     against the pane background, the author's color kept for the drawing itself) and re-fitted
+#     live on every dark/light switch — on all charts and all add paths
+#   • Notifications card refined (owner report): the blue bell badge no longer touches the card
+#     edge — the whole popup content is inset with proper padding, header and list breathe
 #   • Buyer licensing moved into the indicator script (owner request): the seller lists the buyer
 #     IDs inside the code — the BADI LICENSED USERS line, unlimited buyers, several lines allowed —
 #     the encrypt dialog no longer holds any ID field: it only shows the buyers found in the script
@@ -1273,6 +1280,83 @@ function renderAll() {
 }
 /* ═══════════ File operations: run / stop / delete / create ═══════════ */
 
+/* ═══ Indicator label readability (owner report) ═══
+   The chart library paints each indicator name (and its dot) with the indicator's own
+   color — a black label vanishes on the dark theme and a white label vanishes on the
+   light theme. We never touch the author's color for the drawing itself; instead the
+   LABEL color is re-fitted to the active theme: if it cannot be read on the pane
+   background it is mixed toward white (dark theme) or toward near-black (light theme)
+   until the contrast is safe, and the original color is kept aside so a theme switch
+   recomputes from the author's value, never from a previously fitted one. */
+function __badiParseColor(c) {
+  if (typeof c !== "string") return null;
+  const s = c.trim();
+  let m = /^#([0-9a-fA-F]{3,8})$/.exec(s);
+  if (m) {
+    let h = m[1];
+    if (h.length === 3 || h.length === 4) h = h.split("").map((x) => x + x).join("");
+    if (h.length < 6) return null;
+    return { r: parseInt(h.slice(0, 2), 16), g: parseInt(h.slice(2, 4), 16), b: parseInt(h.slice(4, 6), 16) };
+  }
+  m = /^rgba?\(([^)]+)\)$/i.exec(s);
+  if (m) {
+    const p = m[1].split(",").map((x) => parseFloat(x));
+    if (p.length >= 3 && p.slice(0, 3).every((n) => isFinite(n))) return { r: p[0], g: p[1], b: p[2] };
+  }
+  return null;
+}
+function __badiRelLum(c) {
+  const f = (u) => { u /= 255; return u <= 0.03928 ? u / 12.92 : Math.pow((u + 0.055) / 1.055, 2.4); };
+  return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b);
+}
+function __badiContrast(a, b) {
+  const l1 = Math.max(__badiRelLum(a), __badiRelLum(b));
+  const l2 = Math.min(__badiRelLum(a), __badiRelLum(b));
+  return (l1 + 0.05) / (l2 + 0.05);
+}
+function __badiLabelColor(orig, dark, bgCss) {
+  const bg = __badiParseColor(bgCss) || (dark ? { r: 14, g: 16, b: 21 } : { r: 255, g: 255, b: 255 });
+  const c = __badiParseColor(orig);
+  if (!c) return dark ? "#dbe4f0" : "#1f2733";   /* no color given → a safe readable default */
+  if (__badiContrast(c, bg) >= 3.0) return null; /* already readable → keep the author's color */
+  const to = dark ? { r: 255, g: 255, b: 255 } : { r: 16, g: 24, b: 39 };
+  let out = c;
+  for (let i = 0; i < 40 && __badiContrast(out, bg) < 3.0; i++) {
+    out = { r: Math.round(out.r + (to.r - out.r) * 0.1),
+            g: Math.round(out.g + (to.g - out.g) * 0.1),
+            b: Math.round(out.b + (to.b - out.b) * 0.1) };
+  }
+  return "#" + [out.r, out.g, out.b].map((x) => ("0" + Math.max(0, Math.min(255, x)).toString(16)).slice(-2)).join("");
+}
+/* Re-fit every indicator label color on every open pane to the active theme. Runs after
+   each indicator lands on a chart (through the addIndicator wrapper in setupChart) and on
+   every app/chart theme change. Idempotent: each def carries its original color aside. */
+window.__badiRefitIndicatorLabels = function () {
+  try {
+    if (typeof panes === "undefined" || !panes || !panes.forEach) return;
+    const t = window.__BADI_APP_THEME__;
+    let dark = t ? !!t.dark : true;
+    let bgCss = (t && t.c && (t.c.card || t.c.bg)) || "";
+    if (!bgCss) { try { bgCss = getComputedStyle(document.body).backgroundColor; } catch (e) { bgCss = ""; } }
+    if (!bgCss || bgCss === "transparent" || bgCss === "rgba(0, 0, 0, 0)") bgCss = dark ? "#0e1015" : "#ffffff";
+    else if (!t) { const bc = __badiParseColor(bgCss); if (bc) dark = __badiRelLum(bc) < 0.5; }
+    const key = (dark ? "D:" : "L:") + bgCss;
+    panes.forEach((p) => {
+      const ch = p && p.chart;
+      if (!ch || !ch.indicatorStates || !ch.indicatorStates.forEach) return;
+      ch.indicatorStates.forEach((st) => {
+        const d = st && st.def;
+        if (!d) return;
+        if (d.__badiOrigColor === undefined) d.__badiOrigColor = d.color;
+        const fitted = __badiLabelColor(d.__badiOrigColor, dark, bgCss);
+        if (fitted !== null) d.color = fitted;
+        d.__badiLabelKey = key;
+      });
+      try { if (typeof ch.invalidate === "function") ch.invalidate(); } catch (e) {}
+    });
+  } catch (e) {}
+};
+
 /** Wrap user hooks with error capture (same error shown at most twice) */
 function guardDef(f, def) {
   const out = Object.assign({}, def, { id: f.id, label: fileLabel(f.fileName) || def.label });
@@ -1720,6 +1804,21 @@ function setupChart(ch, p) {
     onRemoved(id);
     return r;
   };
+
+  /* Indicator label readability (owner report): EVERY add path lands here — the library
+     dropdown, editor files, encrypted .badi indicators and Python-engine indicators — so one
+     wrapper re-fits the label colors to the active theme right after each add. */
+  try {
+    if (!ch.__badiLabelPatched) {
+      ch.__badiLabelPatched = true;
+      const origAdd = ch.addIndicator.bind(ch);
+      ch.addIndicator = function (...a) {
+        const r = origAdd.apply(ch, a);
+        if (window.__badiRefitIndicatorLabels) window.__badiRefitIndicatorLabels();
+        return r;
+      };
+    }
+  } catch (e) {}
 
   /* Do not leak chart shortcuts (R / + / - / Delete) while typing in the editor */
   ch.onKeyDown = function (e) {
@@ -7185,6 +7284,9 @@ function applyAppTheme(t) {
     if (typeof panes !== "undefined" && panes && panes.forEach)
       panes.forEach(function (p) { try { if (p.chart && typeof p.chart.setTheme === "function") p.chart.setTheme(ct); } catch (e) {} });
   } catch (e) {}
+  /* Indicator label colors follow the theme too (owner report) — re-fit after the new
+     chart colors land so black-on-dark / white-on-light names can never come back */
+  try { if (window.__badiRefitIndicatorLabels) window.__badiRefitIndicatorLabels(); } catch (e) {}
   window.__BADI_MONACO_THEME__ = t.dark ? "badi-app-dark" : "badi-app-light";
   try {
     defineMonAppThemes();
@@ -7461,6 +7563,7 @@ function defineBadiApp() {
         var merged = Object.assign({}, window.__BADI_CHART_THEME__ || {}, window.__BADI_CHART_USER__);
         window.__BADI_CHART_THEME__ = merged;
         panes.forEach(function (p) { try { if (p.chart && typeof p.chart.setTheme === "function") p.chart.setTheme(merged); } catch (e) {} });
+        try { if (window.__badiRefitIndicatorLabels) window.__badiRefitIndicatorLabels(); } catch (e) {}
       } catch (e) {}
     },
     rescale: function () { rescaleNow(0); },
@@ -8519,13 +8622,18 @@ ApplicationWindow {
     Popup {
         id: notifPop
         parent: Overlay.overlay
-        width: Math.min(360, win.width - 24)
-        height: Math.min(430, win.height - 120)
+        width: Math.min(372, win.width - 24)
+        height: Math.min(446, win.height - 120)
         x: win.width - width - 14
         y: 62
-        padding: 0
+        /* Proper inner padding (owner report): the blue bell badge used to sit glued to the
+           card edge — the whole content is now inset so nothing touches the border */
+        padding: 14
         modal: false
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        /* Opening the card marks everything read — the red badge on the bell disappears
+           no matter which path opened the card (button click or any other opener) */
+        onOpened: backend.notifsMarkAll()
         background: Rectangle {
             radius: 14; color: backend.c.card
             border.width: 1; border.color: backend.c.border
