@@ -3725,6 +3725,9 @@ T = {
         "mktOpen": "Open", "mktClosed": "Closed",
         "otherSett": "Other settings", "darkMode": "Dark mode", "langLbl": "Language", "sndLbl": "Signal sounds",
         "sbLbl": "Status bar", "cdLbl": "Candle countdown",
+        "chartCols": "Chart colors", "cBull": "Bull candles", "cBear": "Bear candles", "cBg": "Background",
+        "cGrid": "Grid", "cBord": "Borders", "cResetAll": "Reset all", "cTheme": "theme",
+        "cHint": "Tap a color or type a hex code — the chart updates live.",
         "badiSect": "Encrypted indicators (BADI)", "keyFp": "Key fingerprint:",
         "notifT": "Notifications", "notifEmpty": "No notifications yet",
         "notifHint": "Notifications from your paid indicators appear here — the developer sends them from his own server (updates, subscription reminders). No files can ever pass through this channel.",
@@ -3801,6 +3804,9 @@ T = {
         "mktOpen": "مفتوح", "mktClosed": "مغلوق",
         "otherSett": "إعدادات أخرى", "darkMode": "الوضع الليلي", "langLbl": "اللغة", "sndLbl": "أصوات الإشارات",
         "sbLbl": "شريط الحالة", "cdLbl": "العد التنازلي على الشارت",
+        "chartCols": "ألوان الشارت", "cBull": "الشموع الصاعدة", "cBear": "الشموع الهابطة", "cBg": "الخلفية",
+        "cGrid": "الشبكة", "cBord": "الحدود", "cResetAll": "إعادة الكل", "cTheme": "الثيم",
+        "cHint": "اختر لونًا أو اكتب كود hex — يتحدّث الشارت فورًا.",
         "badiSect": "المؤشرات المشفرة (BADI)", "keyFp": "بصمة المفتاح:",
         "notifT": "الإشعارات", "notifEmpty": "لا توجد إشعارات بعد",
         "notifHint": "تظهر هنا إشعارات المؤشرات المدفوعة — المبرمج يرسلها من خادمه (تحديثات، تذكير بالاشتراك). لا يمكن لأي ملف أن يمر عبر هذه القناة إطلاقًا.",
@@ -3949,6 +3955,9 @@ T = {
         "sndLbl": 'সিগন্যাল সাউন্ড',
         "sbLbl": 'স্ট্যাটাস বার',
         "cdLbl": 'ক্যান্ডেল কাউন্টডাউন',
+        "chartCols": 'চার্ট রং', "cBull": 'বুল ক্যান্ডেল', "cBear": 'বেয়ার ক্যান্ডেল', "cBg": 'ব্যাকগ্রাউন্ড',
+        "cGrid": 'গ্রিড', "cBord": 'বর্ডার', "cResetAll": 'সব রিসেট', "cTheme": 'থিম',
+        "cHint": 'একটি রং নির্বাচন করুন বা হেক্স কোড লিখুন — চার্ট সাথে সাথে আপডেট হবে।',
         "badiSect": 'এনক্রিপ্টেড ইন্ডিকেটর (BADI)',
         "keyFp": 'কী ফিঙ্গারপ্রিন্ট:',
         "notifT": 'নোটিফিকেশন',
@@ -4121,6 +4130,9 @@ T = {
         "sndLbl": 'सिग्नल ध्वनियाँ',
         "sbLbl": 'स्टेटस बार',
         "cdLbl": 'कैंडल काउंटडाउन',
+        "chartCols": 'चार्ट रंग', "cBull": 'बुल कैंडल', "cBear": 'बेयर कैंडल', "cBg": 'बैकग्राउंड',
+        "cGrid": 'ग्रिड', "cBord": 'बॉर्डर', "cResetAll": 'सब रीसेट', "cTheme": 'थीम',
+        "cHint": 'रंग चुनें या हेक्स कोड टाइप करें — चार्ट तुरंत अपडेट होगा।',
         "badiSect": 'एन्क्रिप्टेड इंडिकेटर (BADI)',
         "keyFp": 'की फ़िंगरप्रिंट:',
         "notifT": 'सूचनाएं',
@@ -4293,6 +4305,9 @@ T = {
         "sndLbl": 'Sonidos de señales',
         "sbLbl": 'Barra de estado',
         "cdLbl": 'Cuenta regresiva de vela',
+        "chartCols": 'Colores del gráfico', "cBull": 'Velas alcistas', "cBear": 'Velas bajistas', "cBg": 'Fondo',
+        "cGrid": 'Cuadrícula', "cBord": 'Bordes', "cResetAll": 'Restablecer todo', "cTheme": 'tema',
+        "cHint": 'Elige un color o escribe un código hex — el gráfico se actualiza al instante.',
         "badiSect": 'Indicadores cifrados (BADI)',
         "keyFp": 'Huella de la clave:',
         "notifT": 'Notificaciones',
@@ -4465,6 +4480,9 @@ T = {
         "sndLbl": 'سگنل کی آوازیں',
         "sbLbl": 'اسٹیٹس بار',
         "cdLbl": 'کینڈل کاؤنٹ ڈاؤن',
+        "chartCols": 'چارٹ کے رنگ', "cBull": 'بل کینڈل', "cBear": 'بئر کینڈل', "cBg": 'بیک گراؤنڈ',
+        "cGrid": 'گرڈ', "cBord": 'بارڈر', "cResetAll": 'سب ری سیٹ', "cTheme": 'تھیم',
+        "cHint": 'ایک رنگ منتخب کریں یا ہیکس کوڈ لکھیں — چارٹ فوراً اپ ڈیٹ ہو جائے گا۔',
         "badiSect": 'مرموز شدہ انڈیکیٹرز (BADI)',
         "keyFp": 'کی فنگرپرنٹ:',
         "notifT": 'اطلاعات',
@@ -10054,6 +10072,38 @@ function defineBadiApp() {
       } catch (e) {}
     },
     getCd: function () { return !!(window.__BADI_UI__ && window.__BADI_UI__.cd); },
+    /* ─── Chart colors from the desktop settings panel (user request) ───
+       The desktop edits candles / background / grid / borders here; the page keeps
+       storing them in badiChartColors and repaints every pane live. */
+    getChartColors: function () {
+      try { loadChartColors(); return JSON.stringify(chartColors || {}); } catch (e) { return "{}"; }
+    },
+    setChartColor: function (key, val) {
+      try {
+        var k = String(key || ""), v = String(val || "");
+        var allowed = ["bull", "bear", "bullVol", "bearVol", "bg", "grid", "axisText", "crosshair", "drawing", "axisBorder"];
+        if (allowed.indexOf(k) < 0) return false;
+        if (!/^#[0-9a-fA-F]{6}$/.test(v)) return false;
+        loadChartColors();
+        chartColors[k] = v;
+        saveChartColors();
+        applyChartColors();
+        return true;
+      } catch (e) { return false; }
+    },
+    resetChartColor: function (key) {
+      try {
+        loadChartColors();
+        resetOneChartColor(String(key || ""));
+        return JSON.stringify(chartColors || {});
+      } catch (e) { return "{}"; }
+    },
+    resetChartColors: function () {
+      try {
+        resetAllChartColors();
+        return JSON.stringify(chartColors || {});
+      } catch (e) { return "{}"; }
+    },
     setCandles: function (arr) {
       try {
         var pr = window.__badiPrimary ? window.__badiPrimary() : null;
@@ -10739,6 +10789,7 @@ ApplicationWindow {
     property bool webSound: true          // Signal sounds state (web page mirror)
     property bool webSB: true             // Bottom status bar (web page mirror)
     property bool webCd: true             // Countdown on the chart (web page mirror)
+    property var webChartColors: ({})    // Chart colors mirror (the web page is the source of truth)
     property bool webThemeDark: backend.dark
     property string lastAsset: ""
     property string lastTf: ""
@@ -10756,6 +10807,27 @@ ApplicationWindow {
     }
     function webLog(kind, text) {
         webCall("__badiApp.log(" + JSON.stringify(kind) + "," + JSON.stringify(text) + ")")
+    }
+    /* Chart colors (user request): the desktop settings panel edits candles / background /
+       grid / borders here — every change goes to the page through __badiApp.setChartColor
+       which stores it in badiChartColors and repaints every pane live. */
+    function pullChartColors() {
+        webCall("__badiApp.getChartColors()", function (r) {
+            try {
+                var o = JSON.parse(r || "{}")
+                if (o && typeof o === "object") win.webChartColors = o
+            } catch (e) { }
+        })
+    }
+    function setChartColorLocal(key, hex) {
+        var m = {}
+        try { m = JSON.parse(JSON.stringify(win.webChartColors || {})) } catch (e) { }
+        m[key] = hex
+        win.webChartColors = m
+        webCall("__badiApp.setChartColor(" + JSON.stringify(key) + "," + JSON.stringify(hex) + ")", function (r) {
+            /* rejected by the page (bad hex/key) → resync the desktop mirror */
+            if (r === false) win.pullChartColors()
+        })
     }
     function pushTheme() {
         webCall("__badiApp.setTheme(" + JSON.stringify({ dark: backend.dark, c: backend.c, lang: backend.lang }) + ")")
@@ -11163,6 +11235,7 @@ ApplicationWindow {
             win.webCall("__badiApp.getCd()", function (r) {
                 if (r !== undefined && r !== null) win.webCd = !!r
             })
+            win.pullChartColors()
         }
         background: Rectangle {
             radius: 16; color: backend.c.card
@@ -11252,9 +11325,25 @@ ApplicationWindow {
                     }
                 }
             }
-            /* ───── Chart appearance section removed (user request): the chart always wears the app
-               theme colors — background, grid, candles and axes all derive from the app theme and
-               follow every dark/light switch live. Nothing chart-color related is configurable. ───── */
+            /* ───── Chart colors (user request): the chart candles, background, grid and borders are
+               edited right here in the app settings card — every change is pushed live to all
+               chart panes through __badiApp.setChartColor and stored by the page itself ───── */
+            Rectangle { Layout.fillWidth: true; height: 1; color: backend.c.border }
+            RowLayout {
+                spacing: 8
+                Icon { name: "brush"; sz: 14; tint: backend.c.accent }
+                Label { text: backend.s.chartCols; font.pixelSize: 13; font.bold: true; color: backend.c.fg }
+                Item { Layout.fillWidth: true }
+                IBtn {
+                    iconName: "rotate"; label: backend.s.cResetAll
+                    onClicked: win.webCall("__badiApp.resetChartColors()", function (r) { win.pullChartColors() })
+                }
+            }
+            CCRow { Layout.fillWidth: true; ck: "bull"; cLbl: backend.s.cBull; def: backend.c.good }
+            CCRow { Layout.fillWidth: true; ck: "bear"; cLbl: backend.s.cBear; def: backend.c.bad }
+            CCRow { Layout.fillWidth: true; ck: "bg"; cLbl: backend.s.cBg; def: backend.c.bg }
+            CCRow { Layout.fillWidth: true; ck: "grid"; cLbl: backend.s.cGrid; def: backend.c.border }
+            CCRow { Layout.fillWidth: true; ck: "axisBorder"; cLbl: backend.s.cBord; def: backend.c.border }
             /* ───── BADI: the encryption key stays inside the app — only its fingerprint is shown here ───── */
             Rectangle { Layout.fillWidth: true; height: 1; color: backend.c.border }
             Label { text: backend.s.badiSect; font.pixelSize: 13; font.bold: true; color: backend.c.fg }
@@ -11285,6 +11374,86 @@ ApplicationWindow {
                 text: backend.s.badiHint; font.pixelSize: 10; color: backend.c.sub
                 wrapMode: Text.WordWrap; Layout.fillWidth: true
             }
+            }
+        }
+    }
+
+    /* Themed color picker for the chart colors (user request): preset swatches + hex input,
+       pure QML so it follows the dark/light theme — every pick applies to the chart live. */
+    Popup {
+        id: ccPop
+        parent: Overlay.overlay
+        anchors.centerIn: Overlay.overlay
+        width: 316
+        padding: 12
+        modal: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        property string pKey: ""
+        property string pLbl: ""
+        property string pCur: "#22C55E"
+        property string pDef: "#22C55E"
+        function openFor(key, lbl, cur, def) {
+            pKey = key; pLbl = lbl; pCur = cur; pDef = def
+            hexF.text = ""
+            open()
+        }
+        function applyColor(v) {
+            var s = String(v || "").trim()
+            if (s.charAt(0) !== "#") s = "#" + s
+            if (!/^#[0-9a-fA-F]{6}$/.test(s)) return false
+            pCur = s
+            win.setChartColorLocal(pKey, s)
+            return true
+        }
+        background: Rectangle {
+            radius: 14; color: backend.c.card
+            border.width: 1; border.color: backend.c.border
+        }
+        contentItem: ColumnLayout {
+            spacing: 10
+            RowLayout {
+                spacing: 8
+                Rectangle {
+                    width: 30; height: 20; radius: 5
+                    color: ccPop.pCur
+                    border.width: 1; border.color: backend.c.border
+                }
+                Label { text: ccPop.pLbl; font.pixelSize: 13; font.bold: true; color: backend.c.fg; Layout.fillWidth: true }
+                IBtn { iconName: "x"; onClicked: ccPop.close() }
+            }
+            Grid {
+                columns: 8; spacing: 6
+                Layout.alignment: Qt.AlignHCenter
+                Repeater {
+                    model: ["#22C55E", "#16A34A", "#10B981", "#84CC16", "#EAB308", "#F59E0B", "#F97316", "#EF4444",
+                            "#DC2626", "#EC4899", "#A855F7", "#8B5CF6", "#3B6CF5", "#3B8BFF", "#14B8F5", "#0EA5E9",
+                            "#06B6D4", "#FFFFFF", "#C7CDD8", "#8A9099", "#5B6B80", "#3F4654", "#1F1F23", "#0A0A0A"]
+                    delegate: Rectangle {
+                        width: 30; height: 30; radius: 7
+                        color: modelData
+                        border.width: ccPop.pCur.toUpperCase() === modelData ? 2 : 1
+                        border.color: ccPop.pCur.toUpperCase() === modelData ? backend.c.accent : backend.c.border
+                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                    onClicked: ccPop.applyColor(modelData) }
+                    }
+                }
+            }
+            RowLayout {
+                spacing: 8
+                Field {
+                    id: hexF
+                    Layout.fillWidth: true
+                    placeholderText: "#RRGGBB"
+                    font.family: "monospace"
+                    font.pixelSize: 12
+                    onTextChanged: ccPop.applyColor(text)
+                }
+                IBtn { iconName: "check"; onClicked: if (ccPop.applyColor(hexF.text)) ccPop.close() }
+            }
+            Label {
+                text: backend.s.cHint
+                font.pixelSize: 9; color: backend.c.sub
+                wrapMode: Text.WordWrap; Layout.fillWidth: true
             }
         }
     }
@@ -12526,6 +12695,43 @@ QML += r'''
             Behavior on x { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
         }
         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: ms.toggled() }
+    }
+
+    /* One chart-color row (user request): swatch + label + current value + per-color reset.
+       The swatch opens the themed picker (ccPop); values come from win.webChartColors
+       which the page owns — unset colors show the live app theme default. */
+    component CCRow: Rectangle {
+        id: ccr
+        property string ck: ""
+        property string cLbl: ""
+        property string def: "#22C55E"
+        readonly property bool isUser: win.webChartColors && win.webChartColors[ck] !== undefined && win.webChartColors[ck] !== ""
+        readonly property string cur: isUser ? String(win.webChartColors[ck]) : def
+        implicitHeight: 32
+        radius: 8
+        color: hov.containsMouse ? backend.c.hover : "transparent"
+        RowLayout {
+            anchors.fill: parent
+            spacing: 8
+            Rectangle {
+                width: 40; height: 22; radius: 6
+                color: ccr.cur
+                border.width: 1; border.color: backend.c.border
+                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                            onClicked: ccPop.openFor(ccr.ck, ccr.cLbl, ccr.cur, ccr.def) }
+            }
+            Label { text: ccr.cLbl; font.pixelSize: 11; color: backend.c.fg; Layout.fillWidth: true }
+            Label {
+                text: ccr.isUser ? ccr.cur.toUpperCase() : backend.s.cTheme
+                font.pixelSize: 9; font.family: "monospace"; color: backend.c.sub
+            }
+            IBtn {
+                visible: ccr.isUser
+                iconName: "rotate"
+                onClicked: win.webCall("__badiApp.resetChartColor(" + JSON.stringify(ccr.ck) + ")", function (r) { win.pullChartColors() })
+            }
+        }
+        MouseArea { id: hov; anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.NoButton }
     }
 
     component Icon: Image {
