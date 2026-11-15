@@ -46,7 +46,7 @@ except ImportError:
 
 # ==============================================================================
 # NOTE: Flask web dashboard REMOVED (v10.0) — replaced by console output +
-# MT4 .hst files + qx_assets_payouts.json. No web server in this build.
+# MT4 .hst files only (v22: no snapshot json). No web server in this build.
 # ==============================================================================
 
 # ==============================================================================
@@ -82,7 +82,7 @@ def qx_print_welcome():
     print()
     print(f"\033[96m{'═' * 62}\033[0m")
     print(f"\033[97m\033[1m  QX Console — Quotex Candles & Assets\033[0m\033[0m")
-    print(f"\033[2m  v21 · assets list fetched live from platform after login · 51-placeholder aware · SQLite · every-tick\033[0m")
+    print(f"\033[2m  v22 · assets list live (51-placeholder aware, print only) · sequential 5S fetch · SQLite · every-tick\033[0m")
     print(f"\033[96m{'═' * 62}\033[0m")
     print()
 
@@ -2294,7 +2294,7 @@ def _print_payout_table(entries):
             status = f"{Colors.RED}CLOSED{Colors.RESET}"
         print(f"  {name:<16}{payout_str:>7}  {turbo_str:>6}  {p1_str:>5}  {p5_str:>5}  {status}")
     print(f"{Colors.CYAN}{'═' * 72}{Colors.RESET}")
-    print(f"{Colors.DIM}  Full snapshot saved to: {ASSETS_PAYOUT_FILE}{Colors.RESET}\n")
+    print()
 
 # ===== v17: حفظ شموع كل عملة في ملف JSON بجانب السكربت فور اكتمال جلبها =====
 def _save_candles_json(asset, source_label="fetch"):
@@ -2338,7 +2338,7 @@ async def print_full_asset_list_once(timeout: float = 15.0):
          → استخدامها مباشرة بدون أي طلب إضافي (الأسرع).
       2) وإلا: await CLIENT.get_all_assets() ثم إعادتا محاولة
          42["instruments/get"] → 451-["instruments/list"].
-    يطبع الجدول الكامل ويحفظ qx_assets_payouts.json، وعند الفشل يُطبع
+    يطبع الجدول الكامل (v22: بلا حفظ ملف)، وعند الفشل يُطبع
     تحذير ظاهر (لا صامت) وستعيد مراقبة الدفع المحاولة تلقائياً."""
     global _ASSET_LIST_PRINTED
     try:
@@ -2362,7 +2362,7 @@ async def print_full_asset_list_once(timeout: float = 15.0):
                 logmsg(f"[asset_list] instruments fetch attempt {_attempt} failed: {e}")
         entries = _instruments_snapshot()
         if entries:
-            _save_assets_payout_file(entries)
+            # v22: طباعة الجدول فقط — بلا حفظ ملف (طلب المستخدم)
             _print_payout_table(entries)
             _ASSET_LIST_PRINTED = True
         else:
@@ -2372,8 +2372,9 @@ async def print_full_asset_list_once(timeout: float = 15.0):
 
 async def asset_payout_monitor():
     """يجلب قائمة العملات الكاملة + نسبة الدفع + حالة الزوج (مفتوح/مغلق) مباشرة
-    بعد تسجيل الدخول، يطبع الجدول مرة واحدة، يحفظ لقطة JSON، ثم يحدّث بهدوء
+    بعد تسجيل الدخول، يطبع الجدول مرة واحدة ثم يحدّث بهدوء (v22: بلا حفظ ملف)
     كل PAYOUT_REFRESH_INTERVAL ثانية."""
+    global _ASSET_LIST_PRINTED   # v22: fix UnboundLocalError — كانت تُقرأ وتُعيَّن دون إعلان global
     await asyncio.sleep(2.0)  # مهلة قصيرة حتى يستقر WebSocket بعد الدخول
     first = True
     last_signature = None
@@ -2389,7 +2390,6 @@ async def asset_payout_monitor():
             except Exception as e:
                 logmsg(f"[payout] refresh failed: {e}")
             if entries:
-                _save_assets_payout_file(entries)
                 signature = tuple(sorted(
                     (e.get("asset"), str(e.get("payout")), str(e.get("open")))
                     for e in entries))
@@ -2403,7 +2403,7 @@ async def asset_payout_monitor():
                     open_n = sum(1 for e in entries if e.get("open"))
                     closed_n = sum(1 for e in entries if e.get("open") is False)
                     logmsg(f"[payout] updated: {len(entries)} assets "
-                           f"({open_n} open / {closed_n} closed) — snapshot saved")
+                           f"({open_n} open / {closed_n} closed)")
                 last_signature = signature
         except Exception as e:
             log_exception("asset_payout_monitor", e)
@@ -3039,27 +3039,59 @@ async def fetch_candles_once(asset: Asset, idx=1, total=1):
             on_progress = _make_progress_printer(display_name, time.time(), idx, total)
             try: on_progress(FETCH_DURATION_SECONDS, FETCH_DURATION_SECONDS)
             except Exception: pass
-            # v17: محرك جلب متوازٍ بدل الحلقة التسلسلية (720 شمعة 5S: من ~28.5s إلى ~4s)
-            # المطلوب = INITIAL_CANDLES * PERIOD_SECONDS شمعة 1s (+300s هامش)
-            needed_seconds = int(INITIAL_CANDLES * PERIOD_SECONDS) + 300
+            # v22: عودة للحلقة التسلسلية الأصلية (طريقة السكربت المرجعي حرفياً) —
+            # المحرك المتوازي (v17) أدى عند المستخدم إلى عدم جلب شموع 5S إطلاقاً.
+            # الهدف: نحاول جلب ما يكفي لـ INITIAL_CANDLES شموع مجمّعة
+            # INITIAL_CANDLES * PERIOD_SECONDS = عدد شموع 1s المطلوبة
+            # هامش 1.5x (بدل 2x) لتقليل وقت الجلب وبالتالي تقليل الفجوة الزمنية
+            # الفجوة الكبيرة = شموع مفقودة أكثر بين التاريخي والبث المباشر
+            target_1s_count = int(INITIAL_CANDLES * PERIOD_SECONDS * 1.5)
+            chunk_seconds = 500  # ~500 1s candles per request (server limit)
             all_candles_1s = []
-            try:
-                all_candles_1s = await _fetch_1s_history_parallel(
-                    api_name, needed_seconds,
-                    max_workers=FETCH_MAX_WORKERS,
-                    chunk_seconds=SUBSECOND_CHUNK_SECONDS,
-                    timeout=SUBSECOND_PARALLEL_TIMEOUT,
-                )
-            except Exception as _e_par:
-                logmsg(f"[fetch:{display_name}] parallel 1s fetch failed: {_e_par}")
-                all_candles_1s = []
-            # Fallback: الحلقة التسلسلية القديمة إذا جاء المحرك المتوازي أقل من 40% من الهدف
-            if len(all_candles_1s) < int(INITIAL_CANDLES * PERIOD_SECONDS * 0.4):
-                logmsg(f"[fetch:{display_name}] parallel short — sequential get_candles fallback")
-                all_candles_1s = await _fetch_1s_sequential_fallback(
-                    api_name, display_name,
-                    int(INITIAL_CANDLES * PERIOD_SECONDS * 1.5),
-                    SUBSECOND_CHUNK_SECONDS)
+            current_end = time.time()
+            # زيادة max_chunks من 20 → 40 لضمان جلب كافٍ حتى للأصول البطيئة
+            max_chunks = 40
+            chunks_done = 0
+            # تتبع الـ chunks الفارغة المتتالية (للإيقاف المبكر الذكي)
+            empty_chunks_in_a_row = 0
+            while len(all_candles_1s) < target_1s_count and chunks_done < max_chunks:
+                chunk_end = current_end - (chunks_done * chunk_seconds)
+                try:
+                    res_chunk = await asyncio.wait_for(
+                        CLIENT.get_candles(api_name, chunk_end, chunk_seconds, fetch_period),
+                        timeout=20,
+                    )
+                except Exception as e:
+                    if chunks_done == 0:
+                        logmsg(f"[fetch:{display_name}] get_candles(period=1) chunk {chunks_done+1} failed: {e}")
+                    # retry once on transient error
+                    if empty_chunks_in_a_row < 2:
+                        empty_chunks_in_a_row += 1
+                        await asyncio.sleep(0.2)
+                        continue
+                    break
+                if not res_chunk or len(res_chunk) == 0:
+                    empty_chunks_in_a_row += 1
+                    # 3 chunks فارغة متتالية = نهاية التاريخ المتاح → توقف
+                    if empty_chunks_in_a_row >= 3:
+                        break
+                    chunks_done += 1
+                    continue
+                # عتبة إيقاف أقل صرامة (من 50 → 10): بعض الأصول تُرجع 20-30 شمعة فقط في نهاية الأسبوع
+                # هذا طبيعي ولا يعني أننا وصلنا لنهاية التاريخ
+                if len(res_chunk) < 10 and chunks_done > 0:
+                    all_candles_1s.extend(res_chunk)
+                    break
+                empty_chunks_in_a_row = 0
+                all_candles_1s.extend(res_chunk)
+                chunks_done += 1
+                try:
+                    pct = min(len(all_candles_1s) / target_1s_count, 1.0)
+                    on_progress(pct * FETCH_DURATION_SECONDS, FETCH_DURATION_SECONDS)
+                except Exception:
+                    pass
+                # delay صغير (0.03 بدل 0.05) لتسريع الجلب
+                await asyncio.sleep(0.03)
             # De-duplicate by time
             seen_ts = set()
             unique_1s = []
@@ -3516,35 +3548,60 @@ async def fetch_subsecond_history(
         logmsg(f"[subfetch:{display_name}] invalid subsecond_seconds={_sec}")
         return []
     target_1s_count = int(_target * _sec * SUBSECOND_FETCH_MARGIN)
-    # v17: محرك جلب متوازٍ — نفس آلية get_historical_candles المجرّبة على فريمات
-    # 60s+ (1440 شمعة في ~4 ثواني): كتل متوازية عبر _fetch_historical_batch
-    # (نفس رسالة 42["history/load"] بدون رسائل الاشتراك الثلاثة التي كانت ترسلها
-    # get_candles مع كل chunk) بدل الحلقة التسلسلية القديمة (~28 ثانية).
-    needed_seconds = int(_target * _sec) + 300
+    chunk_seconds = 500  # ~500 1s candles per request (server limit)
     all_candles_1s = []
-    # Semaphore (3 concurrent fetches per asset) — created lazily on the running loop
+    current_end = time.time()
+    # v22: عودة للحلقة التسلسلية الأصلية (طريقة السكربت المرجعي حرفياً) — المحرك
+    # المتوازي (v17) أدى عند المستخدم إلى عدم جلب شموع الثواني إطلاقاً
+    # (فقط 1-2 شمعة بثية). الحلقة التسلسلية مع get_candles هي التي تعمل.
+    max_chunks = SUBSECOND_MAX_CHUNKS
+    chunks_done = 0
+    empty_chunks_in_a_row = 0
+    # Semaphore (3 concurrent fetches, not 41) — created lazily on the running loop
     global _SUBSECOND_FETCH_SEMAPHORE
     if _SUBSECOND_FETCH_SEMAPHORE is None:
         _SUBSECOND_FETCH_SEMAPHORE = asyncio.Semaphore(3)
     async with _SUBSECOND_FETCH_SEMAPHORE:
-        _t0_par = time.time()
+        logmsg(f"[subfetch:{display_name}] start: get_candles(period=1), target ~{target_1s_count} 1s candles")
         try:
-            all_candles_1s = await _fetch_1s_history_parallel(
-                api_name, needed_seconds,
-                max_workers=SUBSECOND_PARALLEL_WORKERS,
-                chunk_seconds=SUBSECOND_CHUNK_SECONDS,
-                timeout=SUBSECOND_PARALLEL_TIMEOUT,
-            )
-        except Exception as _e_par:
-            logmsg(f"[subfetch:{display_name}] parallel fetch failed: {_e_par}")
-            all_candles_1s = []
-        logmsg(f"[subfetch:{display_name}] parallel: {len(all_candles_1s)} 1s candles "
-               f"in {time.time() - _t0_par:.1f}s")
-        # Fallback: الحلقة التسلسلية القديمة إذا جاء المحرك المتوازي بأقل من 40% من الهدف
-        if len(all_candles_1s) < int(_target * _sec * 0.4):
-            logmsg(f"[subfetch:{display_name}] parallel short — sequential get_candles fallback")
-            all_candles_1s = await _fetch_1s_sequential_fallback(
-                api_name, display_name, target_1s_count, SUBSECOND_CHUNK_SECONDS)
+            while len(all_candles_1s) < target_1s_count and chunks_done < max_chunks:
+                if not CLIENT or not CLIENT.api or not getattr(CLIENT.api.state, 'check_accepted_connection', False):
+                    logmsg(f"[subfetch:{display_name}] connection lost during fetch")
+                    break
+                chunk_end = current_end - (chunks_done * chunk_seconds)
+                try:
+                    res_chunk = await asyncio.wait_for(
+                        CLIENT.get_candles(api_name, chunk_end, chunk_seconds, 1),
+                        timeout=20,
+                    )
+                except Exception as e:
+                    if chunks_done == 0:
+                        logmsg(f"[subfetch:{display_name}] get_candles(period=1) chunk {chunks_done+1} failed: {e}")
+                    # retry on transient error
+                    if empty_chunks_in_a_row < 2:
+                        empty_chunks_in_a_row += 1
+                        await asyncio.sleep(0.2)
+                        continue
+                    break
+                if not res_chunk or len(res_chunk) == 0:
+                    empty_chunks_in_a_row += 1
+                    # 3 chunks فارغة متتالية = نهاية التاريخ المتاح
+                    if empty_chunks_in_a_row >= 3:
+                        break
+                    chunks_done += 1
+                    continue
+                # عتبة إيقاف أقل صرامة (من 50 → 10)
+                if len(res_chunk) < 10 and chunks_done > 0:
+                    all_candles_1s.extend(res_chunk)
+                    break
+                empty_chunks_in_a_row = 0
+                all_candles_1s.extend(res_chunk)
+                chunks_done += 1
+                # Small delay between chunks to avoid server rate limiting
+                await asyncio.sleep(0.03)
+        except Exception as e:
+            logmsg(f"[subfetch:{display_name}] FAILED: {e}")
+            return []
     # De-duplicate by time (chunks may overlap)
     seen_ts = set()
     unique_1s = []
