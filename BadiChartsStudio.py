@@ -22,6 +22,45 @@
 #  (or BadiChartsStudio_readable.py — exactly the same result)
 #
 #  Latest updates (v2.17.1):
+#   • Badi Security Engine (BSE) — owner-requested independent permission system, four layers
+#     built to fail independently (one failing never drops the whole defense):
+#       Layer 1 — Script Sandbox: Python indicators already run with pinned safe builtins
+#         (no import/files/network); JS indicators now run in a CLOSED scope — every escape
+#         hatch (fetch, XMLHttpRequest, WebSocket, document, window, localStorage, Function,
+#         Reflect, Proxy, WebAssembly, … 50+ names) is shadowed to undefined inside the
+#         compiled script, so "typeof fetch" is "undefined" and the page is unreachable.
+#       Layer 2 — API Validation / Network Broker: ALL network traffic now flows through one
+#         broker (bse_open) — HTTPS only, exact host allow-list, every DNS answer must be a
+#         PUBLIC routable address (loopback / private / link-local / 169.254.169.254 metadata
+#         / reserved networks are rejected — a domain-name check alone is never trusted), the
+#         connection is pinned to the validated IP while the TLS certificate is still verified
+#         against the real hostname (DNS rebinding cannot switch the peer), every HTTP redirect
+#         is re-validated against the same policy, system proxies are disabled, payload size
+#         caps + sliding-window rate limits protect every script-initiated send (signals,
+#         screenshots, composed images, Telegram total) and the console bridge got a flood
+#         + size guard inside the page.
+#       Layer 3 — OS Isolation: the studio page gets a strict Content-Security-Policy that
+#         pins Chromium's network to the chart/editor CDN only — even code that escaped the
+#         sandbox cannot open ANY connection to any other host (the engine itself rejects it).
+#       Layer 4 — Core Protection: the bot token never enters the page; every blocked attempt
+#         is audited to badi_security.log (no secrets, auto-rotated, unreadable to sandboxed
+#         code which has no file access); repeated violations trigger the SECURITY HOLD —
+#         all script-initiated sends stop until a clean restart of the app.
+#       CPU budget: every Python indicator call (calculate / signal / get_range) runs
+#         under a 3-second watchdog — a stuck pure-Python loop is killed mid-flight and
+#         the violating indicator is auto-disabled (module removed, file switched off and
+#         persisted — it stays off after a restart until the user re-enables it, stale
+#         series removed from the chart); a slow-but-returned call gets the strike window
+#         before the same auto-disable. (A bare-except loop that swallows the kill still
+#         needs the planned separate-process engine — the budget covers the practical cases.)
+#     The policy tables are code constants on purpose — no script and no config file can
+#     edit them. Verified by probe_bse.py (blocked operations raise, allowed ones pass).
+#   • Chart wears the app colors — always (owner request): the separate chart palette is gone.
+#     Background, grid, candles, axes, crosshair and drawings are derived from the app theme
+#     itself and re-applied live on every dark/light switch — even if custom chart colors were
+#     changed from Settings before (old "chart_theme" values are ignored and dropped). The
+#     Settings "Chart appearance" section is removed with it; Indicators.colors() from scripts
+#     still works on top of the app theme ({reset:true} returns to it)
 #   • Python programming guide (owner request): a full guide for the PYTHON language is now seeded
 #     next to the JS one — BadiCharts_Python_Guide.py, 100% English, and it is itself a working
 #     Bollinger indicator. It covers the whole Python engine: the .py indicator structure
@@ -123,6 +162,15 @@ STUDIO_HTML = r'''<!DOCTYPE html>
 <html lang="en" dir="ltr">
 <head>
 <meta charset="UTF-8"/>
+<!-- ═══ BSE Layer 3 — OS Isolation / JS Network Broker (enforced by the engine itself):
+     the page may load code and modules ONLY from the chart/editor CDN, may connect to
+     NOTHING else (connect-src has no other host — fetch/XHR/WebSocket to any other
+     origin are rejected by Chromium even if user code escaped the sandbox), and may
+     never submit forms or load plugins. Inline scripts/styles stay allowed (the app's
+     own page is inline); 'unsafe-eval' is required by compileScript (new Function) and
+     the editor — it weakens only the EVAL layer, never the network layer below; workers
+     stay blob-only for the editor. ═══ -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src https://cdn.jsdelivr.net data:; connect-src 'self' https://cdn.jsdelivr.net; worker-src blob:; base-uri 'none'; form-action 'none'; object-src 'none'"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <meta name="color-scheme" content="dark"/>
 <link rel="icon" href="data:,"/>
@@ -1144,11 +1192,38 @@ function seedExamples() {
   ];
 }
 
+/* ── BSE Layer 1 — the JS sandbox: user code runs in a CLOSED scope ──
+   Every escape hatch that could reach the network, the page, the storage or the engine
+   itself is shadowed with undefined as a function parameter, so a free reference inside
+   user code resolves to nothing instead of the real global. Scripts keep the standard
+   language globals (Math, JSON, Date, Array, Object, RegExp, …) and the injected API
+   (Indicators / THEME / log) — everything else is unreachable.
+   In-page JavaScript can never be perfectly isolated on its own (constructor chains stay
+   theoretical) — that is exactly why Layers 2–4 exist on top: the Content-Security-Policy
+   in the page head pins the page network to the chart/editor CDN only (the engine itself
+   rejects any other connection), the console bridge is flood/size-guarded, every request
+   is re-validated in the backend, and the bot token never enters this page at all. */
+const _SHADOW = ["fetch", "XMLHttpRequest", "WebSocket", "EventSource", "Worker",
+  "SharedWorker", "ServiceWorker", "importScripts", "navigator", "localStorage",
+  "sessionStorage", "indexedDB", "caches", "document", "window", "globalThis",
+  "self", "parent", "top", "frames", "opener", "postMessage", "location", "history",
+  "alert", "confirm", "prompt", "print", "open", "close", "Notification", "Image",
+  "Audio", "AudioContext", "Function", "Reflect", "Proxy", "WebAssembly",
+  "Request", "Response", "Headers", "URL", "URLSearchParams", "Blob", "File",
+  "FileReader", "FormData", "AbortController", "addEventListener",
+  "removeEventListener", "dispatchEvent"];
+  /* NOTE: "eval" is deliberately NOT shadowed — strict mode forbids binding it. A DIRECT
+     eval inside the sandbox still resolves in the sandbox scope chain, so every shadowed
+     name stays undefined there; and the CSP network layer holds regardless of any escape. */
+
 /** Run user code in a closed scope and return the definition object (must end with return {...}) */
 function compileScript(code, logFn) {
   try {
-    const fn = new Function("Indicators", "THEME", "log", '"use strict";\n' + code);
-    const def = fn(window.Indicators, window.THEME, logFn);
+    const fn = new Function("Indicators", "THEME", "log", _SHADOW.join(","),
+                            '"use strict";\n' + code);
+    const args = [window.Indicators, window.THEME, logFn];
+    for (let i = 0; i < _SHADOW.length; i++) args.push(undefined);
+    const def = fn.apply(null, args);
     if (!def || typeof def !== "object") {
       return { def: null, error: "The code must return the definition object via return { ... }" };
     }
@@ -2967,7 +3042,11 @@ import base64
 import hashlib
 import hmac
 import random
+import secrets
+import socket
 import threading
+import ipaddress
+import http.client
 import urllib.request
 import urllib.parse
 from datetime import datetime, timedelta, timezone
@@ -3049,10 +3128,6 @@ T = {
         "licIdsNone": "No BADI LICENSED USERS line in the script — the encrypted file will work for everyone.",
         "uidCopied": "USER ID copied to clipboard", "folderOpen": "App folder opened",
         "badiFolder": "Indicators folder", "badiFolderHint": "Created indicators and tools are saved here as real files — you can also drop your own files into these folders and the app loads them automatically.",
-        "chartLook": "Chart appearance", "lookHint": "Type any color freely (hex like #22E08A or rgba) — not limited to presets. Changes apply instantly and are saved.",
-        "cBg": "Chart background", "cBull": "Bullish candle", "cBear": "Bearish candle",
-        "cGrid": "Grid", "cAxis": "Axis text", "cCross": "Crosshair", "cDraw": "Drawings",
-        "resetLook": "Restore defaults", "pickColor": "Pick a color freely",
         "myinds": "My indicators", "myindsHint": "Auto-detected from the BadiCharts folder — drop any indicator or tool file there and it appears here instantly.",
         "myindThumbNone": "Screenshot on save", "kindbadi": "Encrypted (.badi)",
         "backChart": "Back to chart",
@@ -3129,10 +3204,6 @@ T = {
         "licIdsNone": "لا يوجد سطر BADI LICENSED USERS في السكربت — الملف المشفر سيعمل مع الجميع.",
         "uidCopied": "تم نسخ معرّف المستخدم", "folderOpen": "تم فتح مجلد التطبيق",
         "badiFolder": "مجلد المؤشرات", "badiFolderHint": "المؤشرات والأدوات التي تنشئها تُحفظ هنا كملفات حقيقية — ويمكنك أن تضع ملفاتك مباشرة في هذه المجلدات وسيتعرف عليها التطبيق تلقائيًا.",
-        "chartLook": "مظهر الشارت", "lookHint": "اكتب أي لون بحرية (hex مثل #22E08A أو rgba) — ليست الألوان محدودة بقوائم. التغيير يُطبق فورًا ويُحفظ.",
-        "cBg": "خلفية الشارت", "cBull": "الشمعة الصاعدة", "cBear": "الشمعة الهابطة",
-        "cGrid": "الشبكة", "cAxis": "نص المحاور", "cCross": "مؤشر التقاطع", "cDraw": "أدوات الرسم",
-        "resetLook": "استعادة الافتراضي", "pickColor": "اختر أي لون بحرية",
         "myinds": "مؤشراتي", "myindsHint": "تُكتشف تلقائيًا من مجلد BadiCharts — ضع أي ملف مؤشر أو أداة في المجلد وسيظهر هنا فورًا.",
         "myindThumbNone": "اللقطة عند الحفظ", "kindbadi": "مؤشر مشفر (.badi)",
         "backChart": "الرجوع إلى الشارت",
@@ -3894,19 +3965,10 @@ FILES_FILE = os.path.join(CFG_DIR, "files.json")
 SHOTS_DIR = os.path.join(CFG_DIR, "signals")
 NAME_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 
-# ───── Chart appearance: colors freely changeable from the settings button (user requests) ─────
-# BADI-CHARTS-V2 library keys — any hex/rgba color is accepted, no fixed lists
-CHART_THEME_DEFAULTS = {
-    "bg":       "#0e1015",   # Chart background
-    "bull":     "#26a69a",   # Bullish candle
-    "bear":     "#ef5350",   # Bearish candle
-    "bullVol":  "rgba(38,166,154,0.50)",   # Bullish candle volume
-    "bearVol":  "rgba(239,83,80,0.50)",   # Bearish candle volume
-    "grid":     "#1c2030",   # Grid
-    "axisText": "#787b86",   # Price/time axis colors
-    "crosshair":"#787b86",   # Crosshair
-    "drawing":  "#38bdf8"    # Drawing tools
-}
+# ───── Chart appearance ─────
+# No separate chart palette anymore (user request): the chart always wears the app theme colors —
+# the page derives the chart palette from the app theme (__badiThemeKit.chartTheme) and re-applies
+# it live on every dark/light switch. Nothing chart-color related is stored in config.json.
 TG_TMPL_DEFAULT = ("🎯 {dir} | {asset} ({tf})\n⏱ Duration: {tf}\n"
                    "📊 Indicator: {indicator}\n🕐 Entry: {time}\n💰 Price: {price}")
 
@@ -3931,17 +3993,294 @@ def random_suffix(n=6):
     return "".join(random.choice(NAME_CHARS) for _ in range(n))
 
 
+# ═══════════════════════════════════════════════ Badi Security Engine (BSE) ═════════════════
+# Owner-requested independent permission engine. Four layers built to fail independently —
+# one failing never drops the whole defense:
+#   Layer 1 — Script Sandbox: user code runs with a closed API surface (Python: pinned safe
+#             builtins in _compile_py; JavaScript: closed scope in compileScript on the page).
+#   Layer 2 — API Validation: every request crossing a broker is checked — request type
+#             (closed allow-lists), payload size, sliding-window rate limits, chat-id format.
+#             There is exactly ONE path to the internet for brokered calls: bse_open below.
+#   Layer 3 — OS Isolation: the embedded page cannot reach the OS by engine design; the
+#             Content-Security-Policy in the page head pins its network to the CDN only.
+#   Layer 4 — Core Protection: secrets never enter a scripting context; every blocked attempt
+#             is audited; repeated violations engage the security hold until a clean restart.
+# NOTE on worker identity: in this app a "worker" is an enabled indicator file running inside
+# one of the two engines (the page JS or the Python exec sandbox). Both engines are the ONLY
+# entry points, there is no other process, and no script can create one — identity is enforced
+# as (engine + file id) rate scopes plus the global hold, which is why a compromised script
+# cannot escalate beyond its own rate budget or forge permissions.
+
+BSE_LOG_MAX = 256 * 1024                       # audit log rotation size (bytes)
+BSE_LOG = os.path.join(CFG_DIR, "badi_security.log")
+BSE_LIMITS = {                                 # sliding-window rate limits (events, per seconds)
+    "telegram":   (30, 60),                    # ALL Telegram sends combined (app + scripts)
+    "signal":     (20, 60),                    # signal fires per indicator file
+    "scriptshot": (12, 60),                    # script chart screenshots
+    "composepy":  (10, 60),                    # composed images
+    "paid_poll":  (2, 60),                     # developer control channel per record
+    "py_slow":    (2, 300),                    # slow-but-returned calculate() calls tolerated before auto-disable (a killed call disables at once)
+}
+BSE_MAX = {                                    # payload caps (bytes / counts)
+    "bridge_msg":    262144,                   # one console-bridge message (files stream chunked)
+    "files":        2097152,                   # the chunked files payload
+    "signal":         8192,
+    "scriptshot_png": 8388608,                 # 8 MB decoded PNG
+    "composepy":     262144,
+    "chats":         10,                       # chat ids per send
+    "chat_len":      64,
+    "py_series":   5000,                       # values per returned series (candle cap is 1500)
+}
+BSE_ALLOWED_HOSTS = ("api.telegram.org",)      # Telegram Bot API — the only fixed host
+BSE_VIOLATION_HOLD = 8                         # blocked attempts in one minute → security hold
+_BSE_CHAT_RE = re.compile(r"^-?\d{1,20}$|^@[A-Za-z0-9_]{2,64}$")
+
+_bse_audit_lock = threading.Lock()
+
+
+def _bse_audit(event, detail=""):
+    """Append a security event to badi_security.log — NO secrets ever enter this log (the
+    bot token and chat texts are never written here). The audit trail is independent of the
+    scripting engines: sandboxed code has no file access, so a compromised script cannot
+    erase or edit its own trail, and the app itself is the only writer."""
+    try:
+        with _bse_audit_lock:
+            if os.path.exists(BSE_LOG) and os.path.getsize(BSE_LOG) > BSE_LOG_MAX:
+                os.replace(BSE_LOG, BSE_LOG + ".1")       # one rolled backup, then a fresh file
+            rec = {"t": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "ev": str(event)[:40]}
+            if detail:
+                rec["d"] = str(detail)[:220]
+            with open(BSE_LOG, "a", encoding="utf-8") as f:
+                f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception:
+        pass                                              # auditing must never crash the app
+
+
+class _BSERate:
+    """Sliding-window rate limiter — one global instance, scopes keyed per purpose/file."""
+
+    def __init__(self):
+        self._ev = {}
+
+    def allow(self, key, limit, per):
+        now = time.monotonic()
+        q = [t for t in self._ev.get(key, ()) if now - t < per]
+        if len(q) >= limit:
+            self._ev[key] = q
+            return False
+        q.append(now)
+        self._ev[key] = q
+        if len(self._ev) > 512:                           # memory cap: drop the oldest scopes
+            for k in list(self._ev.keys())[:len(self._ev) - 512]:
+                self._ev.pop(k, None)
+        return True
+
+
+BSE_RATE = _BSERate()
+
+# Security hold (safe shutdown): repeated violations stop ALL script-initiated sends until
+# the app restarts in a clean state. There is no in-app way to lift it — that is deliberate
+# (owner requirement: a compromised scripting session cannot re-arm itself).
+BSE_STATE = {"violations": [], "hold": False}
+
+
+def _bse_violation(what, detail=""):
+    """Record a blocked attempt; escalate to the security hold when abuse repeats."""
+    _bse_audit("blocked:" + str(what)[:30], detail)
+    now = time.monotonic()
+    BSE_STATE["violations"] = [t for t in BSE_STATE["violations"] if now - t < 60]
+    BSE_STATE["violations"].append(now)
+    if not BSE_STATE["hold"] and len(BSE_STATE["violations"]) >= BSE_VIOLATION_HOLD:
+        BSE_STATE["hold"] = True
+        _bse_audit("HOLD", "security hold engaged — script sends stopped until restart")
+
+
+_BSE_BUDGET_SEC = 3.0                          # per-call CPU budget for Python indicators (seconds)
+
+
+class _BSEBudget(BaseException):
+    """Raised by the trace watchdog when a sandboxed call exceeds its CPU budget.
+    BaseException on purpose: "except Exception" in user code cannot swallow it."""
+
+
+def _bse_budget_call(fn, *args):
+    """Run one sandboxed call under the CPU budget (BSE Layer 1). A trace watchdog checks
+    the deadline on every line event — a stuck pure-Python loop (while True, heavy nested
+    loops) is killed mid-flight by raising _BSEBudget. Calls that never hit a traced line
+    (pure native work) are bounded by the post-return measurement in _compute_py."""
+    deadline = time.perf_counter() + _BSE_BUDGET_SEC
+
+    def _watch(frame, event, arg):
+        # line events only: the kill means Python work is STILL running past the deadline.
+        # A return event after a long native call means the work is already done — the
+        # post-return measurement in _compute_py judges it through the strike window.
+        if event == "line" and time.perf_counter() > deadline:
+            raise _BSEBudget("CPU budget exceeded")
+        return _watch
+
+    prev = sys.gettrace()
+    try:
+        sys.settrace(_watch)
+        return fn(*args)
+    finally:
+        sys.settrace(prev)
+
+
+def _bse_chats(raw):
+    """Validate + filter a chat-id list: numeric ids and @usernames only (Telegram format),
+    capped count and length. Dropped entries are audited without their content."""
+    out = []
+    for c in str(raw or "").replace(";", ",").split(","):
+        c = c.strip()
+        if not c:
+            continue
+        if _BSE_CHAT_RE.match(c) and len(c) <= BSE_MAX["chat_len"]:
+            out.append(c)
+        else:
+            _bse_audit("chat-dropped", "invalid chat id format (%d chars)" % len(c))
+    return out[:BSE_MAX["chats"]]
+
+
+def _bse_ip_ok(ip_str):
+    """True ONLY for public routable addresses — loopback, private ranges, link-local
+    (including the 169.254.169.254 cloud-metadata endpoint), unspecified, multicast and
+    reserved networks are rejected (owner policy: random IPs, local ports and internal
+    networks are never reachable from any brokered call). IPv4-mapped / 6to4 / Teredo
+    IPv6 forms are unwrapped and re-checked as IPv4."""
+    try:
+        ip = ipaddress.ip_address(str(ip_str))
+    except ValueError:
+        return False
+    if isinstance(ip, ipaddress.IPv6Address):
+        m = ip.ipv4_mapped
+        if m is not None:
+            ip = m
+        else:
+            s64 = getattr(ip, "sixto4", None)
+            if s64:
+                ip = ipaddress.IPv4Address(s64)
+            elif ip.teredo:
+                ip = ipaddress.IPv4Address(ip.teredo[1])
+    return not (ip.is_unspecified or ip.is_loopback or ip.is_private or ip.is_link_local
+                or ip.is_multicast or ip.is_reserved)
+
+
+def _bse_check_url(url, extra_hosts=()):
+    """Network Broker URL validation: HTTPS only (port 443), NO credentials in the URL,
+    exact allow-listed host, then EVERY DNS answer must be a public routable address —
+    a domain-name check alone is never trusted (owner requirement: verify IPs after DNS).
+    Returns (host, port, resolved_ips) or raises ValueError."""
+    u = urllib.parse.urlparse(str(url))
+    host = (u.hostname or "").lower()
+    if u.scheme != "https":
+        raise ValueError("BSE network: https only — got " + (u.scheme or "none"))
+    if not host or (host not in BSE_ALLOWED_HOSTS and host not in tuple(extra_hosts)):
+        raise ValueError("BSE network: host not allowed — " + host[:60])
+    if u.username or u.password:
+        raise ValueError("BSE network: credentials in URL are not allowed")
+    port = u.port or 443
+    if port != 443:
+        raise ValueError("BSE network: only port 443 is allowed")
+    ips = []
+    try:
+        infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
+    except Exception as e:
+        raise ValueError("BSE network: DNS failed — " + str(e)[:60])
+    for _af, _ty, _pr, _cn, sa in infos:
+        ip = str(sa[0])
+        if not _bse_ip_ok(ip):
+            raise ValueError("BSE network: resolved address is not public — " + ip)
+        if ip not in ips:
+            ips.append(ip)
+    if not ips:
+        raise ValueError("BSE network: host did not resolve")
+    return host, port, ips
+
+
+class _BSEHTTPSConn(http.client.HTTPSConnection):
+    """HTTPS connection pinned to a pre-validated IP. The TLS certificate is still verified
+    against the real hostname (SNI + hostname check unchanged) — DNS rebinding cannot switch
+    the actual peer without breaking the certificate check."""
+
+    def __init__(self, host, ip, **kw):
+        super().__init__(host, **kw)
+        self._bse_ip = ip
+
+    def connect(self):
+        self.sock = socket.create_connection((self._bse_ip, self.port), self.timeout)
+        self.sock = self._context.wrap_socket(self.sock, server_hostname=self.host)
+
+
+class _BSEPinHTTPS(urllib.request.HTTPSHandler):
+    """HTTPS handler that opens every connection to an IP that passed _bse_check_url.
+    Redirect targets (not pre-pinned) are re-validated here before any socket is opened."""
+
+    def __init__(self, pins, hosts):
+        super().__init__()
+        self._pins = pins
+        self._hosts = hosts
+
+    def https_open(self, req):
+        host = (urllib.parse.urlparse(req.full_url).hostname or "").lower()
+        if host not in self._pins:
+            _h, _p, ips = _bse_check_url(req.full_url, self._hosts)
+            self._pins[host] = ips[0]
+        return self.do_open(lambda h, *a, **kw: _BSEHTTPSConn(h, self._pins[host], **kw), req)
+
+
+class _BSERedirect(urllib.request.HTTPRedirectHandler):
+    """Every HTTP redirect is re-validated against the same policy before being followed —
+    a redirect can never carry the call to a host that was not explicitly allowed."""
+
+    max_repeats = 0
+    max_redirections = 3
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        newurl = urllib.parse.urljoin(req.full_url, newurl)
+        _bse_check_url(newurl, getattr(req, "_bse_hosts", ()))     # raises when not allowed
+        r = urllib.request.Request(newurl)                # body dropped — follows as plain GET
+        for k, v in req.headers.items():
+            if k.lower() not in ("content-length", "content-type", "host"):
+                r.add_header(k, v)
+        r._bse_hosts = getattr(req, "_bse_hosts", ())
+        return r
+
+
+def bse_open(url, hosts=(), data=None, headers=None, timeout=20):
+    """THE ONLY way brokered code talks to the network (Network Broker — owner request):
+    HTTPS + exact allow-list + public-IP validation after DNS + pinned connection with normal
+    certificate verification + every redirect re-validated + system proxies disabled.
+    The security hold stops everything until a clean restart."""
+    if BSE_STATE["hold"]:
+        raise RuntimeError("BSE security hold — network calls are stopped (restart the app)")
+    host, _port, ips = _bse_check_url(url, hosts)
+    pins = {host: ips[0]}
+    all_hosts = tuple(BSE_ALLOWED_HOSTS) + tuple(hosts)
+    opener = urllib.request.build_opener(
+        urllib.request.ProxyHandler({}),                  # no system proxy — closes proxy bypass
+        _BSERedirect(), _BSEPinHTTPS(pins, all_hosts))
+    req = urllib.request.Request(url, data=data, headers=headers or {})
+    req._bse_hosts = all_hosts
+    return opener.open(req, timeout=timeout)
+
+
 def _tg_send(token, chats, text, png=None):
     """Send to Telegram — ONE message per chat (user request): with an image the text is merged
     into the photo itself as its caption (sendPhoto caption field — a single message in the
-    chat, never a separate text bubble); without an image the text goes as a plain message."""
+    chat, never a separate text bubble); without an image the text goes as a plain message.
+    BSE Layer 2: every send flows through the Network Broker (bse_open) — HTTPS, allow-list,
+    public-IP checks, rate limit (30/min total) and chat-id format validation happen here for
+    ALL callers (signals, screenshots, composed images, the Test button, bot results)."""
     ok_count = 0
     errs = []
-    chats = [c.strip() for c in chats.replace(";", ",").split(",") if c.strip()]
     if not token.strip():
         raise ValueError("empty bot token")
+    chats = _bse_chats(chats)
     if not chats:
-        raise ValueError("no chat ids")
+        raise ValueError("no valid chat ids")
+    if not BSE_RATE.allow("telegram", *BSE_LIMITS["telegram"]):
+        _bse_violation("tg-rate", "telegram send limit exceeded")
+        raise RuntimeError("BSE: telegram rate limit exceeded — too many sends per minute")
     cap = (text or "").strip()
     if len(cap) > 1024:                     # Telegram caption hard limit
         cap = cap[:1024]
@@ -3955,14 +4294,13 @@ def _tg_send(token, chats, text, png=None):
                 body += (f"--{boundary}\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"signal.png\"\r\n"
                          "Content-Type: image/png\r\n\r\n").encode() + png + b"\r\n"
                 body += (f"--{boundary}--\r\n").encode()
-                req = urllib.request.Request(
-                    f"https://api.telegram.org/bot{token.strip()}/sendPhoto", data=body,
-                    headers={"Content-Type": f"multipart/form-data; boundary={boundary}"})
-                urllib.request.urlopen(req, timeout=20).read()
+                bse_open(f"https://api.telegram.org/bot{token.strip()}/sendPhoto", data=body,
+                         headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+                         timeout=20).read()
             else:
                 payload = urllib.parse.urlencode({"chat_id": ch, "text": text}).encode()
-                urllib.request.urlopen(f"https://api.telegram.org/bot{token.strip()}/sendMessage",
-                                       payload, timeout=20).read()
+                bse_open(f"https://api.telegram.org/bot{token.strip()}/sendMessage",
+                         data=payload, timeout=20).read()
             ok_count += 1
         except Exception as e:
             errs.append(str(e)[:80])
@@ -4838,379 +5176,415 @@ GUIDE_FILE_NAME = "BadiCharts_Programming_Guide.js"
 # Old copies with the Arabic name are deleted at boot (migration)
 LEGACY_GUIDE_FILES = ("دليل البرمجة والرسم على الشارت.js",)
 
-GUIDE_JS = """/* ═══════════════════════════════════════════════════════════════════════════
-   BadiCharts Programming Guide — programming and drawing on the chart (full explanation)
-   ═══════════════════════════════════════════════════════════════════════════
+GUIDE_JS = """// /* ═══════════════════════════════════════════════════════════════════════════
+//    BadiCharts Programming Guide — programming and drawing on the chart (full explanation)
+//    ═══════════════════════════════════════════════════════════════════════════
 
-   This file is a real indicator that runs on the chart — the full explanation is in the
-   comments below. Run it with the ▶ button and you will see: a drawn Bollinger band +
-   transparent fill + a circle + free text.
+//    This file is a real indicator that runs on the chart — the full explanation is in the
+//    comments below. Run it with the ▶ button and you will see: a drawn Bollinger band +
+//    transparent fill + a circle + free text.
 
-   ── 1) Structure of any indicator ──────────────────────────────────────────
-   The code always ends with return { ... } and contains:
+//    ── 1) Structure of any indicator ──────────────────────────────────────────
+//    The code always ends with return { ... } and contains:
 
-     label    : the indicator name as shown on the chart
-     type     : 'overlay' above the candles   |   'pane' a window under the chart
-     color    : the default indicator color
-     settings : the settings — any key appears automatically in the ⚙ settings card
-                (period / mult / fast / slow / signal / bins / color)
+//      label    : the indicator name as shown on the chart
+//      type     : 'overlay' above the candles   |   'pane' a window under the chart
+//      color    : the default indicator color
+//      settings : the settings — any key appears automatically in the ⚙ settings card
+//                 (period / mult / fast / slow / signal / bins / color)
 
-   ── 2) calculate(candles, s) — the calculation ─────────────────────────────
-     candles : the candle array [{time, open, high, low, close, volume}, ...]
-     s       : the settings above
-     returns : an array of numbers  or  an object {name: [values...], ...}
+//    ── 2) calculate(candles, s) — the calculation ─────────────────────────────
+//      candles : the candle array [{time, open, high, low, close, volume}, ...]
+//      s       : the settings above
+//      returns : an array of numbers  or  an object {name: [values...], ...}
 
-     ready-made functions:
-       Indicators.sma(v, p)          simple moving average
-       Indicators.ema(v, p)          exponential moving average
-       Indicators.bollinger(v, p, m) → {mid, upper, lower}
-       Indicators.rsi(v, p)          relative strength index
-       Indicators.macd(v, f, sl, sg) MACD
-       Indicators.stoch(candles, p, sm) stochastic
-       Indicators.atr(candles, p)    average true range
+//      ready-made functions:
+//        Indicators.sma(v, p)          simple moving average
+//        Indicators.ema(v, p)          exponential moving average
+//        Indicators.bollinger(v, p, m) → {mid, upper, lower}
+//        Indicators.rsi(v, p)          relative strength index
+//        Indicators.macd(v, f, sl, sg) MACD
+//        Indicators.stoch(candles, p, sm) stochastic
+//        Indicators.atr(candles, p)    average true range
 
-   ── 3) Pair info: payout rate + market open or closed (Market API) ─────────
-     Indicators.market.info()             ← the current pair: {name, payout, open, otc}
-     Indicators.market.info('EUR/USD')    ← a specific pair by name
-     Indicators.market.assets()           ← every currency [{name, payout, open, otc}]
-     Indicators.market.added()            ← only the currencies added to the strip
-     Indicators.market.current()          ← the currency of the active chart now
-     State: OTC and crypto are always open — forex runs from Sunday 22:00 to Friday 22:00 UTC
+//    ── 3) Pair info: payout rate + market open or closed (Market API) ─────────
+//      Indicators.market.info()             ← the current pair: {name, payout, open, otc}
+//      Indicators.market.info('EUR/USD')    ← a specific pair by name
+//      Indicators.market.assets()           ← every currency [{name, payout, open, otc}]
+//      Indicators.market.added()            ← only the currencies added to the strip
+//      Indicators.market.current()          ← the currency of the active chart now
+//      State: OTC and crypto are always open — forex runs from Sunday 22:00 to Friday 22:00 UTC
 
-   ── 4) Signals + Telegram bot ──────────────────────────────────────────────
-     signal(candles, values, s) is checked every second, and when it returns:
+//    ── 4) Signals + Telegram bot ──────────────────────────────────────────────
+//      signal(candles, values, s) is checked every second, and when it returns:
 
-       {dir: 'up' | 'down', price: the price, chats: '@yourchannel or -100...'}   ← a signal
-       null                                                                       ← nothing
+//        {dir: 'up' | 'down', price: the price, chats: '@yourchannel or -100...'}   ← a signal
+//        null                                                                       ← nothing
 
-       chats = the Telegram chat/channel ID of this indicator — the signal and its result
-               (WIN/LOSS) are sent automatically to that chat with a chart screenshot.
-     To send signals for more than one currency add keys to settings:
-       scope:     'added' → only the currencies added to the strip
-                  'high'  → the currencies with the highest payout (they do not have to be added)
-                  'all'   → every currency
-       minPayout: 85            ← the minimum with scope: 'high'
+//        chats = the Telegram chat/channel ID of this indicator — the signal and its result
+//                (WIN/LOSS) are sent automatically to that chat with a chart screenshot.
+//      To send signals for more than one currency add keys to settings:
+//        scope:     'added' → only the currencies added to the strip
+//                   'high'  → the currencies with the highest payout (they do not have to be added)
+//                   'all'   → every currency
+//        minPayout: 85            ← the minimum with scope: 'high'
 
-     🎨 Design the signal card yourself — the card is not fixed (user request):
-       add card to the signal; its value is free HTML or an object:
-         signal({dir:'up', card:'<div style="padding:6px 10px"><b>MY SIGNAL</b></div>'})
-         signal({dir:'down', card:{html:'…', bg:'#101820', accent:'#FF4D5E', color:'#ffffff'}})
-           html   : the full card content — any HTML and style you want (total freedom)
-           bg     : the card background          accent : the card side-strip color
-           color  : the default text color
-       Without card the default card appears. Notes:
-       • The signal time shows in the left corner of the card.
-       • The card disappears automatically when the timeframe candle ends, and the result
-         (WIN/LOSS) is recorded in the History tab.
-       • The countdown beside the live candle is the library's own counter — automatic,
-         it shows the time left until the current candle closes (seconds/minutes adaptive).
+//      🎨 Design the signal card yourself — the card is not fixed (user request):
+//        add card to the signal; its value is free HTML or an object:
+//          signal({dir:'up', card:'<div style="padding:6px 10px"><b>MY SIGNAL</b></div>'})
+//          signal({dir:'down', card:{html:'…', bg:'#101820', accent:'#FF4D5E', color:'#ffffff'}})
+//            html   : the full card content — any HTML and style you want (total freedom)
+//            bg     : the card background          accent : the card side-strip color
+//            color  : the default text color
+//        Without card the default card appears. Notes:
+//        • The signal time shows in the left corner of the card.
+//        • The card disappears automatically when the timeframe candle ends, and the result
+//          (WIN/LOSS) is recorded in the History tab.
+//        • The countdown beside the live candle is the library's own counter — automatic,
+//          it shows the time left until the current candle closes (seconds/minutes adaptive).
 
-   ── 5) Free drawing — the chart accepts drawing anything (full Canvas 2D) ──
-     render(ctx, values, h, s) is optional — without it the results are drawn as lines automatically.
-       ctx    : the Canvas 2D context — lines, rectangles, circles, text, gradients, shadows...
-       values : the calculate output
-       h      : the coordinate helpers:
-                  h.indexToX(i)     candle index → X pixel
-                  h.priceToY(p)     price → Y pixel        (overlay type)
-                  h.paneToY(v)      value → Y pixel         (pane type)
-                  h.firstIdx / h.lastIdx / h.candles / h.THEME / h.barSpacing
-                  h.chartLeft / h.chartRight / h.priceTop / h.priceBottom
-                  h.drawGradientArea(...)  a ready gradient fill
+//    ── 5) Free drawing — the chart accepts drawing anything (full Canvas 2D) ──
+//      render(ctx, values, h, s) is optional — without it the results are drawn as lines automatically.
+//        ctx    : the Canvas 2D context — lines, rectangles, circles, text, gradients, shadows...
+//        values : the calculate output
+//        h      : the coordinate helpers:
+//                   h.indexToX(i)     candle index → X pixel
+//                   h.priceToY(p)     price → Y pixel        (overlay type)
+//                   h.paneToY(v)      value → Y pixel         (pane type)
+//                   h.firstIdx / h.lastIdx / h.candles / h.THEME / h.barSpacing
+//                   h.chartLeft / h.chartRight / h.priceTop / h.priceBottom
+//                   h.drawGradientArea(...)  a ready gradient fill
 
-   ── 6) Interactive drawing tools — drag and draw directly on the chart ─────
-     A drawing tool is programmed with four functions (see the Signal Arrow example in the editor):
+//    ── 6) Interactive drawing tools — drag and draw directly on the chart ─────
+//      A drawing tool is programmed with four functions (see the Signal Arrow example in the editor):
 
-       onStart(ctx)         drag starts  → returns the drawing object {i1, p1, ...}
-       onUpdate(d, ctx)     while dragging → modify the drawing data d
-       onDraw(ctx, d, h)    drawn every frame
-       onHitTest(d, x, y, h) is the point over the drawing? (for select/delete/properties)
+//        onStart(ctx)         drag starts  → returns the drawing object {i1, p1, ...}
+//        onUpdate(d, ctx)     while dragging → modify the drawing data d
+//        onDraw(ctx, d, h)    drawn every frame
+//        onHitTest(d, x, y, h) is the point over the drawing? (for select/delete/properties)
 
-     Tip: store coordinates as (candle index + price) — drawings stay glued to the
-            candles when zooming and panning.
+//      Tip: store coordinates as (candle index + price) — drawings stay glued to the
+//             candles when zooming and panning.
 
-   ── 7) Extras ──────────────────────────────────────────────────────────────
-     getRange(values, s) → {min, max}   set the lower window (pane) range
-     log('text')                        print in the editor console
-     The result is computed automatically: when the timeframe duration ends the entry is
-     compared with the exit (WIN/LOSS)
+//    ── 7) Extras ──────────────────────────────────────────────────────────────
+//      getRange(values, s) → {min, max}   set the lower window (pane) range
+//      log('text')                        print in the editor console
+//      The result is computed automatically: when the timeframe duration ends the entry is
+//      compared with the exit (WIN/LOSS)
 
-   ── 8) Selling your indicator — buyer licensing by ID (BADI LICENSED USERS) ─
-   The buyer list lives INSIDE the indicator script itself — never in a dialog card.
-   A card can hold only one or two users, but in the script you control the list freely
-   and can license unlimited buyers. The full flow, step by step:
+//    ── 8) Selling your indicator — buyer licensing by ID (BADI LICENSED USERS) ─
+//    The buyer list lives INSIDE the indicator script itself — never in a dialog card.
+//    A card can hold only one or two users, but in the script you control the list freely
+//    and can license unlimited buyers. The full flow, step by step:
 
-     1) Every device has a fixed USER ID (BADI-XXXX-XXXX-XXXX) shown in the bottom bar of
-        the app screen. The buyer clicks it — it is copied to the clipboard — and sends it
-        to you however you like (Telegram, WhatsApp, email...).
-     2) In the indicator script add the marker line followed by your buyers' IDs.
-        All three forms below are accepted — the IDs are read from the marker statement only,
-        any other ID written elsewhere in the code is ignored:
+//      1) Every device has a fixed USER ID (BADI-XXXX-XXXX-XXXX) shown in the bottom bar of
+//         the app screen. The buyer clicks it — it is copied to the clipboard — and sends it
+//         to you however you like (Telegram, WhatsApp, email...).
+//      2) In the indicator script add the marker line followed by your buyers' IDs.
+//         All three forms below are accepted — the IDs are read from the marker statement only,
+//         any other ID written elsewhere in the code is ignored:
 
-          /* BADI LICENSED USERS: BADI-2R2Y-GEET-NPUN, BADI-8F3K-2T9W-5H1D */
-          // BADI LICENSED USERS: BADI-2R2Y-GEET-NPUN
-          const BADI_LICENSED_USERS = ["BADI-2R2Y-GEET-NPUN", "BADI-8F3K-2T9W-5H1D"];
+          // /* BADI LICENSED USERS: BADI-2R2Y-GEET-NPUN, BADI-8F3K-2T9W-5H1D */
+          // // BADI LICENSED USERS: BADI-2R2Y-GEET-NPUN
+          // const BADI_LICENSED_USERS = ["BADI-2R2Y-GEET-NPUN", "BADI-8F3K-2T9W-5H1D"];
+//         (shown here as comments — copy the form WITHOUT the leading //)
 
-        Unlimited buyers: keep writing IDs separated by commas — over several lines too:
+//         Unlimited buyers: keep writing IDs separated by commas — over several lines too:
 
-          /* BADI LICENSED USERS:
-             BADI-2R2Y-GEET-NPUN,
-             BADI-8F3K-2T9W-5H1D,
-             BADI-4M2P-7K9X-8Q6R */
+          // /* BADI LICENSED USERS:
+          //    BADI-2R2Y-GEET-NPUN,
+          //    BADI-8F3K-2T9W-5H1D,
+          //    BADI-4M2P-7K9X-8Q6R */
 
-     3) Click the lock button (Encrypt the indicator). The dialog shows the buyers found in
-        the script, then confirm and the whole list is embedded INSIDE the encrypted .badi
-        file (AES-256-GCM). Nothing is written in the clear and the key never leaves the app.
-     4) The encrypted indicator runs only on a device whose USER ID is in the list. On any
-        other device it refuses to run and shows that device's own ID so the buyer can send
-        it to you. An empty list (no marker line) = the file works for everyone.
+//      3) Click the lock button (Encrypt the indicator). The dialog shows the buyers found in
+//         the script, then confirm and the whole list is embedded INSIDE the encrypted .badi
+//         file (AES-256-GCM). Nothing is written in the clear and the key never leaves the app.
+//      4) The encrypted indicator runs only on a device whose USER ID is in the list. On any
+//         other device it refuses to run and shows that device's own ID so the buyer can send
+//         it to you. An empty list (no marker line) = the file works for everyone.
 
-     Notes:
-     • To add or remove a buyer later: edit the script, change the line, encrypt again —
-       the license travels inside the file; there is no server and no account involved.
-     • The check runs inside the app before the code starts — the encrypted code itself
-       never sees the license list, so it cannot be read, forged or stripped out.
-     • IDs are format-checked: BADI-XXXX-XXXX-XXXX (letters/digits, no 0/O/1/I to avoid
-       confusion) — a wrongly typed ID is simply never matched, so copy, never retype.
-     • Combine this with section 9 (paid indicators) to add a server-side subscription
-       on top of the per-device license.
+//      Notes:
+//      • To add or remove a buyer later: edit the script, change the line, encrypt again —
+//        the license travels inside the file; there is no server and no account involved.
+//      • The check runs inside the app before the code starts — the encrypted code itself
+//        never sees the license list, so it cannot be read, forged or stripped out.
+//      • IDs are format-checked: BADI-XXXX-XXXX-XXXX (letters/digits, no 0/O/1/I to avoid
+//        confusion) — a wrongly typed ID is simply never matched, so copy, never retype.
+//      • Combine this with section 9 (paid indicators) to add a server-side subscription
+//        on top of the per-device license.
 
-   ── 9) Paid indicators — the developer controls his indicator through his server (new) ──
-   When the indicator is encrypted, two paid fields can be embedded with it:
-     Paid control server : https://your-server/badi/api   (https only — optional)
-     Paid indicator ID   : PRO_SIGNAL_1             (letters, digits and _ . - only)
-   Both fields are embedded inside the encrypted envelope itself — no script can change them.
+//    ── 9) Paid indicators — the developer controls his indicator through his server (new) ──
+//    When the indicator is encrypted, two paid fields can be embedded with it:
+//      Paid control server : https://your-server/badi/api   (https only — optional)
+//      Paid indicator ID   : PRO_SIGNAL_1             (letters, digits and _ . - only)
+//    Both fields are embedded inside the encrypted envelope itself — no script can change them.
 
-   Then you control the indicator from your server — the app asks your server at boot
-   and every 15 minutes:
-     GET {server}?ind=ID&dev=USER-ID&left=days-left&st=state&v=1
-     (left = the days left locally — you track it on your server and decide yourself)
-   Your app accepts from your server a JSON response only (under 16KB):
-     {"ok":1,"cmds":[
-       {"cmd":"duration","days":30},             ← set/extend the subscription 30 days
-       {"cmd":"duration","until":"2026-12-31"},  ← or until a specific date
-       {"cmd":"enable"},                         ← enable the indicator
-       {"cmd":"disable"},                        ← disable the indicator
-       {"cmd":"status","state":"active"},        ← active or expired
-       {"cmd":"notify","text":"Indicator updated — finer filters and fixes"} ← a user notification
-     ]}
-   These are all the commands — and only these: any other command is ignored, no code coming
-   from the server is ever executed, and no file can be uploaded or pulled through this channel
-   at all — any response containing base64 or a file or large data is rejected and your server
-   is banned for 10 minutes.
+//    Then you control the indicator from your server — the app asks your server at boot
+//    and every 15 minutes:
+//      GET {server}?ind=ID&dev=USER-ID&left=days-left&st=state&v=1
+//      (left = the days left locally — you track it on your server and decide yourself)
+//    Your app accepts from your server a JSON response only (under 16KB):
+//      {"ok":1,"cmds":[
+//        {"cmd":"duration","days":30},             ← set/extend the subscription 30 days
+//        {"cmd":"duration","until":"2026-12-31"},  ← or until a specific date
+//        {"cmd":"enable"},                         ← enable the indicator
+//        {"cmd":"disable"},                        ← disable the indicator
+//        {"cmd":"status","state":"active"},        ← active or expired
+//        {"cmd":"notify","text":"Indicator updated — finer filters and fixes"} ← a user notification
+//      ]}
+//    These are all the commands — and only these: any other command is ignored, no code coming
+//    from the server is ever executed, and no file can be uploaded or pulled through this channel
+//    at all — any response containing base64 or a file or large data is rejected and your server
+//    is banned for 10 minutes.
 
-   A small protected database inside the app for every paid indicator (cannot be deleted or tampered with):
-     • It saves for each indicator: its ID, its server, the subscription expiry date, the state,
-       the days left, and the last date the system saw.
-     • Signed with HMAC-SHA256 using a key derived from the app key + this device fingerprint,
-       with multiple hidden copies — deleting or editing it never extends the subscription:
-       (fail closed) the indicator stops until your server answers with the truth and restores the state.
-     • Day monitoring works even if the user deletes the app records: days are counted
-       from the last date the system saw — rolling the device clock back earns not a single day.
-     • Reminders are automatic: 7, 3 and 1 day before expiry a notification shows ("the
-       subscription of indicator X ends in N days — renewal required"), and at expiry:
-       "the month/subscription ended — renewal required" and the indicator turns off until
-       you enable it from your server.
-     • Your notifications (notify) show in the small notification card beside the settings
-       button — text only, up to 300 characters, no HTML and no file links.
+//    A small protected database inside the app for every paid indicator (cannot be deleted or tampered with):
+//      • It saves for each indicator: its ID, its server, the subscription expiry date, the state,
+//        the days left, and the last date the system saw.
+//      • Signed with HMAC-SHA256 using a key derived from the app key + this device fingerprint,
+//        with multiple hidden copies — deleting or editing it never extends the subscription:
+//        (fail closed) the indicator stops until your server answers with the truth and restores the state.
+//      • Day monitoring works even if the user deletes the app records: days are counted
+//        from the last date the system saw — rolling the device clock back earns not a single day.
+//      • Reminders are automatic: 7, 3 and 1 day before expiry a notification shows ("the
+//        subscription of indicator X ends in N days — renewal required"), and at expiry:
+//        "the month/subscription ended — renewal required" and the indicator turns off until
+//        you enable it from your server.
+//      • Your notifications (notify) show in the small notification card beside the settings
+//        button — text only, up to 300 characters, no HTML and no file links.
 
-   Built-in protection (no script can bypass it):
-     • The indicator decryption key is fused inside the app — never written to a file, never
-       reaches the web page, and cannot be copied; only its fingerprint shows in Settings.
-     • The paid manifest (ID + server) is inside the encryption — the indicator code itself
-       never sees or changes it.
-     • Indicator code is permanently denied network, storage and bridges (double-checked before
-       running and inside QuickJS) — it sees nothing of the license, the protected database
-       or the control server.
-     • Commands are checked against a strict allow-list inside the app — executing server code is impossible.
-   ── 10) Chart screenshots from your script — Indicators.shot() + Telegram (new) ──
-   Your indicator can capture the chart itself and send the picture to Telegram — and YOU
-   control everything about the capture. It is never a forced full-app screenshot: you
-   decide the pane, the region, the candle width, which indicators appear, the resolution.
+//    Built-in protection (no script can bypass it):
+//      • The indicator decryption key is fused inside the app — never written to a file, never
+//        reaches the web page, and cannot be copied; only its fingerprint shows in Settings.
+//      • The paid manifest (ID + server) is inside the encryption — the indicator code itself
+//        never sees or changes it.
+//      • Indicator code is permanently denied network, storage and bridges (double-checked before
+//        running and inside QuickJS) — it sees nothing of the license, the protected database
+//        or the control server.
+//      • Commands are checked against a strict allow-list inside the app — executing server code is impossible.
+//    ── 10) Chart screenshots from your script — Indicators.shot() + Telegram (new) ──
+//    Your indicator can capture the chart itself and send the picture to Telegram — and YOU
+//    control everything about the capture. It is never a forced full-app screenshot: you
+//    decide the pane, the region, the candle width, which indicators appear, the resolution.
 
-     Indicators.shot()                       → dataURL of the whole active chart pane
-     Indicators.shot({ pane: 1 })            → a specific pane (0 = the first/top pane)
-     Indicators.shot({ x, y, w, h })         → any region INSIDE the chart (pixels from
-                                               the pane top-left corner)
-     Indicators.shot({ candleW: 18 })        → candle width for the capture (1..120 px —
-                                               the chart zoom is restored right after)
-     Indicators.shot({ hide: ['EMA Cross'] })→ capture WITHOUT the named indicators
-     Indicators.shot({ show: ['RSI'] })      → capture with ONLY the named indicators
-     Indicators.shot({ scale: 2 })           → sharper capture (temporary 2x redraw,
-                                               the chart resolution is restored right after)
-     Indicators.shot({ format: 'png' })      → 'png' or 'jpeg' (default: jpeg)
-     Indicators.shot({ quality: 0.95 })      → jpeg quality 0.5 .. 1 (default 0.92)
+//      Indicators.shot()                       → dataURL of the whole active chart pane
+//      Indicators.shot({ pane: 1 })            → a specific pane (0 = the first/top pane)
+//      Indicators.shot({ x, y, w, h })         → any region INSIDE the chart (pixels from
+//                                                the pane top-left corner)
+//      Indicators.shot({ candleW: 18 })        → candle width for the capture (1..120 px —
+//                                                the chart zoom is restored right after)
+//      Indicators.shot({ hide: ['EMA Cross'] })→ capture WITHOUT the named indicators
+//      Indicators.shot({ show: ['RSI'] })      → capture with ONLY the named indicators
+//      Indicators.shot({ scale: 2 })           → sharper capture (temporary 2x redraw,
+//                                                the chart resolution is restored right after)
+//      Indicators.shot({ format: 'png' })      → 'png' or 'jpeg' (default: jpeg)
+//      Indicators.shot({ quality: 0.95 })      → jpeg quality 0.5 .. 1 (default 0.92)
 
-   Send it straight to Telegram — the text and the picture travel as ONE message: the
-   text rides ON the photo as its caption (there is NO technical limitation — no separate
-   message is ever sent):
-     Indicators.shot({ send: true,
-                       caption: 'EUR/USD — buy setup, 92% payout',   ← your message
-                       chats: '@mychannel' });
-   • chats is optional — without it the app uses the bot chat saved in the settings.
-   • the caption is your custom text on the photo (Telegram caption, up to 1024
-     characters, plain text) — ONE single message in the chat: picture + text together.
-   • send also RETURNS the dataURL, so you can keep a copy in your own logic too.
-   • NOTHING is saved to disk: the shot is captured, sent, done — the app writes no
-     file anywhere for script screenshots (user request).
+//    Send it straight to Telegram — the text and the picture travel as ONE message: the
+//    text rides ON the photo as its caption (there is NO technical limitation — no separate
+//    message is ever sent):
+//      Indicators.shot({ send: true,
+//                        caption: 'EUR/USD — buy setup, 92% payout',   ← your message
+//                        chats: '@mychannel' });
+//    • chats is optional — without it the app uses the bot chat saved in the settings.
+//    • the caption is your custom text on the photo (Telegram caption, up to 1024
+//      characters, plain text) — ONE single message in the chat: picture + text together.
+//    • send also RETURNS the dataURL, so you can keep a copy in your own logic too.
+//    • NOTHING is saved to disk: the shot is captured, sent, done — the app writes no
+//      file anywhere for script screenshots (user request).
 
-   Candle + chart colors from a script (user request) — Indicators.colors():
-     Indicators.colors({ bull: '#22E08A',      ← bullish candle color
-                         bear: '#FF4D5E',      ← bearish candle color
-                         bg:   '#0b0e14' });   ← chart background color
-     also: bullVol / bearVol (candle volume colors), grid, axisText, crosshair, drawing —
-     any hex or rgba color, applied live on every chart pane, exactly like the settings
-     button. They survive dark/light switches because they sit on top of the theme.
-     Indicators.colors({ reset: true });       ← back to the app theme colors
+//    Candle + chart colors from a script (user request) — Indicators.colors():
+//      Indicators.colors({ bull: '#22E08A',      ← bullish candle color
+//                          bear: '#FF4D5E',      ← bearish candle color
+//                          bg:   '#0b0e14' });   ← chart background color
+//      also: bullVol / bearVol (candle volume colors), grid, axisText, crosshair, drawing —
+//      any hex or rgba color, applied live on every chart pane on top of the app theme
+//      colors (the base always stays the app theme). They survive dark/light switches
+//      because they are re-layered over the fresh theme on every switch.
+//      Indicators.colors({ reset: true });       ← back to the app theme colors
 
-   Real example — candle colors + a sharp shot of your pane only, with one merged message:
-     signal(candles, v, s) {
-       if (v.crossed) {
-         Indicators.colors({ bull: '#22E08A', bear: '#FF4D5E' });
-         Indicators.shot({ pane: 1, scale: 2, candleW: 14, send: true,
-                           caption: 'RSI cross — ' + candles[candles.length - 1].close,
-                           chats: '@mychannel' });
-       }
-       return null;
-     }
+//    Real example — candle colors + a sharp shot of your pane only, with one merged message:
+//      signal(candles, v, s) {
+//        if (v.crossed) {
+//          Indicators.colors({ bull: '#22E08A', bear: '#FF4D5E' });
+//          Indicators.shot({ pane: 1, scale: 2, candleW: 14, send: true,
+//                            caption: 'RSI cross — ' + candles[candles.length - 1].close,
+//                            chats: '@mychannel' });
+//        }
+//        return null;
+//      }
 
-   SECURITY — hard limits no script can ever bypass (by design):
-     • The capture region is always clamped to the chart canvas bounds. A script CANNOT
-       capture the app window, the editor, the desktop, the taskbar or the full screen —
-       asking for x:-500 or w:99999 simply crops back to the chart. There is no
-       screen-capture API for scripts at all: nothing outside the chart pixels can ever
-       reach a script, the bridge or Telegram. This is protection and security by design.
-     • The picture goes ONLY to the Telegram chats named in the call (or the bot settings
-       chat) — the app never uploads it anywhere else.
-     • Output is capped (~4 megapixels) and scale at 3x so a script cannot freeze the app
-       with a giant capture.
-   Python-engine indicators (.py) send every signal as ONE message too: the signal text
-   is merged into the chart screenshot as its caption, automatically.
+//    SECURITY — hard limits no script can ever bypass (by design):
+//      • The capture region is always clamped to the chart canvas bounds. A script CANNOT
+//        capture the app window, the editor, the desktop, the taskbar or the full screen —
+//        asking for x:-500 or w:99999 simply crops back to the chart. There is no
+//        screen-capture API for scripts at all: nothing outside the chart pixels can ever
+//        reach a script, the bridge or Telegram. This is protection and security by design.
+//      • The picture goes ONLY to the Telegram chats named in the call (or the bot settings
+//        chat) — the app never uploads it anywhere else.
+//      • Output is capped (~4 megapixels) and scale at 3x so a script cannot freeze the app
+//        with a giant capture.
+//    Python-engine indicators (.py) send every signal as ONE message too: the signal text
+//    is merged into the chart screenshot as its caption, automatically.
 
-   ── 11) Your own private chart — Indicators.render() (new) ──
-   A script can build its OWN chart — completely off-screen — capture it and send it, and
-   the user's chart is NEVER touched: no size change, no zoom change, no color change,
-   nothing appears on screen. The user never sees the private chart, not even for one
-   frame: it lives on a canvas that is never attached to the page and it is destroyed the
-   moment the capture is done.
+//    ── 11) Your own private chart — Indicators.render() (new) ──
+//    A script can build its OWN chart — completely off-screen — capture it and send it, and
+//    the user's chart is NEVER touched: no size change, no zoom change, no color change,
+//    nothing appears on screen. The user never sees the private chart, not even for one
+//    frame: it lives on a canvas that is never attached to the page and it is destroyed the
+//    moment the capture is done.
 
-     Indicators.render({ candles: 20, send: true,
-                         caption: 'Last 20 candles', chats: '@mychannel' });
-       → a picture of a chart showing ONLY the last 20 candles of the live pane — while the
-         real chart keeps its own candles, its own size and its own zoom, pixel for pixel.
+//      Indicators.render({ candles: 20, send: true,
+//                          caption: 'Last 20 candles', chats: '@mychannel' });
+//        → a picture of a chart showing ONLY the last 20 candles of the live pane — while the
+//          real chart keeps its own candles, its own size and its own zoom, pixel for pixel.
 
-   Full control — every option is optional; by default the private chart copies the user's
-   current chart look (theme colors) and the pane's symbol + timeframe:
-     candles: 20           → the LAST 20 candles of the pane (default: all of them)
-     data: [...]           → your own candles [{time, open, high, low, close, volume}]
-     width / height        → the picture size in px (default 1280x720, max 2000)
-     scale: 2              → sharper bitmap (1..3, default 2)
-     symbol / tf           → legend label + timeframe ('5m', '1H', ... — default: the pane's)
-     candleW: 14           → candle width in px (1..120); fit: true fits ALL candles instead
-     bull / bear / bg      → quick colors: bullish candles, bearish candles, background
-     colors: { bull, bear, bullVol, bearVol, bg, grid, axisText, crosshair }
-                           → full color control of the private chart (any hex/rgba)
-     show: ['RSI']         → only the named indicators are copied onto the private chart
-     hide: ['EMA Cross']   → all indicators EXCEPT the named ones
-     volume: false         → hide the volume bars (default: drawn)
-     decimals: 2           → price-axis decimals for your own data
-     format / quality      → 'png' (default) or 'jpeg' + quality 0.5..1
-     send / caption / chats→ ONE Telegram message: the text rides ON the photo as its
-                             caption (up to 1024 characters) — nothing is saved to disk.
+//    Full control — every option is optional; by default the private chart copies the user's
+//    current chart look (theme colors) and the pane's symbol + timeframe:
+//      candles: 20           → the LAST 20 candles of the pane (default: all of them)
+//      data: [...]           → your own candles [{time, open, high, low, close, volume}]
+//      width / height        → the picture size in px (default 1280x720, max 2000)
+//      scale: 2              → sharper bitmap (1..3, default 2)
+//      symbol / tf           → legend label + timeframe ('5m', '1H', ... — default: the pane's)
+//      candleW: 14           → candle width in px (1..120); fit: true fits ALL candles instead
+//      bull / bear / bg      → quick colors: bullish candles, bearish candles, background
+//      colors: { bull, bear, bullVol, bearVol, bg, grid, axisText, crosshair }
+//                            → full color control of the private chart (any hex/rgba)
+//      show: ['RSI']         → only the named indicators are copied onto the private chart
+//      hide: ['EMA Cross']   → all indicators EXCEPT the named ones
+//      volume: false         → hide the volume bars (default: drawn)
+//      decimals: 2           → price-axis decimals for your own data
+//      format / quality      → 'png' (default) or 'jpeg' + quality 0.5..1
+//      send / caption / chats→ ONE Telegram message: the text rides ON the photo as its
+//                              caption (up to 1024 characters) — nothing is saved to disk.
 
-   Examples:
-     Indicators.render({ candles: 20, candleW: 18, bull: '#22E08A', bear: '#FF4D5E',
-                         bg: '#0b0e14', send: true,
-                         caption: 'BTC/USD — last 20 candles', chats: '@mychannel' });
-     Indicators.render({ candles: 60, width: 900, height: 500, show: ['RSI'],
-                         format: 'jpeg', quality: 0.9, send: true, caption: 'RSI view' });
+//    Examples:
+//      Indicators.render({ candles: 20, candleW: 18, bull: '#22E08A', bear: '#FF4D5E',
+//                          bg: '#0b0e14', send: true,
+//                          caption: 'BTC/USD — last 20 candles', chats: '@mychannel' });
+//      Indicators.render({ candles: 60, width: 900, height: 500, show: ['RSI'],
+//                          format: 'jpeg', quality: 0.9, send: true, caption: 'RSI view' });
 
-   SECURITY — the same hard rules as Indicators.shot(), by design:
-     • The pixels come ONLY from the script's own off-screen canvas. There is no way to
-       point this API at the app window, the editor, the desktop or the screen — those are
-       not canvases and no screen-capture API exists for scripts. The user's chart is read
-       only as DATA (the candle numbers), never as pixels: its drawing, size and zoom are
-       untouched.
-     • The private chart is never attached to the page — invisible by design, not a hidden
-       overlay on top of the user's chart.
-     • The picture goes ONLY to the Telegram chats named in the call (or the bot settings
-       chat). Nothing is written to disk, and the private chart is destroyed right after.
-     • Output is capped (~4 megapixels, scale max 3, size max 2000x2000) so a script cannot
-       freeze the app with a giant capture.
+//    SECURITY — the same hard rules as Indicators.shot(), by design:
+//      • The pixels come ONLY from the script's own off-screen canvas. There is no way to
+//        point this API at the app window, the editor, the desktop or the screen — those are
+//        not canvases and no screen-capture API exists for scripts. The user's chart is read
+//        only as DATA (the candle numbers), never as pixels: its drawing, size and zoom are
+//        untouched.
+//      • The private chart is never attached to the page — invisible by design, not a hidden
+//        overlay on top of the user's chart.
+//      • The picture goes ONLY to the Telegram chats named in the call (or the bot settings
+//        chat). Nothing is written to disk, and the private chart is destroyed right after.
+//      • Output is capped (~4 megapixels, scale max 3, size max 2000x2000) so a script cannot
+//        freeze the app with a giant capture.
 
-   ── 12) Compose ANY image yourself — Indicators.compose() + Indicators.composePy() (new) ──
-   A script is not limited to chart screenshots: it can CREATE a picture from nothing — draw
-   whatever it wants in it (text, shapes, colors, its own mini-graphics) and send it to Telegram
-   as ONE message (the caption rides ON the photo). Nothing is captured from the screen — the
-   pixels are created by the script's own commands, and the chart library is not involved at all.
+//    ── 12) Compose ANY image yourself — Indicators.compose() + Indicators.composePy() (new) ──
+//    A script is not limited to chart screenshots: it can CREATE a picture from nothing — draw
+//    whatever it wants in it (text, shapes, colors, its own mini-graphics) and send it to Telegram
+//    as ONE message (the caption rides ON the photo). Nothing is captured from the screen — the
+//    pixels are created by the script's own commands, and the chart library is not involved at all.
 
-   Path 1 — draw inside the page (JavaScript): Indicators.compose()
-     Indicators.compose({
-       width: 800, height: 500,        ← the picture size (default 800x500, max 2000x2000)
-       bg: '#0b0e14',                  ← optional initial background fill
-       draw: function (ctx, w, h) {    ← YOUR drawing: the full Canvas 2D API is yours
-         ctx.fillStyle = '#22E08A';
-         ctx.fillRect(20, 20, 260, 90);
-         ctx.fillStyle = '#ffffff';
-         ctx.font = 'bold 34px sans-serif';
-         ctx.fillText('BUY EUR/USD', 40, 75);
-       },
-       format: 'png', quality: 0.95,
-       send: true,                     ← ONE Telegram message
-       caption: 'My own composed picture', chats: '@mychannel'
-     });
-     → also returns the dataURL, so you can keep a copy in your own logic.
+//    Path 1 — draw inside the page (JavaScript): Indicators.compose()
+//      Indicators.compose({
+//        width: 800, height: 500,        ← the picture size (default 800x500, max 2000x2000)
+//        bg: '#0b0e14',                  ← optional initial background fill
+//        draw: function (ctx, w, h) {    ← YOUR drawing: the full Canvas 2D API is yours
+//          ctx.fillStyle = '#22E08A';
+//          ctx.fillRect(20, 20, 260, 90);
+//          ctx.fillStyle = '#ffffff';
+//          ctx.font = 'bold 34px sans-serif';
+//          ctx.fillText('BUY EUR/USD', 40, 75);
+//        },
+//        format: 'png', quality: 0.95,
+//        send: true,                     ← ONE Telegram message
+//        caption: 'My own composed picture', chats: '@mychannel'
+//      });
+//      → also returns the dataURL, so you can keep a copy in your own logic.
 
-   Path 2 — compose inside the PYTHON engine: Indicators.composePy()
-     The script hands a small JSON command list to the desktop (up to ~12000 characters); Python
-     composes the picture with Qt/QPainter — the desktop's own drawing library, app-grade text
-     rendering with sharp Arabic/Unicode at any size — and sends it to Telegram itself. The
-     command set is closed and safe: files, network and the screen are unreachable from it.
+//    Path 2 — compose inside the PYTHON engine: Indicators.composePy()
+//      The script hands a small JSON command list to the desktop (up to ~12000 characters); Python
+//      composes the picture with Qt/QPainter — the desktop's own drawing library, app-grade text
+//      rendering with sharp Arabic/Unicode at any size — and sends it to Telegram itself. The
+//      command set is closed and safe: files, network and the screen are unreachable from it.
 
-       Indicators.composePy({
-         width: 800, height: 500, bg: '#0b0e14',
-         commands: [
-           { op: 'fill',   color: '#22E08A', x: 20, y: 20, w: 260, h: 90, r: 12 },
-           { op: 'line',   color: '#ffffff', width: 3, x1: 20, y1: 130, x2: 780, y2: 130 },
-           { op: 'circle', color: '#FF4D5E', x: 340, y: 20, w: 80, h: 80, border: 3 },
-           { op: 'text',   text: 'BUY EUR/USD', x: 20, y: 20, w: 260, h: 90, size: 34,
-                             color: '#ffffff', bold: true, align: 'center' },
-           { op: 'text',   text: 'Hello from BadiCharts', x: 400, y: 120, size: 26, color: '#facc15' },
-           { op: 'poly',   color: '#38bdf8', points: [[400,300],[470,340],[400,380],[330,340]] }
-         ],
-         caption: 'Composed in the Python engine', chats: '@mychannel'
-       });
-     → returns true when queued (the desktop draws + sends; fire-and-forget).
+//        Indicators.composePy({
+//          width: 800, height: 500, bg: '#0b0e14',
+//          commands: [
+//            { op: 'fill',   color: '#22E08A', x: 20, y: 20, w: 260, h: 90, r: 12 },
+//            { op: 'line',   color: '#ffffff', width: 3, x1: 20, y1: 130, x2: 780, y2: 130 },
+//            { op: 'circle', color: '#FF4D5E', x: 340, y: 20, w: 80, h: 80, border: 3 },
+//            { op: 'text',   text: 'BUY EUR/USD', x: 20, y: 20, w: 260, h: 90, size: 34,
+//                              color: '#ffffff', bold: true, align: 'center' },
+//            { op: 'text',   text: 'Hello from BadiCharts', x: 400, y: 120, size: 26, color: '#facc15' },
+//            { op: 'poly',   color: '#38bdf8', points: [[400,300],[470,340],[400,380],[330,340]] }
+//          ],
+//          caption: 'Composed in the Python engine', chats: '@mychannel'
+//        });
+//      → returns true when queued (the desktop draws + sends; fire-and-forget).
 
-   Command reference (both paths keep everything clamped and validated):
-     fill / rect : color, x, y, w, h, r (corner radius), border (outline color) + borderW
-     line        : color, width, x1, y1, x2, y2
-     circle      : color, x, y, w, h, border (outline width instead of a fill)
-     text        : text (max 2000 chars), x, y, size, color, bold, align ('left|center|right'),
-                   w + h (draw the text inside a box, aligned) — Arabic renders correctly
-     poly        : color, points [[x,y], ...], border, close (false = polyline, default = filled)
+//    Command reference (both paths keep everything clamped and validated):
+//      fill / rect : color, x, y, w, h, r (corner radius), border (outline color) + borderW
+//      line        : color, width, x1, y1, x2, y2
+//      circle      : color, x, y, w, h, border (outline width instead of a fill)
+//      text        : text (max 2000 chars), x, y, size, color, bold, align ('left|center|right'),
+//                    w + h (draw the text inside a box, aligned) — Arabic renders correctly
+//      poly        : color, points [[x,y], ...], border, close (false = polyline, default = filled)
 
-   SECURITY — the same design rules as shot()/render():
-     • Nothing is captured: the picture is built ONLY from the script's own drawing on a private
-       off-screen canvas (path 1) or from the closed command set in Python (path 2). There is no
-       screen-capture API for scripts at all — the screen is unreachable, by design.
-     • The Python command set is closed: clamped numbers and parsed colors only — no files, no
-       network, no app windows. A script can draw pixels, nothing else.
-     • The image goes ONLY to the Telegram chats named in the call (or the bot settings chat).
-     • NOTHING is saved to disk — the picture is composed, sent, done.
-     • Caps (2000x2000, ~4 megapixels, 500 commands, 2000-char text, ~12000-char command list)
-       so a script cannot freeze the app.
+//    SECURITY — the same design rules as shot()/render():
+//      • Nothing is captured: the picture is built ONLY from the script's own drawing on a private
+//        off-screen canvas (path 1) or from the closed command set in Python (path 2). There is no
+//        screen-capture API for scripts at all — the screen is unreachable, by design.
+//      • The Python command set is closed: clamped numbers and parsed colors only — no files, no
+//        network, no app windows. A script can draw pixels, nothing else.
+//      • The image goes ONLY to the Telegram chats named in the call (or the bot settings chat).
+//      • NOTHING is saved to disk — the picture is composed, sent, done.
+//      • Caps (2000x2000, ~4 megapixels, 500 commands, 2000-char text, ~12000-char command list)
+//        so a script cannot freeze the app.
 
-   ── 13) Python indicators — a second language runs in the desktop (new) ────
-   The app executes PYTHON indicators too: a .py file with LABEL / TYPE / SETTINGS /
-   calculate() (+ optional get_range / signal) runs in the Python engine inside the
-   desktop — its lines are drawn on the same chart and its signals reach Telegram
-   exactly like the JavaScript ones, with the chart screenshot attached automatically
-   to every signal message (ONE message — the text rides on the photo).
-   The Python sandbox is closed (no import / no files / no network) so a Python
-   indicator can only compute and signal — never touch the device or the screen.
-   The full Python guide is seeded next to this file: BadiCharts_Python_Guide.py —
-   it is itself a working Bollinger indicator; open it from the indicators list.
-   ═══════════════════════════════════════════════════════════════════════════ */
+//    ── 13) Python indicators — a second language runs in the desktop (new) ────
+//    The app executes PYTHON indicators too: a .py file with LABEL / TYPE / SETTINGS /
+//    calculate() (+ optional get_range / signal) runs in the Python engine inside the
+//    desktop — its lines are drawn on the same chart and its signals reach Telegram
+//    exactly like the JavaScript ones, with the chart screenshot attached automatically
+//    to every signal message (ONE message — the text rides on the photo).
+//    The Python sandbox is closed (no import / no files / no network) so a Python
+//    indicator can only compute and signal — never touch the device or the screen.
+//    The full Python guide is seeded next to this file: BadiCharts_Python_Guide.py —
+//    it is itself a working Bollinger indicator; open it from the indicators list.
+
+//    ── 14) Security — what a script can and cannot do (Badi Security Engine) ──
+//    Every indicator runs inside the Badi Security Engine (BSE) — four independent
+//    layers, built so that one failing never drops the whole defense:
+
+//      Layer 1 — Script sandbox   your code sees ONLY the documented API: Indicators,
+//                                 THEME, log + the standard language (Math, JSON, Date,
+//                                 Array, Object, RegExp, ...). There is no fetch, no
+//                                 XMLHttpRequest, no WebSocket, no document/window access,
+//                                 no storage, no files, no OS calls — a free reference to
+//                                 any of them is simply undefined inside your code.
+//                                 (Python indicators: the same closed promise — no import,
+//                                 no files, no network; they raise, see section 13.)
+//      Layer 2 — API validation   everything a script asks for (a signal, a screenshot, a
+//                                 composed image, a Telegram send) crosses a validated
+//                                 broker: request-type allow-lists, payload size caps,
+//                                 per-file rate limits and chat-id format checks. A script
+//                                 has NO direct internet access — ever.
+//      Layer 3 — OS isolation     the page itself runs under a strict Content-Security-
+//                                 Policy: the browser engine rejects ANY connection that is
+//                                 not the chart/editor CDN — this holds even for a
+//                                 hypothetical sandbox escape, and the page can never reach
+//                                 the operating system.
+//      Layer 4 — core protection  the bot token never enters the page; every blocked
+//                                 attempt lands in a local security audit log (no secrets,
+//                                 auto-rotated) and repeated violations trigger the
+//                                 SECURITY HOLD: all script-initiated sending stops until
+//                                 a clean restart of the app.
+
+//    What this means for you as a developer: program against the documented API above and
+//    you will never notice the engine running. What you get is a level playing field — no
+//    script (yours or anyone's) can reach the user's device, files, network, screen or the
+//    bot token, and heavy or abusive scripts are rate-limited and disabled instead of
+//    hurting the app or the user.
+//    ═══════════════════════════════════════════════════════════════════════════ */
 
 return {
   label: 'BADI Guide',
@@ -5574,6 +5948,7 @@ class Backend(QObject):
     myIndsChanged = Signal()               # My-indicators list on the indicators page changed (user request)
     notifChanged = Signal()                # Notification card changed (user request)
     paidCmd = Signal(str)                  # Valid remote control command: enable/disable a paid indicator (user request)
+    pyStopped = Signal(str)                # BSE: a violating Python indicator was disabled — page removes its series
 
     def __init__(self):
         super().__init__()
@@ -5604,16 +5979,13 @@ class Backend(QObject):
         self._watcher.directoryChanged.connect(self._on_dir_changed)
         self._hist = _read_json(os.path.join(CFG_DIR, "signals.json"), [])
         self._sigpend = []       # Signals waiting for their result (WIN/LOSS after the timeframe duration)
-        # ── Chart appearance customizable from Settings (background/candle colors...) ──
-        self._chart_theme = dict(CHART_THEME_DEFAULTS)
-        saved_ct = cfg.get("chart_theme") or {}
-        if isinstance(saved_ct, dict):
-            for k, v in saved_ct.items():
-                if k in self._chart_theme and isinstance(v, str) and re.match(r"^#[0-9a-fA-F]{3,8}$|^rgba?\(.*\)$", v.strip()):
-                    self._chart_theme[k] = v.strip()
+        # ── Chart appearance: not stored anymore — the chart always wears the app theme colors
+        #    (user request). An old "chart_theme" key in config.json is ignored and dropped on
+        #    the next save. ──
         self._py_mods = {}       # id -> module dict
         self._py_err = {}        # id -> count
         self._py_names = {}      # id -> fileName
+        self._py_slow = {}       # id -> (last slow-call time, strikes) — BSE per-call CPU budget
         self._pending = None     # Signal waiting for its screenshot
         os.makedirs(SHOTS_DIR, exist_ok=True)
 
@@ -5791,8 +6163,7 @@ class Backend(QObject):
     def _save_cfg(self):
         _write_json(CFG_FILE, {"lang": self._lang, "dark": self._dark,
                                "asset": self._asset, "tf": self._tf,
-                               "added": self._added,
-                               "chart_theme": self._chart_theme})
+                               "added": self._added})
 
     def _load_files(self):
         data = _read_json(FILES_FILE, None)
@@ -6337,6 +6708,7 @@ class Backend(QObject):
             mod["signal"] = gl.get("signal")
             mod["get_range"] = gl.get("get_range")
             self._py_err[f["id"]] = 0
+            self._py_slow.pop(f["id"], None)      # BSE: fresh start — strikes reset on (re)compile
             return mod, None
         except Exception as e:
             return None, str(e)
@@ -6344,23 +6716,73 @@ class Backend(QObject):
     def _enabled_files(self, kind):
         return [f for f in self._files if f.get("enabled") and f.get("kind") == kind]
 
+    def _bse_disable_py(self, mid, why):
+        """BSE Layer 1 — real auto-disable of a violating Python indicator: the module is
+        removed, the file record is switched off and persisted (it stays off after a restart
+        until the user re-enables it), the stale series leaves the chart, and the audit
+        trail records the event without any script content."""
+        name = self._py_names.get(mid, mid)
+        self._py_mods.pop(mid, None)
+        self._py_slow.pop(mid, None)
+        self._py_err.pop(mid, None)
+        flipped = False
+        for f in self._files:
+            if isinstance(f, dict) and f.get("id") == mid and f.get("enabled"):
+                f["enabled"] = False
+                flipped = True
+        if flipped:
+            _write_json(FILES_FILE, self._files)
+            self.filesChanged.emit()              # the page re-reads the list — the switch shows OFF
+        self.pyStopped.emit(mid)                  # the page drops the stale series from the chart
+        self._log("err", "BSE: " + str(name) + " disabled — " + str(why))
+        _bse_audit("py-budget-disable", str(name)[:40] + " — " + str(why)[:70])
+
     def _compute_py(self):
         for mid, mod in list(self._py_mods.items()):
             try:
-                res = mod["calculate"](self._candles, dict(mod["SETTINGS"]))
+                # BSE Layer 1 — per-call CPU budget: calculate() runs under a 3-second trace
+                # watchdog. A stuck pure-Python loop never returns, so measuring only after
+                # the return would never fire — the watchdog kills it mid-flight instead;
+                # native-heavy calls the tracer cannot stop are measured after the return.
+                t0 = time.perf_counter()
+                res = _bse_budget_call(mod["calculate"], self._candles, dict(mod["SETTINGS"]))
+                dt = time.perf_counter() - t0
+                if dt > _BSE_BUDGET_SEC:
+                    # returned but slow — strike; the strike window disables on repeat
+                    now = time.monotonic()
+                    last, n = self._py_slow.get(mid, (0.0, 0))
+                    if now - last > BSE_LIMITS["py_slow"][1]:
+                        n = 0
+                    self._py_slow[mid] = (now, n + 1)
+                    if n + 1 > BSE_LIMITS["py_slow"][0]:
+                        self._bse_disable_py(mid, "calculate took %.1fs repeatedly (budget %.0fs)" % (dt, _BSE_BUDGET_SEC))
+                        continue
+                    self._log("info", "BSE: " + str(self._py_names.get(mid, mid))
+                              + " calculate took %.1fs (budget %.0fs) — strike %d/%d"
+                              % (dt, _BSE_BUDGET_SEC, n + 1, BSE_LIMITS["py_slow"][0]))
+                else:
+                    self._py_slow[mid] = (time.monotonic(), 0)   # a fast clean call forgives strikes
                 if isinstance(res, (list, tuple)):
                     res = {"Value": list(res)}
                 series = {}
                 rng = None
                 for k, arr in res.items():
+                    # BSE Layer 1: output cap — a script returning a huge array cannot blow memory
+                    if not isinstance(arr, (list, tuple)):
+                        arr = list(arr)
+                    if len(arr) > BSE_MAX["py_series"]:
+                        arr = arr[:BSE_MAX["py_series"]]
                     series[k] = [None if (x is None or x != x) else round(float(x), 8) for x in arr]
                 if mod.get("get_range") and str(mod.get("TYPE")) == "pane":
-                    r = mod["get_range"](series)
+                    r = _bse_budget_call(mod["get_range"], series)
                     rng = [float(r[0]), float(r[1])]
                 self.pyValues.emit(mid, json.dumps(series), json.dumps(rng))
                 if mod.get("signal"):
-                    sig = mod["signal"](self._candles, {k: v for k, v in series.items()})
+                    sig = _bse_budget_call(mod["signal"], self._candles, {k: v for k, v in series.items()})
                     self._maybe_fire(mid, self._py_names.get(mid, str(mod.get("LABEL", mid))), sig)
+            except _BSEBudget:
+                # the watchdog killed the call mid-flight — unambiguous runaway: disable at once
+                self._bse_disable_py(mid, "killed at the %.0fs CPU budget (stuck/heavy loop in calculate)" % _BSE_BUDGET_SEC)
             except Exception as e:
                 n = self._py_err.get(mid, 0) + 1
                 self._py_err[mid] = n
@@ -6381,6 +6803,7 @@ class Backend(QObject):
         self._py_mods[fid] = mod
         self._py_names[fid] = file_name
         self._py_err[fid] = 0
+        self._py_slow.pop(fid, None)              # BSE: fresh start — strikes reset on (re)compile
         self._log("ok", f"{file_name} (Python) {T[self._lang]['compileok']}")
         return json.dumps({"ok": True, "label": str(mod["LABEL"]), "type": str(mod["TYPE"]),
                            "settings": mod["SETTINGS"]})
@@ -6464,6 +6887,15 @@ class Backend(QObject):
     def _maybe_fire(self, fid, label, sig):
         if not sig or not sig.get("dir"):
             return
+        # BSE Layer 2: field caps + per-file signal rate limit — a looping script cannot flood
+        # the card, the History or Telegram; every exceeded burst is audited
+        if not BSE_RATE.allow("sig:" + str(fid)[:40], *BSE_LIMITS["signal"]):
+            _bse_violation("signal-rate", "indicator fired too many signals")
+            self._log("err", "BSE: signal rate limit reached for an indicator — paused for this minute")
+            return
+        label = str(label or "")[:80]
+        sig["asset"] = str(sig.get("asset") or "")[:40]
+        sig["chats"] = str(sig.get("chats") or "")[:BSE_MAX["chat_len"] * BSE_MAX["chats"]]
         asset = str(sig.get("asset") or self._asset or "")
         cfg = self._asset_cfg(asset)
         on_chart = (asset == self._asset and bool(self._candles))
@@ -6599,13 +7031,29 @@ class Backend(QObject):
         """A script captured a chart screenshot and asked for Telegram delivery (user request).
         The page clamps the capture region to the chart canvas — only chart pixels can ever
         reach this slot: no app window, no desktop, no full screen. The image goes ONLY to the
-        Telegram chats named by the script (fallback: the bot settings chat) — nowhere else."""
+        Telegram chats named by the script (fallback: the bot settings chat) — nowhere else.
+        BSE Layer 2: the request is validated here (security hold, payload size, rate limit)
+        before any network path is touched; violations are audited."""
         try:
+            if BSE_STATE["hold"]:
+                self._log("err", "BSE: security hold — script sends are stopped (restart the app)")
+                return
+            if len(str(arg)) > BSE_MAX["bridge_msg"] * 4:
+                _bse_violation("scriptshot-size", "meta too large")
+                return
             o = json.loads(arg)
             img = str(o.get("img") or "")
             if "," in img:
                 img = img.split(",", 1)[1]
             png = base64.b64decode(img)
+            if len(png) > BSE_MAX["scriptshot_png"]:
+                _bse_violation("scriptshot-size", "png over cap")
+                self._log("err", "BSE: screenshot rejected — image over the size cap")
+                return
+            if not BSE_RATE.allow("scriptshot", *BSE_LIMITS["scriptshot"]):
+                _bse_violation("scriptshot-rate", "screenshot limit exceeded")
+                self._log("err", "BSE: screenshot limit exceeded — too many per minute")
+                return
             # Bot stopped (user request): script screenshots hold like every other send
             if not self._bot_on():
                 self._log("info", "Bot stopped — screenshot not sent (press Start on the Telegram page)")
@@ -6630,8 +7078,19 @@ class Backend(QObject):
         The chart library is never involved: _compose_png renders the closed, safe command set
         with Qt/QPainter (no files, no network, no screen access — the pixels are exactly what
         the commands draw) and the picture goes ONLY to the script chats (fallback: the bot
-        settings chat). Nothing is written to disk."""
+        settings chat). Nothing is written to disk.
+        BSE Layer 2: spec size cap + rate limit + security hold are checked before anything
+        renders or leaves the machine."""
         try:
+            if BSE_STATE["hold"]:
+                self._log("err", "BSE: security hold — script sends are stopped (restart the app)")
+                return json.dumps({"ok": False, "error": "BSE security hold"})
+            if len(str(arg)) > BSE_MAX["composepy"]:
+                _bse_violation("composepy-size", "spec too large")
+                return json.dumps({"ok": False, "error": "spec over the size cap"})
+            if not BSE_RATE.allow("composepy", *BSE_LIMITS["composepy"]):
+                _bse_violation("composepy-rate", "compose limit exceeded")
+                return json.dumps({"ok": False, "error": "compose limit exceeded"})
             spec = json.loads(arg)
             if not isinstance(spec, dict):
                 return json.dumps({"ok": False, "error": "bad spec"})
@@ -6769,68 +7228,12 @@ class Backend(QObject):
 
     badiFp = Property(str, _get_badi_fp, notify=badiFpChanged)
 
-    # ---------- Chart appearance: background/candle colors freely from the settings button ----------
-    chartThemeChanged = Signal()
-
-    def _get_chart_theme_json(self):
-        """Only the customizations (keys the user changed from the default) — pushed to the web as overrides."""
-        ov = {k: v for k, v in self._chart_theme.items() if CHART_THEME_DEFAULTS.get(k) != v}
-        return json.dumps(ov, ensure_ascii=False)
-
-    chartThemeJson = Property(str, _get_chart_theme_json, notify=chartThemeChanged)
-
-    def _get_chart_theme_full_json(self):
-        """All chart appearance values (defaults + customization) — for the Settings fields."""
-        return json.dumps(self._chart_theme, ensure_ascii=False)
-
-    chartThemeFullJson = Property(str, _get_chart_theme_full_json, notify=chartThemeChanged)
-
-    _COLOR_RE = re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
-                           r"|^rgba?\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+\s*(?:,\s*[\d.]+\s*)?\)$")
-
-    @staticmethod
-    def _hex_to_rgba(hex_color, alpha=0.5):
-        """Convert #RRGGBB to rgba(...) — to derive the volume color from the candle color automatically."""
-        h = hex_color.strip().lstrip("#")
-        if len(h) == 3:
-            h = "".join(c * 2 for c in h)
-        if len(h) < 6:
-            return None
-        try:
-            r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
-            return f"rgba({r},{g},{b},{alpha})"
-        except ValueError:
-            return None
-
-    @Slot(str)
-    def setChartTheme(self, js):
-        """Apply custom chart colors (any hex/rgba color freely — no fixed lists)."""
-        try:
-            d = json.loads(js)
-        except Exception:
-            return
-        if not isinstance(d, dict):
-            return
-        applied = set()
-        for k, v in d.items():
-            if k in CHART_THEME_DEFAULTS and isinstance(v, str) and self._COLOR_RE.match(v.strip()):
-                self._chart_theme[k] = v.strip()
-                applied.add(k)
-        # Volume color follows the candle color automatically (unless explicitly set and the candle color was accepted)
-        for base, vol in (("bull", "bullVol"), ("bear", "bearVol")):
-            if base in applied and vol not in d:
-                derived = self._hex_to_rgba(self._chart_theme[base], 0.5)
-                if derived:
-                    self._chart_theme[vol] = derived
-        self._save_cfg()
-        self.chartThemeChanged.emit()
-
-    @Slot()
-    def resetChartTheme(self):
-        """Reset chart colors to the defaults."""
-        self._chart_theme = dict(CHART_THEME_DEFAULTS)
-        self._save_cfg()
-        self.chartThemeChanged.emit()
+    # ---------- Chart appearance ----------
+    # Removed (user request): the chart always wears the app theme colors now — background, grid,
+    # candles, axes, crosshair and drawings are derived from the app theme in the page
+    # (__badiThemeKit.chartTheme) and re-applied live on every dark/light switch. Nothing
+    # chart-color related is stored in config.json anymore (an old "chart_theme" key is ignored
+    # and dropped on the next save), and there is no separate chart palette to diverge.
 
     def _badi_sandbox_check(self, code):
         """Check encrypted indicator code before loading — a static scan for forbidden patterns (files/
@@ -7125,7 +7528,12 @@ class Backend(QObject):
                 if not srv or now < self._paid_block.get(rid, 0):
                     continue
                 u = urllib.parse.urlparse(srv)
-                if u.scheme not in ("https", "http") or not u.netloc:
+                # BSE Network Broker: HTTPS only (owner policy — "HTTPS for approved services"),
+                # the declared host is the ONLY allowed host for this record, no redirects,
+                # public-IP validation after DNS inside bse_open
+                if u.scheme != "https" or not u.netloc:
+                    if u.scheme or u.netloc:
+                        _bse_audit("paid-skip", "non-https developer server — record skipped")
                     continue
                 try:
                     left = paid_days_left(rec, today)
@@ -7133,10 +7541,11 @@ class Backend(QObject):
                         "ind": rid, "dev": _get_user_id(),
                         "left": "" if left is None else max(0, int(left)),
                         "st": str(rec.get("status") or ""), "v": "1"})
-                    req = urllib.request.Request(
-                        srv + ("&" if "?" in srv else "?") + q,
-                        headers={"User-Agent": "BadiCharts-Paid/1"})
-                    with urllib.request.urlopen(req, timeout=8) as resp:
+                    if not BSE_RATE.allow("paid:" + rid[:32], *BSE_LIMITS["paid_poll"]):
+                        continue
+                    with bse_open(srv + ("&" if "?" in srv else "?") + q,
+                                  hosts=((u.hostname or "").lower(),),
+                                  headers={"User-Agent": "BadiCharts-Paid/1"}, timeout=8) as resp:
                         raw = resp.read(16385)
                     if len(raw) > 16384:
                         self._paid_block[rid] = time.time() + 600
@@ -7342,6 +7751,13 @@ window.__badiThemeKit = (function () {
 (function () { try {
   document.documentElement.classList.add("embedded");
   if (window.__badiThemeKit) window.__badiThemeKit.applyVars(window.__BADI_APP_THEME__);
+  /* The chart wears the app colors from the very first frame (user request): the chart theme is
+     derived here from the app theme so every pane is born with it — and it keeps following every
+     dark/light switch live through applyAppTheme. Nothing chart-color related is stored anymore. */
+  if (window.__badiThemeKit) {
+    var _ct0 = window.__badiThemeKit.chartTheme(window.__BADI_APP_THEME__);
+    if (_ct0) window.__BADI_CHART_THEME__ = _ct0;
+  }
 } catch (e) {} })();
 </script>
 <style>#indBtn,#shotBtn{display:none!important}
@@ -7894,10 +8310,12 @@ function augmentIndicators() {
     };
     /* ═══ Candle + chart colors from a script (user request) ═══
        Indicators.colors({ bull:'#22E08A', bear:'#FF4D5E', bg:'#0b0e14', ... }) — the script
-       controls the candle colors and the chart background exactly like the settings button:
-       bull/bear candles, bullVol/bearVol volumes, bg background, grid, axisText, crosshair,
-       drawing — any hex/rgba, applied live on every chart pane. { reset:true } returns to the
-       app theme colors. Colors survive dark/light switches because they sit on top of the theme. */
+       controls the candle colors and the chart background: bull/bear candles, bullVol/bearVol
+       volumes, bg background, grid, axisText, crosshair, drawing — any hex/rgba, applied live
+       on every chart pane on TOP of the app theme colors (the base always stays the app theme —
+       the chart wears the app colors unless a script explicitly recolors it). { reset:true }
+       returns to the pure app theme colors. Script colors survive dark/light switches because
+       they are re-layered over the fresh theme on every switch. */
     window.Indicators.colors = function (ov) {
       try {
         if (!ov || typeof ov !== "object") return false;
@@ -7909,8 +8327,10 @@ function augmentIndicators() {
           user = Object.assign({}, window.__BADI_CHART_USER__ || {}, user);
         }
         window.__BADI_CHART_USER__ = user;
-        var merged = Object.assign({}, window.__BADI_CHART_THEME__ || {}, user);
-        window.__BADI_CHART_THEME__ = merged;
+        /* always rebuilt from the pure app theme — script colors never contaminate the base
+           theme and { reset:true } restores it exactly */
+        var base = (window.__badiThemeKit && window.__badiThemeKit.chartTheme(window.__BADI_APP_THEME__)) || window.__BADI_CHART_THEME__ || {};
+        var merged = Object.assign({}, base, user);
         panes.forEach(function (p) { try { if (p.chart && typeof p.chart.setTheme === "function") p.chart.setTheme(merged); } catch (e) {} });
         try { if (window.__badiRefitIndicatorLabels) window.__badiRefitIndicatorLabels(); } catch (e) {}
         return true;
@@ -8179,7 +8599,7 @@ function applyAppTheme(t) {
   try { if (typeof renderSignals === "function") renderSignals(); } catch (e) {}
   try { window.__badiThemeKit.applyVars(t); } catch (e) {}
   var ct = window.__badiThemeKit.chartTheme(t);
-  if (ct) ct = Object.assign({}, ct, window.__BADI_CHART_USER__ || {});   /* user customization from Settings layered over the app colors */
+  if (ct) ct = Object.assign({}, ct, window.__BADI_CHART_USER__ || {});   /* script colors (Indicators.colors) layered over the app colors */
   if (ct) window.__BADI_CHART_THEME__ = ct;
   /* Chart color = app color: applied immediately to every open panel (and a new panel inherits it when created) */
   try {
@@ -8467,17 +8887,6 @@ function defineBadiApp() {
       } catch (e) { return ""; }
     },
     sigResult: function (r) { try { if (window.__badiSigResult) window.__badiSigResult(r); } catch (e) {} },
-    setChartTheme: function (ov) {
-      /* Custom chart colors from the settings button (any color freely) — a full override list, applied immediately */
-      try {
-        if (!ov || typeof ov !== "object") return;
-        window.__BADI_CHART_USER__ = Object.assign({}, ov);
-        var merged = Object.assign({}, window.__BADI_CHART_THEME__ || {}, window.__BADI_CHART_USER__);
-        window.__BADI_CHART_THEME__ = merged;
-        panes.forEach(function (p) { try { if (p.chart && typeof p.chart.setTheme === "function") p.chart.setTheme(merged); } catch (e) {} });
-        try { if (window.__badiRefitIndicatorLabels) window.__badiRefitIndicatorLabels(); } catch (e) {}
-      } catch (e) {}
-    },
     rescale: function () { rescaleNow(0); },
     /* Fixed user ID BADI-XXXX-XXXX-XXXX — shown in the bottom bar (user request) */
     setUserId: function (id) {
@@ -8947,6 +9356,9 @@ ApplicationWindow {
     property int lastLen: -1
     property var filesAcc: ({})
     property var pendingExport: null      // Pending indicator waiting for the encrypt confirmation
+    // BSE bridge-guard state (sliding 10 s window of the console bridge)
+    property var bridgeT: []
+    property bool bridgeDropped: false
 
     // ───────────── Embedded web page bridge ─────────────
     function webCall(js, cb) {
@@ -8955,13 +9367,6 @@ ApplicationWindow {
     }
     function webLog(kind, text) {
         webCall("__badiApp.log(" + JSON.stringify(kind) + "," + JSON.stringify(text) + ")")
-    }
-    /* Valid color check — any hex or rgba form, no fixed lists (Settings) */
-    function isColor(v) {
-        var s = String(v || "").trim()
-        if (/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(s)) return true
-        if (/^rgba?\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+\s*(?:,\s*[\d.]+\s*)?\)$/.test(s)) return true
-        return false
     }
     function pushTheme() {
         webCall("__badiApp.setTheme(" + JSON.stringify({ dark: backend.dark, c: backend.c, lang: backend.lang }) + ")")
@@ -8973,7 +9378,6 @@ ApplicationWindow {
         win.lastLen = backend.candlesCount
         win.pushTheme()
         webCall("__badiApp.setAssets(" + JSON.stringify(backend.added) + ")")
-        webCall("__badiApp.setChartTheme(" + backend.chartThemeJson + ")")
         /* Fixed user ID — shown in the bottom bar and used for licensing (user request) */
         webCall("__badiApp.setUserId(" + JSON.stringify(backend.userId) + ")")
         webCall("__badiApp.setMarket(" + JSON.stringify({ label: backend.assetLabel, tf: backend.tfLabel,
@@ -9022,7 +9426,20 @@ ApplicationWindow {
         webCall("__badiApp.pyMeta(" + JSON.stringify(f.id) + "," + JSON.stringify(res) + "," + JSON.stringify(f.fileName) + ")")
         backend.refreshPy()
     }
+    /* BSE Layer 2 — bridge guard (in-QML): a script cannot flood the desktop through the
+       console bridge. Sliding 10 s window (240 msgs max) + per-command payload caps; beyond
+       that, messages are silently dropped — the backend stays reachable and untouched. */
     function onWebMessage(cmd, arg) {
+        var nowT = Date.now();
+        var q = win.bridgeT.filter(function (x) { return nowT - x < 10000 })
+        if (q.length >= 240) {
+            if (!win.bridgeDropped) { win.bridgeDropped = true; console.log("PAGEDBG bridge_rate=dropped") }
+            return;
+        }
+        win.bridgeDropped = false;
+        win.bridgeT = q.concat([nowT]);
+        var mx = (cmd === "files") ? 2097152 : 262144;   /* files streams chunked parts */
+        if (typeof arg === "string" && arg.length > mx) { console.log("PAGEDBG bridge_size=dropped"); return }
         if (cmd === "ready") { win.webReady = true; win.syncFull(); return }
         if (cmd === "editor") { win.edOpen = (arg === "1"); return }
         if (cmd === "page") {
@@ -9171,15 +9588,15 @@ ApplicationWindow {
         function onPyValues(id, seriesJson, rangeJson) {
             webCall("__badiApp.setPy(" + JSON.stringify(id) + "," + seriesJson + "," + rangeJson + ")")
         }
+        function onPyStopped(id) {
+            /* BSE: a violating Python indicator was disabled — drop its stale series from the chart */
+            webCall("__badiApp.pyRemove(" + JSON.stringify(id) + ")")
+        }
         function onTestResult(ok, info) { win.webLog(ok ? "ok" : "err", "Telegram: " + info) }
         function onShotSaved(ok, path) { if (ok) win.webLog("ok", backend.s.shotdone + " → " + path) }
         function onNeedShot() { win.webCall("__badiApp.shot()", function (res) { backend.chartShot(res || "") }) }
         function onLiveChanged() { win.webCall("__badiApp.setLive(" + (backend.live ? "true" : "false") + ")") }
         function onDarkChanged() { win.pushTheme() }
-        function onChartThemeChanged() {
-            /* Chart colors changed from Settings — apply them to the chart immediately */
-            win.webCall("__badiApp.setChartTheme(" + backend.chartThemeJson + ")")
-        }
         function onAddedChanged() {
             win.webCall("__badiApp.setAssets(" + JSON.stringify(backend.added) + ")")
         }
@@ -9446,67 +9863,9 @@ ApplicationWindow {
                     }
                 }
             }
-            /* ───── Chart appearance: change the background and candle colors freely (user request) ───── */
-            Rectangle { Layout.fillWidth: true; height: 1; color: backend.c.border }
-            RowLayout {
-                spacing: 8
-                Icon { name: "candle"; sz: 14; tint: backend.c.accent }
-                Label { text: backend.s.chartLook; font.pixelSize: 13; font.bold: true; color: backend.c.fg }
-                Item { Layout.fillWidth: true }
-                Btn { text: backend.s.resetLook; iconName: "rotate"; outline: true
-                      implicitHeight: 30; font.pixelSize: 10
-                      onClicked: backend.resetChartTheme() }
-            }
-            Label {
-                text: backend.s.lookHint; font.pixelSize: 10; color: backend.c.sub
-                wrapMode: Text.WordWrap; Layout.fillWidth: true
-            }
-            Repeater {
-                model: [ { k: "bg", s: "cBg" }, { k: "bull", s: "cBull" }, { k: "bear", s: "cBear" },
-                         { k: "grid", s: "cGrid" }, { k: "axisText", s: "cAxis" },
-                         { k: "crosshair", s: "cCross" }, { k: "drawing", s: "cDraw" } ]
-                delegate: RowLayout {
-                    spacing: 8
-                    property string curVal: {
-                        try { return (JSON.parse(backend.chartThemeFullJson)[modelData.k] || "") } catch (e) { return "" }
-                    }
-                    property bool okCol: win.isColor(curVal) || win.isColor(colorField.text.trim())
-                    Layout.fillWidth: true
-                    Label { text: backend.s[modelData.s]; font.pixelSize: 11; color: backend.c.fg; Layout.preferredWidth: 128 }
-                    Rectangle {
-                        width: 24; height: 24; radius: 8
-                        color: win.isColor(colorField.text.trim()) ? colorField.text.trim()
-                             : (win.isColor(curVal) ? curVal : "transparent")
-                        border.width: 1; border.color: backend.c.border
-                        /* Clicking a swatch opens a free color picker dialog — no fixed lists (user request) */
-                        MouseArea {
-                            anchors.fill: parent; hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                chartColorPicker.targetKey = modelData.k
-                                chartColorPicker.selectedColor = win.isColor(curVal) ? curVal : "#22c55e"
-                                chartColorPicker.open()
-                            }
-                        }
-                    }
-                    Field {
-                        id: colorField
-                        Layout.fillWidth: true; Layout.preferredHeight: 34
-                        font.pixelSize: 11; font.family: "monospace"
-                        color: win.isColor(text.trim()) ? backend.c.fg : backend.c.bad
-                        text: curVal
-                        placeholderText: "#RRGGBB"
-                        selectByMouse: true
-                        onEditingFinished: {
-                            var v = text.trim()
-                            if (!win.isColor(v)) return
-                            if (v === curVal) return
-                            var o = {}; o[modelData.k] = v
-                            backend.setChartTheme(JSON.stringify(o))
-                        }
-                    }
-                }
-            }
+            /* ───── Chart appearance section removed (user request): the chart always wears the app
+               theme colors — background, grid, candles and axes all derive from the app theme and
+               follow every dark/light switch live. Nothing chart-color related is configurable. ───── */
             /* ───── BADI: the encryption key stays inside the app — only its fingerprint is shown here ───── */
             Rectangle { Layout.fillWidth: true; height: 1; color: backend.c.border }
             Label { text: backend.s.badiSect; font.pixelSize: 13; font.bold: true; color: backend.c.fg }
@@ -9684,20 +10043,6 @@ ApplicationWindow {
                     onClicked: backend.notifsClear()
                 }
             }
-        }
-    }
-
-    /* Free color picker window for chart colors — any color, not fixed lists (user request) */
-    ColorDialog {
-        id: chartColorPicker
-        title: backend.s.pickColor
-        options: ColorDialog.ShowAlphaControls
-        property string targetKey: ""
-        onAccepted: {
-            var c = String(selectedColor)
-            if (!win.isColor(c) || !targetKey) return
-            var o = {}; o[targetKey] = c
-            backend.setChartTheme(JSON.stringify(o))
         }
     }
 
