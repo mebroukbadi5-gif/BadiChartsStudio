@@ -46,7 +46,7 @@ except ImportError:
 
 # ==============================================================================
 # NOTE: Flask web dashboard REMOVED (v10.0) — replaced by console output +
-# MT4 .hst files + qx_assets_payouts.json. No web server in this build.
+# MT4 .hst files only (v22: no snapshot json). No web server in this build.
 # ==============================================================================
 
 # ==============================================================================
@@ -70,6 +70,21 @@ cacert = os.environ.get('WEBSOCKET_CLIENT_CA_BUNDLE')
 ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 ssl_context.minimum_version = ssl.TLSVersion.TLSv1_2
 ssl_context.load_verify_locations(cert_path)
+
+
+# ==============================================================================
+# SECTION 1.6: STARTUP WELCOME (بدون ترخيص — نظام الترخيص أُزيل بالكامل)
+# v18: استُرجعت كما كانت في v16 — v17 حذفها واستبدل مرحلة الترحيب بقائمة
+#      أزواج ثابتة قبل الدخول، وأُزيلت بناءً على طلب المستخدم.
+#      قائمة العملات تُجلب من المنصة بعد الدخول وليس من قائمة مدسّسة.
+def qx_print_welcome():
+    """شعار ترحيبي بسيط — لا تحقق ترخيص ولا اتصال خارجي."""
+    print()
+    print(f"\033[96m{'═' * 62}\033[0m")
+    print(f"\033[97m\033[1m  QX Console — Quotex Candles & Assets\033[0m\033[0m")
+    print(f"\033[2m  v24 · typed asset entry + days-of-history prompt · loud fetch log · browser history · every-tick\033[0m")
+    print(f"\033[96m{'═' * 62}\033[0m")
+    print()
 
 
 # ==============================================================================
@@ -511,6 +526,48 @@ class WebsocketClient:
                 self.state.ssl_Mutual_exclusion = False
                 return
 
+            # ===== v20: مُجمّع الردود المجزأة (إصلاح جذر لقائمة العملات) =====
+            # الردود المسبوقة بصيغة socket.io (451-["instruments/list",[...]] وغيرها)
+            # ضخمة وقد يقسمها الخادم على عدة إطارات websocket. بدون تجميع يفشل
+            # json.loads على كل جزء بصمت وتضيع القائمة في كل المحاولات (أُثبت بمحاكاة).
+            # نجمع الأجزاء حتى يكتمل JSON ثم نسلّم النص الكامل لبقية المعالجة كما هي.
+            _acc = getattr(self, "_frag_buffer", "") or ""
+            _candidate = (_acc + msg_str) if _acc else msg_str
+            if _acc:
+                self._frag_buffer = ""      # سنعيد التخزين إن لم يكتمل بعد
+            if (re.match(r"^(\d{1,4})(-?)\[", _candidate)
+                    or (_candidate not in ("0", "40", "41") and re.match(r"^\d{1,4}-?$", _candidate))):
+                # يبدو بداية/استكمال رد مسبوق — هل اكتمل JSON؟
+                _complete = False
+                _ai = _candidate.find("[")
+                if _ai != -1:
+                    try:
+                        json.loads(_candidate[_ai:])
+                        _complete = True
+                    except Exception:
+                        _complete = False
+                if not _complete:
+                    # لم يكتمل — خزّن حتى تصل بقية الإطارات (سقف 32MB + مهلة 60s)
+                    if not _acc:
+                        self._frag_started_at = time.time()   # بداية تجميع جديدة
+                    if (len(_candidate) <= 32 * 1024 * 1024
+                            and time.time() - getattr(self, "_frag_started_at", time.time()) < 60.0):
+                        self._frag_buffer = _candidate
+                        self.state.ssl_Mutual_exclusion = False
+                        return
+                    self._frag_buffer = ""   # تجاوز الحدود — نبدأ من جديد
+            msg_str = _candidate
+
+            # ===== v21: التقاط placeholder الردود الضخمة (طريقة pyquotex الرسمية) =====
+            # الخادم يعلن أولاً: 51-["instruments/list",{"_placeholder":true,"num":0}]
+            # ثم يرسل الحمولة الفعلية في إطار منفصل بلا تسمية. نحفظ الإعلان في
+            # _temp_status وننتظر الحمولة في فرع الاستقبال أدناه (api.py في pyquotex).
+            if (msg_str and msg_str[0].isdigit() and "51-" in msg_str
+                    and "_placeholder" in msg_str):
+                self.api._temp_status = msg_str
+                self.state.ssl_Mutual_exclusion = False
+                return
+
             if "authorization/reject" in msg_str:
                 logger.warning("Token rejected.")
                 self.state.check_rejected_connection = True
@@ -550,6 +607,44 @@ class WebsocketClient:
                             logger.info(f"Instruments list received: {len(_data)} assets")
                 except Exception as _e:
                     logger.debug(f"instruments/list parse error: {_e}")
+
+            # ===== v21: استقبال الحمولة الحقيقية بعد 51-placeholder (pyquotex الرسمية) =====
+            # الإطار التالي غير المسبوق (يبدأ بـ [ أو {) هو حمولة الأصول الفعلية:
+            # إما قائمة صفوف خام [[...],[...]] أو {"list":[...]}. نحللها من أول
+            # قوس، نخزنها في api.instruments، نوقظ instruments_ready، ونمسح الإعلان.
+            if (getattr(self.api, "_temp_status", "") and "instruments/list" in self.api._temp_status
+                    and msg_str and not msg_str[0].isdigit()):
+                try:
+                    _si = -1
+                    for _ci, _ch in enumerate(msg_str):
+                        if _ch in ("[", "{"):
+                            _si = _ci
+                            break
+                    if _si != -1:
+                        _pdata = json.loads(msg_str[_si:])
+                        if isinstance(_pdata, list) and len(_pdata) == 1:
+                            _pdata = _pdata[0]
+                        _idata = _pdata
+                        if isinstance(_idata, dict) and "list" in _idata:
+                            _idata = _idata["list"]
+                        # فحص الشكل: صفوف أصول = قوائم ≥6 حقول — حماية من الاستهلاك الخاطئ
+                        _rows_ok = (
+                            isinstance(_idata, list) and _idata
+                            and isinstance(_idata[0], (list, tuple))
+                            and len(_idata[0]) >= 6
+                        )
+                        if _rows_ok:
+                            self.api.instruments = _idata
+                            _loop = getattr(self.api, "_async_loop", None)
+                            if _loop is not None and _loop.is_running():
+                                asyncio.run_coroutine_threadsafe(
+                                    self.api.event_registry.set_event("instruments_ready", _idata),
+                                    _loop,
+                                )
+                            self.api._temp_status = ""   # استُهلك الإعلان
+                            logger.info(f"Instruments list received from placeholder payload: {len(_idata)} assets")
+                except Exception as _e:
+                    logger.debug(f"instruments payload parse error: {_e}")
 
             message = None
             if len(msg_str) > 1 and msg_str[1] in ('[', '{'):
@@ -1344,7 +1439,9 @@ def logmsg(msg: str):
     _log_to_file(line)
     # If live table is active, queue the message instead of printing directly
     # to avoid corrupting the redrawn table
-    if '_STATUS_MESSAGES_QUEUE' in globals() and globals()['_STATUS_MESSAGES_QUEUE'] is not None:
+    # v24: كان الشرط is not None صحيحاً دائماً (القائمة تُعرَّف []) فتُحبس كل الرسائل
+    # في الطابور ولا تُطبع أثناء التحميل — الآن: طابور فقط أثناء عرض الجدول الحي
+    if globals().get('LIVE_TABLE_ACTIVE') and '_STATUS_MESSAGES_QUEUE' in globals() and globals()['_STATUS_MESSAGES_QUEUE'] is not None:
         try:
             globals()['_STATUS_MESSAGES_QUEUE'].append(line)
             # keep last 5 messages
@@ -1747,7 +1844,7 @@ PERIOD_SECONDS = 60
 IS_SUBSECOND = False
 SUBSECOND_SECONDS = 0   # 5, 10, 15, or 30
 SUBSECOND_LABEL = ""    # "5S", "10S", "15S", "30S"
-SUBSECOND_MAX_CANDLES = 500  # v8.1: raised from 200 -> 500 to match SUBSECOND_HISTORY_CANDLES (user asked: keep >=500 5s candles in memory)
+SUBSECOND_MAX_CANDLES = 4000  # v23: browser mode needs room for a full hour of subsecond candles
 SUBSECOND_HISTORY_CANDLES = 500  # fetch up to 500 historical subsecond candles at startup (was 1000, reduced for speed)
 # Semaphore to limit concurrent subsecond history fetches (3 at a time, not 41)
 # Created lazily on first use to avoid event loop binding issues at import time
@@ -1764,6 +1861,10 @@ SUBSECOND_EARLY_EXIT_CANDLES = 85  # stop fetching more chunks once we have >=85
 # v8.3: graceful stop -- after this many consecutive zero-candle assets, the WebSocket is dead.
 # Break the startup loop cleanly instead of burning 8 * 30s = 240s in reconnect attempts.
 SUBSECOND_MAX_ZERO_STREAK = 3  # was effectively infinite (relied on MAX_RECONNECTS_DURING_FETCH=8)
+# ===== v17: محرك الجلب المتوازي لفريمات الثواني (تسريع ~28.5s -> ~4s) =====
+SUBSECOND_PARALLEL_WORKERS = 4   # عدد الكتل المتوازية لكل عملة (طلبات history/load)
+SUBSECOND_CHUNK_SECONDS = 500    # نافذة كل طلب بالثواني (~500 شمعة 1s — الحد الآمن للخادم)
+SUBSECOND_PARALLEL_TIMEOUT = 15  # مهلة كل طلب بالثواني
 # v8.4/v8.6: NEW feature for M1 timeframe -- fetch 1s candles first, aggregate
 # to 1m, use them as the most granular bridge between the historical 1m fetch
 # and the live stream. Disables the old _bridge_fetch_recent_candles for M1.
@@ -2080,6 +2181,7 @@ try:
     ASSETS_PAYOUT_FILE = Path(__file__).resolve().parent / "qx_assets_payouts.json"
 except Exception:
     ASSETS_PAYOUT_FILE = Path("qx_assets_payouts.json")
+_ASSET_LIST_PRINTED = False  # v17: True بعد طباعة القائمة الكاملة بعد الاتصال
 
 def _instruments_snapshot():
     """يبني قائمة الأصول الكاملة (الاسم + نسبة الدفع + الحالة) من instruments."""
@@ -2194,12 +2296,87 @@ def _print_payout_table(entries):
             status = f"{Colors.RED}CLOSED{Colors.RESET}"
         print(f"  {name:<16}{payout_str:>7}  {turbo_str:>6}  {p1_str:>5}  {p5_str:>5}  {status}")
     print(f"{Colors.CYAN}{'═' * 72}{Colors.RESET}")
-    print(f"{Colors.DIM}  Full snapshot saved to: {ASSETS_PAYOUT_FILE}{Colors.RESET}\n")
+    print()
+
+# ===== v17: حفظ شموع كل عملة في ملف JSON بجانب السكربت فور اكتمال جلبها =====
+def _save_candles_json(asset, source_label="fetch"):
+    """يحفظ شموع العملة في JSON باسم: <العملة>_<الفريم>_<عدد الشموع>.json
+    مثال: BRLUSD_otc_5S_720.json — ويُطبع مسار الملف بعد الحفظ."""
+    try:
+        candles = sorted(list(asset.candles), key=lambda c: c.get('time', 0))
+        if not candles:
+            return None
+        count = len(candles)
+        out_dir = Path(__file__).resolve().parent
+        tf_label = _current_period_label()
+        safe_symbol = str(asset.api_symbol).strip().replace(" ", "_")
+        path = out_dir / f"{safe_symbol}_{tf_label}_{count}.json"
+        payload = {
+            "asset": asset.api_symbol,
+            "display": pretty_asset_name(asset.api_symbol),
+            "timeframe": tf_label,
+            "period_seconds": PERIOD_SECONDS,
+            "is_subsecond": bool(IS_SUBSECOND),
+            "count": count,
+            "history_method": "v17-parallel-1s" if PERIOD_SECONDS < 60 else "parallel-history-load",
+            "source": source_label,
+            "host": QX_HOST,
+            "fetched_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "fetched_at_unix": int(time.time()),
+            "candles": candles,
+        }
+        with open(path, "w", encoding="utf-8") as _f:
+            json.dump(payload, _f, ensure_ascii=False, indent=2)
+        logmsg(f"[json] saved {path.name} ({count} candles)")
+        return path
+    except Exception as e:
+        logmsg(f"[json] save failed for {getattr(asset, 'symbol', '?')}: {e}")
+        return None
+
+async def print_full_asset_list_once(timeout: float = 15.0):
+    """v19: يجلب قائمة العملات من الخادم فور نجاح الدخول وقبل جلب الشموع
+    بنفس طريقة pyquotex الرسمية المستخدمة في السكربت المرجعي:
+      1) إن وصلت instruments مسبقاً مع الاتصال (get_all_assets داخل connect)
+         → استخدامها مباشرة بدون أي طلب إضافي (الأسرع).
+      2) وإلا: await CLIENT.get_all_assets() ثم إعادتا محاولة
+         42["instruments/get"] → 451-["instruments/list"].
+    يطبع الجدول الكامل (v22: بلا حفظ ملف)، وعند الفشل يُطبع
+    تحذير ظاهر (لا صامت) وستعيد مراقبة الدفع المحاولة تلقائياً."""
+    global _ASSET_LIST_PRINTED
+    try:
+        if CLIENT is None or CLIENT.api is None:
+            print(f"{Colors.RED}  [asset_list] client not ready — table skipped{Colors.RESET}")
+            return
+        # (1) القائمة وصلت مع الاتصال؟ استخدمها مباشرة (نفس نتيجة get_all_assets)
+        if not (CLIENT.api.instruments and len(CLIENT.api.instruments) > 0):
+            # (2) نفس طريقة السكربت المرجعي: get_all_assets (pyquotex الرسمية)
+            try:
+                await CLIENT.get_all_assets()
+            except Exception as e:
+                logmsg(f"[asset_list] get_all_assets failed: {e}")
+        # (3) إعادتا محاولة للطلب المباشر إن كانت القائمة لا تزال فارغة
+        for _attempt in (1, 2):
+            if CLIENT.api.instruments and len(CLIENT.api.instruments) > 0:
+                break
+            try:
+                await fetch_instruments_now(timeout=timeout)
+            except Exception as e:
+                logmsg(f"[asset_list] instruments fetch attempt {_attempt} failed: {e}")
+        entries = _instruments_snapshot()
+        if entries:
+            # v22: طباعة الجدول فقط — بلا حفظ ملف (طلب المستخدم)
+            _print_payout_table(entries)
+            _ASSET_LIST_PRINTED = True
+        else:
+            print(f"{Colors.RED}  [asset_list] تعذر جلب قائمة العملات من الخادم الآن — ستعيد مراقبة الدفع المحاولة تلقائياً{Colors.RESET}")
+    except Exception as e:
+        log_exception("print_full_asset_list_once", e)
 
 async def asset_payout_monitor():
     """يجلب قائمة العملات الكاملة + نسبة الدفع + حالة الزوج (مفتوح/مغلق) مباشرة
-    بعد تسجيل الدخول، يطبع الجدول مرة واحدة، يحفظ لقطة JSON، ثم يحدّث بهدوء
+    بعد تسجيل الدخول، يطبع الجدول مرة واحدة ثم يحدّث بهدوء (v22: بلا حفظ ملف)
     كل PAYOUT_REFRESH_INTERVAL ثانية."""
+    global _ASSET_LIST_PRINTED   # v22: fix UnboundLocalError — كانت تُقرأ وتُعيَّن دون إعلان global
     await asyncio.sleep(2.0)  # مهلة قصيرة حتى يستقر WebSocket بعد الدخول
     first = True
     last_signature = None
@@ -2215,18 +2392,20 @@ async def asset_payout_monitor():
             except Exception as e:
                 logmsg(f"[payout] refresh failed: {e}")
             if entries:
-                _save_assets_payout_file(entries)
                 signature = tuple(sorted(
                     (e.get("asset"), str(e.get("payout")), str(e.get("open")))
                     for e in entries))
                 if first:
-                    _print_payout_table(entries)
                     first = False
+                    # v17: لا نعيد طباعة الجدول الضخم إذا طُبع بالفعل بعد الاتصال
+                    if not _ASSET_LIST_PRINTED:
+                        _print_payout_table(entries)
+                        _ASSET_LIST_PRINTED = True
                 elif signature != last_signature:
                     open_n = sum(1 for e in entries if e.get("open"))
                     closed_n = sum(1 for e in entries if e.get("open") is False)
                     logmsg(f"[payout] updated: {len(entries)} assets "
-                           f"({open_n} open / {closed_n} closed) — snapshot saved")
+                           f"({open_n} open / {closed_n} closed)")
                 last_signature = signature
         except Exception as e:
             log_exception("asset_payout_monitor", e)
@@ -2255,6 +2434,7 @@ LONG_DISCONNECT_THRESHOLD = 3600        # 3600s = 1
 # . : .
 GAP_FILL_SUMMARY = ""  # ( mt4_gap_filler)
 _STATUS_MESSAGES_QUEUE = []  # queue for log messages during live table (avoid corrupting redraw)
+LIVE_TABLE_ACTIVE = False  # v24: True فقط أثناء عرض الجدول الحي — logmsg يطبع مباشرة خارج الجدول
 GAP_FILL_ACTIVE = False  # True
 
 def _asyncio_loop_exception_handler(loop, context):
@@ -2719,6 +2899,268 @@ def _make_progress_printer(symbol: str, start_ts: float, idx: int, total: int):
         print(f"\r  {display:<25} [{bar}] {pct*100:4.1f}% {elapsed:>2.0f}s", end="", flush=True)
     return on_progress
 
+# ==============================================================================
+# ===== v17: PARALLEL 1s HISTORY ENGINE (تسريع جلب فريمات الثواني) ==============
+# ==============================================================================
+# المشكلة: الجلب القديم كان تسلسلياً — 10-11 طلب get_candles واحداً تلو الآخر،
+#   كل طلب ~2.5s (يشمل 3 رسائل اشتراك + انتظار الرد) => 720 شمعة 5S ≈ 28.5s.
+# الحل: نفس آلية get_historical_candles المجرّبة (فريمات 60s+ تجلب 1440 شمعة في
+#   ~4 ثواني): تقسيم النافذة الزمنية إلى كتل، كل worker يجلب كتلته للخلف بالتوازي
+#   عبر _fetch_historical_batch (نفس رسالة 42["history/load"] التي يرسلها
+#   get_candles لكن بدون رسائل الاشتراك الثلاثة)، والنتائج تُدمج في dict واحد
+#   مفتاحه الزمن (إزالة تكرار تلقائية).
+async def _fetch_1s_history_parallel(api_symbol, needed_seconds, max_workers=4, chunk_seconds=500, timeout=15):
+    """v17: جلب شموع 1s بنوافذ متوازية (workers × chunk_seconds) للخلف حتى
+    needed_seconds. يعيد قائمة dicts مرتبة زمنياً."""
+    if CLIENT is None or CLIENT.api is None:
+        return []
+    max_workers = max(1, int(max_workers))
+    chunk_seconds = max(1, int(chunk_seconds))
+    needed_seconds = max(chunk_seconds, int(needed_seconds))
+    now_t = int(time.time())
+    end_t = now_t - needed_seconds          # أقدم وقت مطلوب
+    block_size = max(chunk_seconds, math.ceil(needed_seconds / max_workers))
+    semaphore = asyncio.Semaphore(max_workers)
+    merged = {}
+
+    async def _worker(start_t, stop_t, wid):
+        worker_candles = {}
+        async with semaphore:
+            oldest_t = start_t
+            misses = 0
+            while oldest_t > stop_t:
+                if CLIENT is None or CLIENT.api is None or not CONNECTION_ALIVE:
+                    break
+                index = next(_request_counter)
+                batch_raw = None
+                try:
+                    batch_raw = await CLIENT._fetch_historical_batch(
+                        api_symbol, oldest_t, chunk_seconds, 1, index, timeout)
+                except Exception:
+                    batch_raw = None
+                if not batch_raw:
+                    misses += 1
+                    if misses >= 3:
+                        break
+                    oldest_t -= chunk_seconds
+                    await asyncio.sleep(0.2)
+                    continue
+                batch = CLIENT._parse_historical_candles(batch_raw)
+                if not batch:
+                    oldest_t -= chunk_seconds
+                    continue
+                misses = 0
+                batch_times = []
+                for c in batch:
+                    try:
+                        ts = int(float(c.get('time', 0)))
+                    except Exception:
+                        continue
+                    if stop_t < ts <= start_t and ts not in worker_candles:
+                        worker_candles[ts] = c
+                        batch_times.append(ts)
+                if not batch_times:
+                    oldest_t -= chunk_seconds
+                    continue
+                batch_times.sort()
+                new_oldest = batch_times[0]
+                oldest_t = new_oldest if new_oldest < oldest_t else oldest_t - chunk_seconds
+                await asyncio.sleep(FETCH_BATCH_DELAY)
+        return list(worker_candles.values())
+
+    tasks = []
+    for i in range(max_workers):
+        s = now_t - i * block_size
+        e = max(end_t, s - block_size)
+        tasks.append(_worker(s, e, i))
+    results = await asyncio.gather(*tasks)
+    for batch in results:
+        for c in batch:
+            try:
+                merged[int(c['time'])] = c
+            except Exception:
+                continue
+    out = sorted(merged.values(), key=lambda x: x['time'])
+    try:
+        span = (out[-1]['time'] - out[0]['time']) if out else 0
+        logmsg(f"[1s-parallel:{api_symbol}] {len(out)} 1s candles via {max_workers} workers (span {span}s)")
+    except Exception:
+        pass
+    return out
+
+
+async def _fetch_1s_sequential_fallback(api_symbol, display_name, target_1s_count, chunk_seconds=500):
+    """v17: الطريقة التسلسلية القديمة (get_candles) — تُستخدم فقط إذا أعاد
+    المحرك المتوازي نتائج أقل من المتوقع (حالات الخادم الطارئة)."""
+    all_candles_1s = []
+    current_end = time.time()
+    chunks_done = 0
+    empty_chunks_in_a_row = 0
+    max_chunks = 40
+    while len(all_candles_1s) < target_1s_count and chunks_done < max_chunks:
+        chunk_end = current_end - (chunks_done * chunk_seconds)
+        try:
+            res_chunk = await asyncio.wait_for(
+                CLIENT.get_candles(api_symbol, chunk_end, chunk_seconds, 1),
+                timeout=20,
+            )
+        except Exception as e:
+            if chunks_done == 0:
+                logmsg(f"[fetch:{display_name}] get_candles(period=1) chunk {chunks_done+1} failed: {e}")
+            if empty_chunks_in_a_row < 2:
+                empty_chunks_in_a_row += 1
+                await asyncio.sleep(0.2)
+                continue
+            break
+        if not res_chunk or len(res_chunk) == 0:
+            empty_chunks_in_a_row += 1
+            if empty_chunks_in_a_row >= 3:
+                break
+            chunks_done += 1
+            continue
+        if len(res_chunk) < 10 and chunks_done > 0:
+            all_candles_1s.extend(res_chunk)
+            break
+        empty_chunks_in_a_row = 0
+        all_candles_1s.extend(res_chunk)
+        chunks_done += 1
+        await asyncio.sleep(0.03)
+    return all_candles_1s
+
+
+# ===== BROWSER-STYLE HISTORY (v15) =====
+HISTORY_METHOD = "browser"           # "browser" = الجديدة ، "legacy" = الأصلية
+HIST_DEBUG = False                   # True = يطبع مفاتيح كل رد (للتشخيص فقط)
+SUBSECOND_HISTORY_SECONDS = 3600     # ساعة كاملة للفريمات الفرعية
+BROWSER_CHUNK_1S = 3000              # offset المتصفح عند period=1
+BROWSER_CHUNK_MIN_CANDLES = 60       # M1 => 60*60 = 3600 مثل المتصفح
+
+def _use_browser_history() -> bool:
+    return str(HISTORY_METHOD).lower() == "browser"
+
+def _hist_rows(raw, period):
+    keys = ("history", "candles", "data") if period == 1 else ("candles", "data", "history")
+    for k in keys:
+        v = raw.get(k)
+        if isinstance(v, list) and v:
+            return v
+    return []
+
+def _rows_to_points(rows):
+    pts = []
+    for c in rows:
+        try:
+            if isinstance(c, dict):
+                t = float(c.get('time', c.get('timestamp', 0)))
+                if c.get('price') is not None:
+                    o = h = l = cl = float(c['price'])
+                else:
+                    o = float(c.get('open', 0) or 0)
+                    h = float(c.get('high', c.get('max', 0)) or 0)
+                    l = float(c.get('low', c.get('min', 0)) or 0)
+                    cl = float(c.get('close', 0) or 0)
+            elif isinstance(c, (list, tuple)) and len(c) >= 5:
+                t, o, cl, h, l = float(c[0]), float(c[1]), float(c[2]), float(c[3]), float(c[4])
+            elif isinstance(c, (list, tuple)) and len(c) >= 2:
+                t = float(c[0])
+                o = h = l = cl = float(c[1])
+            else:
+                continue
+            if t > 0 and o > 0 and h > 0 and l > 0 and cl > 0:
+                pts.append((t, o, h, l, cl))
+        except (TypeError, ValueError):
+            continue
+    return pts
+
+def _bucketize(points, bucket):
+    out = OrderedDict()
+    for t, o, h, l, c in sorted(points, key=lambda x: x[0]):
+        b = int(t) // bucket * bucket
+        e = out.get(b)
+        if e is None:
+            out[b] = {'time': b, 'open': o, 'high': h, 'low': l, 'close': c, 'volume': 1}
+        else:
+            e['high'] = max(e['high'], h)
+            e['low'] = min(e['low'], l)
+            e['close'] = c
+            e['volume'] += 1
+    return list(out.values())
+
+async def browser_style_history(api_symbol, period, seconds_back, chunk=None, timeout=15, progress=None):
+    if CLIENT is None or CLIENT.api is None:
+        return []
+    api = CLIENT.api
+    if chunk is None:
+        chunk = BROWSER_CHUNK_1S if period == 1 else period * BROWSER_CHUNK_MIN_CANDLES
+    if api.current_asset != api_symbol:
+        await CLIENT.start_candles_stream(api_symbol, period)
+        await asyncio.sleep(0.3)
+    end_ts = time.time()
+    target = end_ts - seconds_back
+    cursor = end_ts
+    step = 0.001 if period == 1 else 1.0
+    points = []
+    empty = 0
+    batches = 0
+    _t0_hist = time.time()
+    logmsg(f"[hist:{api_symbol}] start: period={period}s, back {seconds_back:.0f}s "
+           f"({seconds_back / 86400.0:.2f} days), chunk={chunk}")
+    while cursor > target:
+        if not getattr(api.state, 'check_accepted_connection', False):
+            break
+        index = next(_request_counter)
+        ev_name = f'candles_ready_{api_symbol}_{index}'
+        try:
+            raw = await CLIENT._fetch_historical_batch(api_symbol, round(cursor, 3), chunk, period, index, timeout)
+        except Exception:
+            raw = None
+        try:
+            await api.event_registry.clear_event(ev_name)
+        except Exception:
+            pass
+        pts = _rows_to_points(_hist_rows(raw, period)) if isinstance(raw, dict) else []
+        batches += 1
+        if HIST_DEBUG:
+            ks = list(raw.keys()) if isinstance(raw, dict) else None
+            logmsg(f"[hist p={period}] #{batches} cursor={cursor:.3f} keys={ks} points={len(pts)}")
+        if not pts:
+            empty += 1
+            if empty >= 3:
+                break
+            cursor -= chunk
+            await asyncio.sleep(FETCH_BATCH_DELAY)
+            continue
+        empty = 0
+        points.extend(pts)
+        oldest = min(p[0] for p in pts)
+        cursor = (oldest - step) if oldest < cursor - step else (cursor - chunk)
+        if progress:
+            try:
+                progress(min(end_ts - cursor, seconds_back), seconds_back)
+            except Exception:
+                pass
+        # v24: سجل تحميل ظاهر لكل دفعة — الكود كان صامتاً لأن logmsg يُحبس في الطابور
+        _h_done = min(end_ts - cursor, seconds_back)
+        _h_pct = (_h_done / seconds_back * 100.0) if seconds_back > 0 else 100.0
+        logmsg(f"[hist:{api_symbol}] batch #{batches}: +{len(pts)} pts, total {len(points)} "
+               f"({_h_pct:.0f}%) back {_h_done:.0f}s/{seconds_back:.0f}s — {time.time() - _t0_hist:.1f}s")
+        await asyncio.sleep(0.05)
+    points = [p for p in points if p[0] >= target]
+    logmsg(f"[hist:{api_symbol}] done: {len(points)} points in {time.time() - _t0_hist:.1f}s ({batches} batches)")
+    return _bucketize(points, 1 if period == 1 else period)
+
+async def _subsecond_history_browser(asset):
+    secs_back = int(SUBSECOND_HISTORY_CANDLES * SUBSECOND_SECONDS * 1.05)
+    one_s = await browser_style_history(asset.api_symbol, 1, secs_back)
+    if not one_s:
+        return []
+    tz = _get_tz_offset()
+    for c in one_s:
+        c['time'] += tz
+    agg = _aggregate_sub_minute(one_s, SUBSECOND_SECONDS)
+    logmsg(f"[subfetch:{asset.symbol}] browser-style: {len(one_s)} 1s -> {len(agg)} {SUBSECOND_LABEL}")
+    return agg[-SUBSECOND_HISTORY_CANDLES:]
+
 async def fetch_candles_once(asset: Asset, idx=1, total=1):
     api_name = asset.api_symbol
     display_name = asset.symbol
@@ -2726,13 +3168,28 @@ async def fetch_candles_once(asset: Asset, idx=1, total=1):
     # Sub-minute timeframes: fetch period=1 (1s candles) then aggregate locally
     is_sub_minute = PERIOD_SECONDS < 60
     fetch_period = 1 if is_sub_minute else PERIOD_SECONDS
-    if is_sub_minute:
+    # ===== v15: أسلوب المتصفح أولاً =====
+    if _use_browser_history():
+        try:
+            on_progress = _make_progress_printer(display_name, time.time(), idx, total)
+            _secs_back = int(INITIAL_CANDLES * PERIOD_SECONDS * 1.05) if is_sub_minute else FETCH_DURATION_SECONDS
+            candles = await asyncio.wait_for(
+                browser_style_history(api_name, fetch_period, _secs_back, progress=on_progress),
+                timeout=180,
+            ) or []
+        except Exception as e:
+            print()
+            logmsg(f"[fetch:{display_name}] browser-style history failed: {e} -> legacy fallback")
+            candles = []
+    if not candles and is_sub_minute:
         # Use get_candles (single request) — more reliable for period=1
         # Make staggered requests going backwards in time
         try:
             on_progress = _make_progress_printer(display_name, time.time(), idx, total)
             try: on_progress(FETCH_DURATION_SECONDS, FETCH_DURATION_SECONDS)
             except Exception: pass
+            # v22: عودة للحلقة التسلسلية الأصلية (طريقة السكربت المرجعي حرفياً) —
+            # المحرك المتوازي (v17) أدى عند المستخدم إلى عدم جلب شموع 5S إطلاقاً.
             # الهدف: نحاول جلب ما يكفي لـ INITIAL_CANDLES شموع مجمّعة
             # INITIAL_CANDLES * PERIOD_SECONDS = عدد شموع 1s المطلوبة
             # هامش 1.5x (بدل 2x) لتقليل وقت الجلب وبالتالي تقليل الفجوة الزمنية
@@ -2798,7 +3255,7 @@ async def fetch_candles_once(asset: Asset, idx=1, total=1):
         except Exception as e:
             print()
             logmsg(f"[fetch:{display_name}] get_candles(period=1) failed: {e}")
-    else:
+    elif not candles:
         # 60s+ timeframe — use parallel get_historical_candles
         if hasattr(CLIENT, 'get_historical_candles'):
             try:
@@ -3230,6 +3687,15 @@ async def fetch_subsecond_history(
     if CLIENT is None or not hasattr(CLIENT, 'get_candles'):
         logmsg(f"[subfetch:{asset.symbol}] CLIENT not ready")
         return []
+    # ===== v15: أسلوب المتصفح أولاً =====
+    if _use_browser_history():
+        try:
+            _res = await _subsecond_history_browser(asset)
+            if _res:
+                return _res
+        except Exception as _e:
+            logmsg(f"[subfetch:{asset.symbol}] browser-style failed: {_e}")
+        logmsg(f"[subfetch:{asset.symbol}] falling back to legacy method")
     api_name = asset.api_symbol
     display_name = asset.symbol
     # v8.4: resolve optional parameters -- fall back to globals if not provided
@@ -3239,14 +3705,13 @@ async def fetch_subsecond_history(
     if _sec is None or _sec <= 0:
         logmsg(f"[subfetch:{display_name}] invalid subsecond_seconds={_sec}")
         return []
-    # Target: target_candles aggregated candles
-    # = target_candles * subsecond_seconds 1s candles (with SUBSECOND_FETCH_MARGIN margin)
-    # v8.3: use SUBSECOND_FETCH_MARGIN (1.3x) -- was hardcoded 1.5x in v8.0, 2.0x in v8.1
     target_1s_count = int(_target * _sec * SUBSECOND_FETCH_MARGIN)
     chunk_seconds = 500  # ~500 1s candles per request (server limit)
     all_candles_1s = []
     current_end = time.time()
-    # v8.3: use SUBSECOND_MAX_CHUNKS (5) -- was 40 in v8.0, 60 in v8.1, now 5
+    # v22: عودة للحلقة التسلسلية الأصلية (طريقة السكربت المرجعي حرفياً) — المحرك
+    # المتوازي (v17) أدى عند المستخدم إلى عدم جلب شموع الثواني إطلاقاً
+    # (فقط 1-2 شمعة بثية). الحلقة التسلسلية مع get_candles هي التي تعمل.
     max_chunks = SUBSECOND_MAX_CHUNKS
     chunks_done = 0
     empty_chunks_in_a_row = 0
@@ -3290,25 +3755,8 @@ async def fetch_subsecond_history(
                 empty_chunks_in_a_row = 0
                 all_candles_1s.extend(res_chunk)
                 chunks_done += 1
-                # v8.3: bigger inter-chunk delay (0.03 -> 0.15s) -- the server was
-                # throttling us after a few assets because we hammered it at 30 req/s.
-                await asyncio.sleep(0.15)
-                # v8.3/v8.6: user explicitly asked: if we already have enough 1s
-                # candles to cover >=425 seconds of data (the original "85 5s
-                # candles" threshold = 425 seconds), stop fetching more chunks.
-                # v8.6: made TIME-BASED so the threshold scales correctly for any
-                # _sec value. For 5s mode: 425s/5 = 85 (matches the original
-                # SUBSECOND_EARLY_EXIT_CANDLES). For 1s mode: 425s/1 = 425
-                # 1s candles, which is the right scale (1 chunk yields ~700 1s
-                # candles = ~12 1m candles, plenty for the M1 bridge).
-                _projected = len(all_candles_1s) // max(1, _sec)
-                _time_based_threshold = max(1, 425 // max(1, _sec))
-                if chunks_done >= 1 and _projected >= _time_based_threshold:
-                    logmsg(
-                        f"[subfetch:{display_name}] early-exit: {_projected} projected {_label} candles "
-                        f">= {_time_based_threshold} threshold ({425}s of data); stopping chunk requests"
-                    )
-                    break
+                # Small delay between chunks to avoid server rate limiting
+                await asyncio.sleep(0.03)
         except Exception as e:
             logmsg(f"[subfetch:{display_name}] FAILED: {e}")
             return []
@@ -3321,7 +3769,7 @@ async def fetch_subsecond_history(
             if ts not in seen_ts:
                 seen_ts.add(ts)
                 unique_1s.append(c)
-    logmsg(f"[subfetch:{display_name}] got {len(unique_1s)} 1s candles from {chunks_done} chunks, aggregating to {_label}")
+    logmsg(f"[subfetch:{display_name}] got {len(unique_1s)} 1s candles, aggregating to {_label}")
     # Format 1s candles with TZ offset
     formatted_1s = []
     for c in unique_1s:
@@ -4659,70 +5107,13 @@ async def mt4_gap_filler():
 
 if __name__ == "__main__":
     # ════════════════════════════════════════════════════════════════════
-    # STAGE 1: Select Pairs — choose specific pairs or all pairs
-    # ════════════════════════════════════════════════════════════════════
-    _ALL_PAIRS = list(ASSET_LIST)  # full default list
-    _PAIR_COLS = 3
-    print()
-    print(f"{Colors.BOLD}  Select Pairs to Stream{Colors.RESET}")
-    print(f"  {Colors.DIM}{'═' * 68}{Colors.RESET}")
-    _col_w = 22
-    for _pi in range(0, len(_ALL_PAIRS), _PAIR_COLS):
-        _row_parts = []
-        for _pj in range(_PAIR_COLS):
-            _pidx = _pi + _pj
-            if _pidx < len(_ALL_PAIRS):
-                _sym = _ALL_PAIRS[_pidx]
-                _label = _sym.replace("_otc", "(OTC)").upper()
-                _row_parts.append(f"{Colors.CYAN}{_pidx+1:>3}{Colors.RESET}. {_label:<{_col_w}}")
-        print("  " + "  ".join(_row_parts))
-    print(f"  {Colors.DIM}{'═' * 68}{Colors.RESET}")
-    print(f"  {Colors.DIM}Options:{Colors.RESET}")
-    print(f"  {Colors.CYAN}[Enter]{Colors.RESET}         -> Stream ALL {len(_ALL_PAIRS)} pairs")
-    print(f"  {Colors.CYAN}1,5,12{Colors.RESET}          -> Stream by number (comma-separated)")
-    print(f"  {Colors.CYAN}EURUSD,GBPUSD{Colors.RESET}   -> Stream by name (partial match OK)")
-    print(f"  {Colors.DIM}{'═' * 68}{Colors.RESET}")
-    while True:
-        try:
-            _pair_input = input(f"{Colors.CYAN}  Your choice: {Colors.RESET}").strip()
-        except (KeyboardInterrupt, EOFError):
-            _pair_input = ""
-        if not _pair_input:
-            ASSET_LIST = list(_ALL_PAIRS)
-            print(f"{Colors.GREEN}  -> Streaming ALL {len(ASSET_LIST)} pairs{Colors.RESET}\n")
-            break
-        _selected = []
-        _tokens = [t.strip() for t in _pair_input.replace(';', ',').split(',') if t.strip()]
-        _numeric_mode = all(t.isdigit() for t in _tokens)
-        if _numeric_mode:
-            for _t in _tokens:
-                _idx = int(_t) - 1
-                if 0 <= _idx < len(_ALL_PAIRS):
-                    if _ALL_PAIRS[_idx] not in _selected:
-                        _selected.append(_ALL_PAIRS[_idx])
-                else:
-                    print(f"{Colors.RED}  Invalid number: {_t} (valid: 1-{len(_ALL_PAIRS)}){Colors.RESET}")
-        else:
-            for _token in _tokens:
-                _token_search = _token.upper().replace("-OTC","").replace("_OTC","")
-                _matches = [p for p in _ALL_PAIRS if
-                            _token_search in p.upper() or
-                            p.lower().startswith(_token.lower())]
-                if _matches:
-                    for _m in _matches:
-                        if _m not in _selected:
-                            _selected.append(_m)
-                else:
-                    print(f"{Colors.RED}  No pair found matching: {_token}{Colors.RESET}")
-        if _selected:
-            ASSET_LIST = _selected
-            print(f"{Colors.GREEN}  -> Selected {len(ASSET_LIST)} pair(s):{Colors.RESET}")
-            for _s in ASSET_LIST:
-                print(f"    {Colors.CYAN}.{Colors.RESET} {_s.replace('_otc','').upper()} (OTC)")
-            print()
-            break
-        else:
-            print(f"{Colors.RED}  No valid pairs selected. Try again.{Colors.RESET}")
+    # STAGE 1: STARTUP — ترحيب مباشر (نظام الترخيص أُزيل بالكامل بناءً على الطلب)
+    # v18: أُزيلت قائمة "Select Pairs" الثابتة (41 زوجاً مدسّسة في الكود)
+    #      التي كانت تُطبع قبل الدخول. القائمة الرسمية تُجلب حصرياً من المنصة
+    #      بعد نجاح الاتصال (42["instruments/get"] → instruments/list)
+    #      عبر print_full_asset_list_once() وتحفظ في qx_assets_payouts.json.
+    qx_print_welcome()
+    # ══════════════════════════════════════════════════════════════════
 
     # ════════════════════════════════════════════════════════════════════
     # STAGE 2: Select Timeframe — 3 أعمدة × 5 صفوف (بدون خطوط زرقاء كثيرة)
@@ -4820,21 +5211,49 @@ if __name__ == "__main__":
         globals()['SUBSECOND_LABEL'] = ""
         print(f"{Colors.GREEN}  Using timeframe: {_tf_short} - {_tf_full}{Colors.RESET}\n")
 
+    # ===== v15: اختيار طريقة جلب التاريخ =====
+    print()
+    print(f"{Colors.BOLD}  History method{Colors.RESET}")
+    print(f"  {Colors.CYAN} 1{Colors.RESET} - Browser-style (history/load backwards, like the web chart)")
+    print(f"  {Colors.CYAN} 2{Colors.RESET} - Legacy (original method)")
+    try:
+        _hm_choice = input(f"{Colors.CYAN}  Choose 1-2 (default=1): {Colors.RESET}").strip()
+    except EOFError:
+        _hm_choice = ""
+    globals()['HISTORY_METHOD'] = "legacy" if _hm_choice == "2" else "browser"
+    print(f"{Colors.GREEN}  History method: {HISTORY_METHOD}{Colors.RESET}\n")
+
     # ════════════════════════════════════════════════════════════════════
     # STAGE 3: Select History Size
     # للفريمات الفرعية (subsecond) نستخدم قيمة ثابتة ولا نسأل المستخدم
     # لأن النظام يجلب period=1 ويُجمّع محلياً — عدد الأيام غير ذي معنى هنا
     # ════════════════════════════════════════════════════════════════════
     if PERIOD_SECONDS < 60:
-        # الفريمات الفرعية (5S/10S/15S/30S): قيمة ثابتة بدون سؤال
+        # v24: المستخدم يدخل عدد أيام الشموع بنفسه (كانت ساعة ثابتة في وضع المتصفح)
+        _sub_days_raw = ""
+        try:
+            _sub_days_raw = input(f"{Colors.CYAN}  Days of candle history (e.g. 1 = full day, 0.5 = half) [default=1]: {Colors.RESET}").strip()
+        except EOFError:
+            _sub_days_raw = ""
+        try:
+            _sub_days = float(_sub_days_raw) if _sub_days_raw else 1.0
+        except ValueError:
+            _sub_days = 1.0
+        if _sub_days <= 0:
+            _sub_days = 1.0
+        globals()['SUBSECOND_HISTORY_SECONDS'] = max(int(_sub_days * 86400), PERIOD_SECONDS)
+        SUBSECOND_HISTORY_CANDLES = globals()['SUBSECOND_HISTORY_SECONDS'] // PERIOD_SECONDS
+        globals()['SUBSECOND_HISTORY_CANDLES'] = SUBSECOND_HISTORY_CANDLES
+        # v24: سعة الذاكرة تستوعب العدد المطلوب (كانت 4000 ثابتة)
+        globals()['SUBSECOND_MAX_CANDLES'] = max(SUBSECOND_MAX_CANDLES, SUBSECOND_HISTORY_CANDLES + 500)
         INITIAL_CANDLES = SUBSECOND_HISTORY_CANDLES
         HISTORY_DAYS = (INITIAL_CANDLES * PERIOD_SECONDS) / 86400.0 * 1.15
         FETCH_DURATION_SECONDS = int(86400 * HISTORY_DAYS)
         globals()['INITIAL_CANDLES'] = INITIAL_CANDLES
         globals()['HISTORY_DAYS'] = HISTORY_DAYS
         globals()['FETCH_DURATION_SECONDS'] = FETCH_DURATION_SECONDS
-        # رسالة قصيرة بدل قائمة كاملة
-        print(f"{Colors.DIM}  Sub-second timeframe: auto history ({INITIAL_CANDLES} candles, {HISTORY_DAYS:.2f} days){Colors.RESET}\n")
+        print(f"{Colors.GREEN}  History: {_sub_days:g} day(s) = {globals()['SUBSECOND_HISTORY_SECONDS']}s -> "
+              f"{SUBSECOND_HISTORY_CANDLES} candles ({'browser method' if _use_browser_history() else 'legacy method'}){Colors.RESET}\n")
     else:
         # الفريمات 60s+: نسأل المستخدم عن عدد الأيام
         _default_days = (1000 * PERIOD_SECONDS) / 86400.0 * 1.15  # +15% margin
@@ -4873,6 +5292,66 @@ if __name__ == "__main__":
     # (تم حذف كتلة Dashboard بناءً على طلب المستخدم — الترحيب + القوائم كافية)
 
     # ════════════════════════════════════════════════════════════════════
+    # ════════════════════════════════════════════════════════════════════
+    # STAGE 3b: Select Assets (v24) — إدخال اسم العملة يدوياً
+    # صيغ مقبولة: BRL/USD · OTC | USDARS_otc | usd/ars | EURUSD
+    # عدة أزواج مفصولة بفاصلة — Enter مباشرة = القائمة الافتراضية كاملة
+    # ════════════════════════════════════════════════════════════════════
+    def _norm_asset_query(q):
+        s = str(q).upper().replace("·", " ").replace("/", " ").replace("_", " ")
+        s = " ".join(s.split())
+        is_otc = "OTC" in s
+        s = s.replace("OTC", "")
+        s = "".join(s.split())
+        return s, is_otc
+
+    def _resolve_asset_query(raw):
+        """يرجع (رمز العملة، ملاحظة أو None)"""
+        base, is_otc = _norm_asset_query(raw)
+        if not base or not base.isalpha() or not base.isascii():
+            return None, None
+        for name in ASSET_LIST:
+            nb, _ = _norm_asset_query(name)
+            if nb == base:
+                if not is_otc and not name.lower().endswith("_otc"):
+                    return name, None
+                if is_otc and name.lower().endswith("_otc"):
+                    return name, None
+                if not is_otc and name.lower().endswith("_otc"):
+                    return name, f"القائمة المحلية OTC فقط — استُخدمت {name}"
+        guess = base + ("_otc" if is_otc else "")
+        return guess, "غير موجودة في القائمة المحلية — سيُتحقق منها بعد الاتصال"
+
+    print(f"{Colors.BOLD}  STAGE 3b: Select Assets{Colors.RESET}")
+    print(f"  {Colors.DIM}Default list: {len(ASSET_LIST)} OTC pairs. Examples: BRL/USD · OTC, USDARS_otc, EURUSD{Colors.RESET}")
+    _typed = ""
+    try:
+        _typed = input(f"{Colors.CYAN}  Enter asset name(s), comma-separated (Enter = default list): {Colors.RESET}").strip()
+    except EOFError:
+        _typed = ""
+    if _typed:
+        _resolved, _not_found = [], []
+        for _part in _typed.replace(";", ",").split(","):
+            _part = _part.strip()
+            if not _part:
+                continue
+            _sym, _note = _resolve_asset_query(_part)
+            if _sym:
+                _resolved.append(_sym)
+                if _note:
+                    print(f"  {Colors.YELLOW}  note: {_note}{Colors.RESET}")
+            else:
+                _not_found.append(_part)
+        if _not_found:
+            print(f"  {Colors.RED}  غير موجود / unrecognized: {', '.join(_not_found)}{Colors.RESET}")
+        if _resolved:
+            globals()['ASSET_LIST'] = _resolved
+            print(f"  {Colors.GREEN}  Assets selected ({len(_resolved)}): {', '.join(_resolved)}{Colors.RESET}\n")
+        else:
+            print(f"  {Colors.YELLOW}  لا مدخلات صالحة — استمرار بالقائمة الافتراضية ({len(ASSET_LIST)} أزواج){Colors.RESET}\n")
+    else:
+        print(f"  {Colors.GREEN}  Using default list ({len(ASSET_LIST)} assets){Colors.RESET}\n")
+
     # STAGE 4: Domain — التعرف التلقائي على البلد عبر IP (بدون قائمة يدوية)
     #   بنغلاديش (BD)   -> market-qx.info   (نطاق بنغلاديش)
     #   أي دولة أخرى    -> quotex.com       (النطاق الرسمي العالمي)
@@ -4917,10 +5396,39 @@ if __name__ == "__main__":
     except Exception:
         pass
 
+    # v19: طباعة قائمة العملات من الخادم فور نجاح الدخول وقبل جلب الشموع
+    # (طلب المستخدم: القائمة قبل جلب الشموع — نفس طريقة السكربت المرجعي
+    #  CLIENT.get_all_assets() ثم 42["instruments/get"]) — استدعاء حاجز
+    # (blocking) والفشل يُطبع ظاهراً لا صامتاً.
+    try:
+        _fut_list = asyncio.run_coroutine_threadsafe(print_full_asset_list_once(), ASYNC_LOOP)
+        _fut_list.result(timeout=60)
+    except Exception as _e_list:
+        print(f"{Colors.RED}  [asset_list] failed: {_e_list}{Colors.RESET}")
+    if not _ASSET_LIST_PRINTED:
+        print(f"{Colors.YELLOW}  [asset_list] لم تُطبع القائمة بعد — ستحاول مراقبة الدفع جلبها تلقائياً خلال لحظات{Colors.RESET}")
+    # v24: تحقق من العملات المُدخلة يدوياً ضد القائمة الحية من الخادم
+    try:
+        _live_names = {e.get("asset") for e in _instruments_snapshot() if e.get("asset")}
+        if _live_names:
+            for _a in ASSET_LIST:
+                if _a not in _live_names:
+                    _base = _a.replace("_otc", "")
+                    _sugg = sorted(n for n in _live_names if n.startswith(_base[:4]))[:3]
+                    print(f"{Colors.YELLOW}  [asset_check] {_a} غير موجودة في القائمة الحية! مقترحات: "
+                          f"{', '.join(_sugg) if _sugg else '-'}{Colors.RESET}")
+    except Exception:
+        pass
+    # v19: بدء مراقبة الدفع/الحالة فوراً بعد الدخول (كانت تبدأ بعد اكتمال حلقة
+    # جلب الشموع كلها — نقلتها إلى هنا بناءً على طلب المستخدم حتى تُطبع
+    # القائمة وتُحدَّث أثناء البث لا بعده)
+    asyncio.run_coroutine_threadsafe(asset_payout_monitor(), ASYNC_LOOP)
+
     total_assets = len(ASSET_LIST)
 
     # ===== FIX 8: 1 — =====
     print(f"\n{Colors.CYAN}{'═'*60}{Colors.RESET}")
+    globals()['LIVE_TABLE_ACTIVE'] = False  # v24: أثناء التحميل السجل يطبع مباشرة
     print(f"{Colors.BOLD}  SECTION 1: CANDLE FETCHING ({total_assets} assets, {INITIAL_CANDLES} candles each){Colors.RESET}")
     print(f"{Colors.CYAN}{'═'*60}{Colors.RESET}\n")
 
@@ -4933,6 +5441,11 @@ if __name__ == "__main__":
     # attempts at the top of the loop, break cleanly after 3 zero-candle
     # assets in a row.
     _subsecond_zero_streak = 0
+
+    # v17: مزامنة هدف جلب/تخزين فريمات الثواني مع عدد الشموع الذي اختاره المستخدم
+    if IS_SUBSECOND and INITIAL_CANDLES > SUBSECOND_HISTORY_CANDLES:
+        globals()['SUBSECOND_HISTORY_CANDLES'] = INITIAL_CANDLES
+        globals()['SUBSECOND_MAX_CANDLES'] = INITIAL_CANDLES
     for idx, symbol in enumerate(ASSET_LIST, 1):
         # ===== FIX 3: =====
         # auto_reconnect .
@@ -5237,6 +5750,13 @@ if __name__ == "__main__":
         # fetch_candles_with_retry overwrites asset.candles with historical only.
         # To preserve live ticks, merge them back after fetch.
         # (handled inside realtime_stream which appends to asset.candles)
+
+        # v17: حفظ شموع العملة في ملف JSON فور اكتمال جلبها (نفس مجلد السكربت)
+        # الاسم: <العملة>_<الفريم>_<عدد الشموع>.json مثل BRLUSD_otc_5S_720.json
+        try:
+            _save_candles_json(asset, source_label="startup_fetch")
+        except Exception:
+            pass
         # ===== FIX 7: cooldown — =====
         # . keepalive_loop .
         if FETCH_COOLDOWN_EVERY > 0 and idx > 0 and idx % FETCH_COOLDOWN_EVERY == 0 and idx < total_assets:
@@ -5254,8 +5774,7 @@ if __name__ == "__main__":
     asyncio.run_coroutine_threadsafe(auto_reconnect(), ASYNC_LOOP)
     asyncio.run_coroutine_threadsafe(keepalive_loop(), ASYNC_LOOP)
     asyncio.run_coroutine_threadsafe(stale_message_watchdog(), ASYNC_LOOP)
-    # ===== ASSETS / PAYOUT / OPEN-CLOSED MONITOR (طريقة pyquotex الرسمية) =====
-    asyncio.run_coroutine_threadsafe(asset_payout_monitor(), ASYNC_LOOP)
+    # v19: بدء asset_payout_monitor نُقل إلى ما بعد الدخول مباشرة (قبل SECTION 1)
     # v10.0: DISABLED background refetchers per user request:
     #   - mt4_gap_filler(): re-filled candle gaps every GAP_FILL_REFRESH_INTERVAL (300s).
     #     The user wants the bridge/gap-filling to happen DURING the initial fetch only
@@ -5411,6 +5930,7 @@ if __name__ == "__main__":
         sys.stdout.flush()
 
     # Initial draw
+    globals()['LIVE_TABLE_ACTIVE'] = True  # v24: الجدول الحي بدأ — logmsg يلحق بالطابور بدل الطباعة
     _draw_live_table(first_draw=True)
     print()
     print(f"{Colors.CYAN}Live streaming active. Press Enter for menu, Ctrl+C to stop.{Colors.RESET}")
@@ -5581,6 +6101,9 @@ if __name__ == "__main__":
                 globals()['PERIOD_SECONDS'] = new_period_seconds
                 globals()['HISTORY_DAYS'] = new_days
                 globals()['INITIAL_CANDLES'] = new_candles
+                if new_period_seconds < 60 and _use_browser_history():
+                    globals()['SUBSECOND_HISTORY_CANDLES'] = SUBSECOND_HISTORY_SECONDS // new_period_seconds
+                    globals()['INITIAL_CANDLES'] = globals()['SUBSECOND_HISTORY_CANDLES']
                 globals()['FETCH_DURATION_SECONDS'] = int(86400 * new_days) if new_days > 0 else 0
                 print(f"{Colors.GREEN}Reinitializing with {_current_period_label()}, {new_days:.2f} days = {new_candles} candles...{Colors.RESET}")
                 reinit_requested = True
