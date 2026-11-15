@@ -29,6 +29,13 @@
 #     live on every dark/light switch — on all charts and all add paths
 #   • Notifications card refined (owner report): the blue bell badge no longer touches the card
 #     edge — the whole popup content is inset with proper padding, header and list breathe
+#   • Chart screenshots from scripts (owner request): Indicators.shot() lets an indicator capture
+#     the chart itself and send it straight to Telegram — the script controls WHAT it captures:
+#     the whole pane, one pane or any region inside the chart (x/y/w/h + scale/format/quality) and
+#     where it goes (chats in the call or the bot settings). Hard security rule: the region is
+#     always clamped to the chart canvas — a script can never capture the app window, the desktop
+#     or the full screen (nothing outside the chart pixels can reach a script). Documented in
+#     guide section 10; Python-engine indicators keep attaching the chart shot to every signal
 #   • Buyer licensing moved into the indicator script (owner request): the seller lists the buyer
 #     IDs inside the code — the BADI LICENSED USERS line, unlimited buyers, several lines allowed —
 #     the encrypt dialog no longer holds any ID field: it only shows the buyers found in the script
@@ -4851,6 +4858,50 @@ GUIDE_JS = """/* ═════════════════════
        running and inside QuickJS) — it sees nothing of the license, the protected database
        or the control server.
      • Commands are checked against a strict allow-list inside the app — executing server code is impossible.
+   ── 10) Chart screenshots from your script — Indicators.shot() + Telegram (new) ──
+   Your indicator can capture the chart itself and send the picture to Telegram — and YOU
+   control exactly what is captured. It is never a forced full-app screenshot: you decide
+   the pane, the region and the resolution, and you may capture just a small piece.
+
+     Indicators.shot()                       → dataURL of the whole active chart pane
+     Indicators.shot({ pane: 1 })            → a specific pane (0 = the first/top pane)
+     Indicators.shot({ x, y, w, h })         → any region INSIDE the chart (pixels from
+                                               the pane top-left corner)
+     Indicators.shot({ scale: 2 })           → sharper capture (temporary 2x redraw,
+                                               the chart resolution is restored right after)
+     Indicators.shot({ format: 'png' })      → 'png' or 'jpeg' (default: jpeg)
+     Indicators.shot({ quality: 0.95 })      → jpeg quality 0.5 .. 1 (default 0.92)
+
+   Send it straight to Telegram (the chart section — the chats of this indicator):
+     Indicators.shot({ send: true,
+                       caption: 'EUR/USD — my setup',
+                       chats: '@mychannel' });
+   • chats is optional — without it the app uses the bot chat saved in the settings.
+   • caption is plain text only (no HTML).
+   • send also RETURNS the dataURL, so you can keep a copy in your own logic too.
+
+   Real example — send only your oscillator pane, sharp, exactly when a signal fires:
+     signal(candles, v, s) {
+       if (v.crossed) {
+         Indicators.shot({ pane: 1, scale: 2, send: true,
+                           caption: 'RSI cross — ' + candles[candles.length - 1].close,
+                           chats: '@mychannel' });
+       }
+       return null;
+     }
+
+   SECURITY — hard limits no script can ever bypass (by design):
+     • The capture region is always clamped to the chart canvas bounds. A script CANNOT
+       capture the app window, the editor, the desktop, the taskbar or the full screen —
+       asking for x:-500 or w:99999 simply crops back to the chart. There is no
+       screen-capture API for scripts at all: nothing outside the chart pixels can ever
+       reach a script, the bridge or Telegram. This is protection and security by design.
+     • The picture goes ONLY to the Telegram chats named in the call (or the bot settings
+       chat) — the app never uploads it anywhere else.
+     • Output is capped (~4 megapixels) and scale at 3x so a script cannot freeze the app
+       with a giant capture.
+   Python-engine indicators (.py) already attach the chart screenshot to every signal
+   they send automatically — no extra call is needed there.
    ═══════════════════════════════════════════════════════════════════════════ */
 
 return {
@@ -6053,6 +6104,31 @@ class Backend(QObject):
                 pend, self._pending = self._pending, None
                 self._deliver(pend, None)
 
+    @Slot(str)
+    def scriptShot(self, arg):
+        """A script captured a chart screenshot and asked for Telegram delivery (user request).
+        The page clamps the capture region to the chart canvas — only chart pixels can ever
+        reach this slot: no app window, no desktop, no full screen. The image goes ONLY to the
+        Telegram chats named by the script (fallback: the bot settings chat) — nowhere else."""
+        try:
+            o = json.loads(arg)
+            img = str(o.get("img") or "")
+            if "," in img:
+                img = img.split(",", 1)[1]
+            png = base64.b64decode(img)
+            caption = str(o.get("caption") or "").strip() or "Chart screenshot"
+            cfg = _read_json(CFG_FILE, {})
+            chats = str(o.get("chats") or "").strip() or cfg.get("chats", "")
+            token = cfg.get("token", "")
+            if not token or not chats:
+                self._log("err", "screenshot → Telegram: " + ("telegram not configured" if not token
+                           else "no chat id — set chats in Indicators.shot({chats: '...'})"))
+                return
+            n, errs = _tg_send(token, chats, caption, png)
+            self._log("ok", f"Screenshot → Telegram {n} chat(s)" + ("; " + "; ".join(errs) if errs else ""))
+        except Exception as e:
+            self._log("err", f"screenshot: {str(e)[:120]}")
+
     @Slot()
     def requestShot(self):
         """Screenshot button (without sending)."""
@@ -7183,6 +7259,67 @@ function augmentIndicators() {
       });
       return window.Indicators.ema(tr, p);
     };
+    /* ═══ Chart screenshot from a script (user request) ═══
+       Indicators.shot(opts) — the script controls WHAT it captures: the whole chart pane, one
+       specific pane, or any region INSIDE the chart (x/y/w/h in canvas pixels) — and can send
+       it straight to Telegram (send/caption/chats). It is never a forced full-app screenshot:
+       no region is mandatory, the script decides.
+       SECURITY (hard rule): the region is always clamped to the chart canvas bounds — a script
+       can never capture the app window, the editor, the desktop or the full screen; asking for
+       x:-500 or w:99999 simply crops to the chart. The picture goes only to the Telegram chats
+       named by the script (or the bot settings chat) — nowhere else.
+       returns the dataURL string ('' on failure) — with send:true the desktop pulls the image
+       and posts it; Python-engine indicators keep attaching the chart shot to every signal. */
+    window.Indicators.shot = function (opts) {
+      try {
+        opts = opts || {};
+        var pn = (typeof opts.pane === "number") ? panes[Math.max(0, Math.min(panes.length - 1, opts.pane))] : (aPane() || panes[0]);
+        if (!pn || !pn.cv) return "";
+        var cv = pn.cv, ch = pn.chart || null;
+        var cw = cv.clientWidth || Math.round(cv.width / ((ch && ch.dpr) ? ch.dpr : 1)) || cv.width;
+        var chh = cv.clientHeight || Math.round(cv.height / ((ch && ch.dpr) ? ch.dpr : 1)) || cv.height;
+        if (cw < 20 || chh < 20) return "";
+        /* region in CSS pixels — clamped inside the chart canvas, nothing outside it */
+        var x = Math.max(0, Math.min(cw - 10, Number(opts.x) || 0));
+        var y = Math.max(0, Math.min(chh - 10, Number(opts.y) || 0));
+        var w = Math.max(20, Math.min(cw - x, Number(opts.w) || (cw - x)));
+        var h = Math.max(20, Math.min(chh - y, Number(opts.h) || (chh - y)));
+        /* optional sharper capture: a temporary higher-resolution redraw, restored right after */
+        var scale = Math.max(1, Math.min(3, Number(opts.scale) || 1));
+        var d0 = (ch && typeof ch.dpr === "number" && ch.dpr > 0) ? ch.dpr : 1;
+        if (ch && scale > 1) { try { ch.dpr = Math.min(3, d0 * scale); ch.render(performance.now()); } catch (e) {} }
+        else if (ch && ch.render) { try { ch.render(performance.now()); } catch (e) {} }
+        /* compose the region on an offscreen canvas (theme background behind transparent pixels) */
+        var ratio = cv.width / Math.max(1, cv.clientWidth || cv.width);
+        var ow = Math.round(w * ratio), oh = Math.round(h * ratio);
+        var k2 = (ow * oh > 4000000) ? Math.sqrt(4000000 / (ow * oh)) : 1;   /* ~4MP cap */
+        ow = Math.max(1, Math.round(ow * k2)); oh = Math.max(1, Math.round(oh * k2));
+        var off = document.createElement("canvas");
+        off.width = ow; off.height = oh;
+        var cx = off.getContext("2d");
+        cx.imageSmoothingEnabled = true; cx.imageSmoothingQuality = "high";
+        try {
+          var bgc = (cv.parentElement && getComputedStyle(cv.parentElement).backgroundColor) || "";
+          cx.fillStyle = (bgc && bgc !== "transparent" && bgc !== "rgba(0, 0, 0, 0)") ? bgc : "#0b0e14";
+          cx.fillRect(0, 0, ow, oh);
+        } catch (e) {}
+        cx.drawImage(cv, Math.round(x * ratio), Math.round(y * ratio), Math.round(w * ratio), Math.round(h * ratio), 0, 0, ow, oh);
+        if (ch && scale > 1) { try { ch.dpr = d0; ch.render(performance.now()); } catch (e) {} }
+        var fmt = (String(opts.format || "jpeg").toLowerCase() === "png") ? "image/png" : "image/jpeg";
+        var url = "";
+        try { url = off.toDataURL(fmt, Math.max(0.5, Math.min(1, Number(opts.quality) || 0.92))); } catch (e) {}
+        if (!url) return "";
+        /* send straight to Telegram? the image is parked and the desktop pulls it (large data
+           travels through webCall — the safe path) — it lands only in the script chats */
+        if (opts.send) {
+          window.__BADI_SCRIPT_SHOTS__ = window.__BADI_SCRIPT_SHOTS__ || {};
+          var id = "ss" + Date.now().toString(36) + Math.floor(Math.random() * 10000).toString(36);
+          window.__BADI_SCRIPT_SHOTS__[id] = url;
+          try { console.log("BADI::scriptshot " + JSON.stringify({ id: id, caption: String(opts.caption || "Chart screenshot"), chats: String(opts.chats || "") })); } catch (e) {}
+        }
+        return url;
+      } catch (e) { return ""; }
+    };
   } catch (e) {}
 }
 
@@ -7552,6 +7689,16 @@ function defineBadiApp() {
         try { out = cv.toDataURL("image/png"); } catch (e) {}
         try { ch.dpr = d0; ch.render(performance.now()); } catch (e) {}
         return out;
+      } catch (e) { return ""; }
+    },
+    scriptShotData: function (id) {
+      /* The desktop pulls the image a script captured (large data through webCall — the safe path);
+         each parked image is handed over once then deleted — nothing lingers in the page */
+      try {
+        var s = window.__BADI_SCRIPT_SHOTS__ || {};
+        var u = s[id] || "";
+        delete s[id];
+        return u;
       } catch (e) { return ""; }
     },
     sigResult: function (r) { try { if (window.__badiSigResult) window.__badiSigResult(r); } catch (e) {} },
@@ -8121,6 +8268,17 @@ ApplicationWindow {
         }
         if (cmd === "dbg") { console.log("PAGEDBG " + arg); return }
         if (cmd === "shot") { win.takeShot(); return }
+        /* A script captured a chart screenshot and asked for Telegram delivery (user request) —
+           the meta arrives through the console bridge, the image is pulled back through webCall
+           (large data) and handed to the Python engine, which posts it to the script chats only */
+        if (cmd === "scriptshot") {
+            console.log("SCRIPTSHOT_META " + arg)
+            var ss = JSON.parse(arg)
+            webCall("__badiApp.scriptShotData(" + JSON.stringify(ss.id) + ")", function (res) {
+                if (res && res.length > 32) backend.scriptShot(JSON.stringify({ img: res, caption: String(ss.caption || ""), chats: String(ss.chats || "") }))
+            })
+            return
+        }
         if (cmd === "asset") { backend.switch(arg, backend.tfLabel); return }
         if (cmd === "tf") { backend.switch(backend.assetLabel, arg); return }
         if (cmd === "live") { backend.setLive(arg === "1"); return }
