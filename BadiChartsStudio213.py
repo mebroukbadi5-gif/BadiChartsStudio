@@ -82,7 +82,7 @@ def qx_print_welcome():
     print()
     print(f"\033[96m{'═' * 62}\033[0m")
     print(f"\033[97m\033[1m  QX Console — Quotex Candles & Assets\033[0m\033[0m")
-    print(f"\033[2m  v22 · assets list live (51-placeholder aware, print only) · sequential 5S fetch · SQLite · every-tick\033[0m")
+    print(f"\033[2m  v23 · assets list live · browser-style history (v15) + legacy fallback · no snapshot json · every-tick\033[0m")
     print(f"\033[96m{'═' * 62}\033[0m")
     print()
 
@@ -1842,7 +1842,7 @@ PERIOD_SECONDS = 60
 IS_SUBSECOND = False
 SUBSECOND_SECONDS = 0   # 5, 10, 15, or 30
 SUBSECOND_LABEL = ""    # "5S", "10S", "15S", "30S"
-SUBSECOND_MAX_CANDLES = 500  # v8.1: raised from 200 -> 500 to match SUBSECOND_HISTORY_CANDLES (user asked: keep >=500 5s candles in memory)
+SUBSECOND_MAX_CANDLES = 4000  # v23: browser mode needs room for a full hour of subsecond candles
 SUBSECOND_HISTORY_CANDLES = 500  # fetch up to 500 historical subsecond candles at startup (was 1000, reduced for speed)
 # Semaphore to limit concurrent subsecond history fetches (3 at a time, not 41)
 # Created lazily on first use to avoid event loop binding issues at import time
@@ -3025,6 +3025,130 @@ async def _fetch_1s_sequential_fallback(api_symbol, display_name, target_1s_coun
     return all_candles_1s
 
 
+# ===== BROWSER-STYLE HISTORY (v15) =====
+HISTORY_METHOD = "browser"           # "browser" = الجديدة ، "legacy" = الأصلية
+HIST_DEBUG = True                    # True = يطبع مفاتيح كل رد (للتشخيص) — أعد False بعد التأكد
+SUBSECOND_HISTORY_SECONDS = 3600     # ساعة كاملة للفريمات الفرعية
+BROWSER_CHUNK_1S = 3000              # offset المتصفح عند period=1
+BROWSER_CHUNK_MIN_CANDLES = 60       # M1 => 60*60 = 3600 مثل المتصفح
+
+def _use_browser_history() -> bool:
+    return str(HISTORY_METHOD).lower() == "browser"
+
+def _hist_rows(raw, period):
+    keys = ("history", "candles", "data") if period == 1 else ("candles", "data", "history")
+    for k in keys:
+        v = raw.get(k)
+        if isinstance(v, list) and v:
+            return v
+    return []
+
+def _rows_to_points(rows):
+    pts = []
+    for c in rows:
+        try:
+            if isinstance(c, dict):
+                t = float(c.get('time', c.get('timestamp', 0)))
+                if c.get('price') is not None:
+                    o = h = l = cl = float(c['price'])
+                else:
+                    o = float(c.get('open', 0) or 0)
+                    h = float(c.get('high', c.get('max', 0)) or 0)
+                    l = float(c.get('low', c.get('min', 0)) or 0)
+                    cl = float(c.get('close', 0) or 0)
+            elif isinstance(c, (list, tuple)) and len(c) >= 5:
+                t, o, cl, h, l = float(c[0]), float(c[1]), float(c[2]), float(c[3]), float(c[4])
+            elif isinstance(c, (list, tuple)) and len(c) >= 2:
+                t = float(c[0])
+                o = h = l = cl = float(c[1])
+            else:
+                continue
+            if t > 0 and o > 0 and h > 0 and l > 0 and cl > 0:
+                pts.append((t, o, h, l, cl))
+        except (TypeError, ValueError):
+            continue
+    return pts
+
+def _bucketize(points, bucket):
+    out = OrderedDict()
+    for t, o, h, l, c in sorted(points, key=lambda x: x[0]):
+        b = int(t) // bucket * bucket
+        e = out.get(b)
+        if e is None:
+            out[b] = {'time': b, 'open': o, 'high': h, 'low': l, 'close': c, 'volume': 1}
+        else:
+            e['high'] = max(e['high'], h)
+            e['low'] = min(e['low'], l)
+            e['close'] = c
+            e['volume'] += 1
+    return list(out.values())
+
+async def browser_style_history(api_symbol, period, seconds_back, chunk=None, timeout=15, progress=None):
+    if CLIENT is None or CLIENT.api is None:
+        return []
+    api = CLIENT.api
+    if chunk is None:
+        chunk = BROWSER_CHUNK_1S if period == 1 else period * BROWSER_CHUNK_MIN_CANDLES
+    if api.current_asset != api_symbol:
+        await CLIENT.start_candles_stream(api_symbol, period)
+        await asyncio.sleep(0.3)
+    end_ts = time.time()
+    target = end_ts - seconds_back
+    cursor = end_ts
+    step = 0.001 if period == 1 else 1.0
+    points = []
+    empty = 0
+    batches = 0
+    while cursor > target:
+        if not getattr(api.state, 'check_accepted_connection', False):
+            break
+        index = next(_request_counter)
+        ev_name = f'candles_ready_{api_symbol}_{index}'
+        try:
+            raw = await CLIENT._fetch_historical_batch(api_symbol, round(cursor, 3), chunk, period, index, timeout)
+        except Exception:
+            raw = None
+        try:
+            await api.event_registry.clear_event(ev_name)
+        except Exception:
+            pass
+        pts = _rows_to_points(_hist_rows(raw, period)) if isinstance(raw, dict) else []
+        batches += 1
+        if HIST_DEBUG:
+            ks = list(raw.keys()) if isinstance(raw, dict) else None
+            logmsg(f"[hist p={period}] #{batches} cursor={cursor:.3f} keys={ks} points={len(pts)}")
+        if not pts:
+            empty += 1
+            if empty >= 3:
+                break
+            cursor -= chunk
+            await asyncio.sleep(FETCH_BATCH_DELAY)
+            continue
+        empty = 0
+        points.extend(pts)
+        oldest = min(p[0] for p in pts)
+        cursor = (oldest - step) if oldest < cursor - step else (cursor - chunk)
+        if progress:
+            try:
+                progress(min(end_ts - cursor, seconds_back), seconds_back)
+            except Exception:
+                pass
+        await asyncio.sleep(0.05)
+    points = [p for p in points if p[0] >= target]
+    return _bucketize(points, 1 if period == 1 else period)
+
+async def _subsecond_history_browser(asset):
+    secs_back = int(SUBSECOND_HISTORY_CANDLES * SUBSECOND_SECONDS * 1.05)
+    one_s = await browser_style_history(asset.api_symbol, 1, secs_back)
+    if not one_s:
+        return []
+    tz = _get_tz_offset()
+    for c in one_s:
+        c['time'] += tz
+    agg = _aggregate_sub_minute(one_s, SUBSECOND_SECONDS)
+    logmsg(f"[subfetch:{asset.symbol}] browser-style: {len(one_s)} 1s -> {len(agg)} {SUBSECOND_LABEL}")
+    return agg[-SUBSECOND_HISTORY_CANDLES:]
+
 async def fetch_candles_once(asset: Asset, idx=1, total=1):
     api_name = asset.api_symbol
     display_name = asset.symbol
@@ -3032,7 +3156,20 @@ async def fetch_candles_once(asset: Asset, idx=1, total=1):
     # Sub-minute timeframes: fetch period=1 (1s candles) then aggregate locally
     is_sub_minute = PERIOD_SECONDS < 60
     fetch_period = 1 if is_sub_minute else PERIOD_SECONDS
-    if is_sub_minute:
+    # ===== v15: أسلوب المتصفح أولاً =====
+    if _use_browser_history():
+        try:
+            on_progress = _make_progress_printer(display_name, time.time(), idx, total)
+            _secs_back = int(INITIAL_CANDLES * PERIOD_SECONDS * 1.05) if is_sub_minute else FETCH_DURATION_SECONDS
+            candles = await asyncio.wait_for(
+                browser_style_history(api_name, fetch_period, _secs_back, progress=on_progress),
+                timeout=180,
+            ) or []
+        except Exception as e:
+            print()
+            logmsg(f"[fetch:{display_name}] browser-style history failed: {e} -> legacy fallback")
+            candles = []
+    if not candles and is_sub_minute:
         # Use get_candles (single request) — more reliable for period=1
         # Make staggered requests going backwards in time
         try:
@@ -3106,7 +3243,7 @@ async def fetch_candles_once(asset: Asset, idx=1, total=1):
         except Exception as e:
             print()
             logmsg(f"[fetch:{display_name}] get_candles(period=1) failed: {e}")
-    else:
+    elif not candles:
         # 60s+ timeframe — use parallel get_historical_candles
         if hasattr(CLIENT, 'get_historical_candles'):
             try:
@@ -3538,6 +3675,15 @@ async def fetch_subsecond_history(
     if CLIENT is None or not hasattr(CLIENT, 'get_candles'):
         logmsg(f"[subfetch:{asset.symbol}] CLIENT not ready")
         return []
+    # ===== v15: أسلوب المتصفح أولاً =====
+    if _use_browser_history():
+        try:
+            _res = await _subsecond_history_browser(asset)
+            if _res:
+                return _res
+        except Exception as _e:
+            logmsg(f"[subfetch:{asset.symbol}] browser-style failed: {_e}")
+        logmsg(f"[subfetch:{asset.symbol}] falling back to legacy method")
     api_name = asset.api_symbol
     display_name = asset.symbol
     # v8.4: resolve optional parameters -- fall back to globals if not provided
@@ -5053,6 +5199,18 @@ if __name__ == "__main__":
         globals()['SUBSECOND_LABEL'] = ""
         print(f"{Colors.GREEN}  Using timeframe: {_tf_short} - {_tf_full}{Colors.RESET}\n")
 
+    # ===== v15: اختيار طريقة جلب التاريخ =====
+    print()
+    print(f"{Colors.BOLD}  History method{Colors.RESET}")
+    print(f"  {Colors.CYAN} 1{Colors.RESET} - Browser-style (history/load backwards, like the web chart)")
+    print(f"  {Colors.CYAN} 2{Colors.RESET} - Legacy (original method)")
+    try:
+        _hm_choice = input(f"{Colors.CYAN}  Choose 1-2 (default=1): {Colors.RESET}").strip()
+    except EOFError:
+        _hm_choice = ""
+    globals()['HISTORY_METHOD'] = "legacy" if _hm_choice == "2" else "browser"
+    print(f"{Colors.GREEN}  History method: {HISTORY_METHOD}{Colors.RESET}\n")
+
     # ════════════════════════════════════════════════════════════════════
     # STAGE 3: Select History Size
     # للفريمات الفرعية (subsecond) نستخدم قيمة ثابتة ولا نسأل المستخدم
@@ -5060,6 +5218,9 @@ if __name__ == "__main__":
     # ════════════════════════════════════════════════════════════════════
     if PERIOD_SECONDS < 60:
         # الفريمات الفرعية (5S/10S/15S/30S): قيمة ثابتة بدون سؤال
+        if _use_browser_history():
+            SUBSECOND_HISTORY_CANDLES = SUBSECOND_HISTORY_SECONDS // PERIOD_SECONDS
+            globals()['SUBSECOND_HISTORY_CANDLES'] = SUBSECOND_HISTORY_CANDLES
         INITIAL_CANDLES = SUBSECOND_HISTORY_CANDLES
         HISTORY_DAYS = (INITIAL_CANDLES * PERIOD_SECONDS) / 86400.0 * 1.15
         FETCH_DURATION_SECONDS = int(86400 * HISTORY_DAYS)
@@ -5841,6 +6002,9 @@ if __name__ == "__main__":
                 globals()['PERIOD_SECONDS'] = new_period_seconds
                 globals()['HISTORY_DAYS'] = new_days
                 globals()['INITIAL_CANDLES'] = new_candles
+                if new_period_seconds < 60 and _use_browser_history():
+                    globals()['SUBSECOND_HISTORY_CANDLES'] = SUBSECOND_HISTORY_SECONDS // new_period_seconds
+                    globals()['INITIAL_CANDLES'] = globals()['SUBSECOND_HISTORY_CANDLES']
                 globals()['FETCH_DURATION_SECONDS'] = int(86400 * new_days) if new_days > 0 else 0
                 print(f"{Colors.GREEN}Reinitializing with {_current_period_label()}, {new_days:.2f} days = {new_candles} candles...{Colors.RESET}")
                 reinit_requested = True
