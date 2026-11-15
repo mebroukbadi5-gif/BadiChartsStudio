@@ -29,6 +29,21 @@
 #     live on every dark/light switch — on all charts and all add paths
 #   • Notifications card refined (owner report): the blue bell badge no longer touches the card
 #     edge — the whole popup content is inset with proper padding, header and list breathe
+#   • Free image composition from scripts (owner request): Indicators.compose() draws ANY picture on a
+#     private off-screen canvas (a draw callback with the full Canvas 2D API — text, shapes, colors,
+#     whatever the script wants — the chart library is not involved at all) and Indicators.composePy()
+#     hands a JSON command list to the desktop, which composes the picture with Python/Qt QPainter
+#     (fill/line/circle/text/polygon — a closed, safe command set, sharp Arabic/Unicode text) and
+#     sends it to Telegram as ONE message (text on the photo as its caption). Nothing is captured
+#     from the screen — the pixels are created by the script's own commands; nothing is written to
+#     disk. Guide section 12
+#   • Private virtual chart for scripts (owner request): Indicators.render() builds the script's OWN
+#     chart off-screen — the last N candles (e.g. 20) or the script's own data, its own size, candle
+#     width, colors, background and which indicators appear — captures it and sends it to Telegram
+#     as ONE message (text on the photo), while the user's chart is never touched: no size change,
+#     no zoom, no colors, nothing on screen. The virtual canvas is never attached to the page
+#     (invisible by design) and is destroyed right after the capture; pixels come only from that
+#     script-owned canvas — never the window, the editor, the desktop or the screen. Guide section 11
 #   • Chart screenshots from scripts (owner request): Indicators.shot() lets an indicator capture
 #     the chart itself and send it straight to Telegram — the script controls everything: the
 #     whole pane, one pane or any region inside it (x/y/w/h), the candle width (candleW), which
@@ -2938,8 +2953,8 @@ import urllib.parse
 from datetime import datetime, timedelta, timezone
 from math import ceil
 
-from PySide6.QtCore import QObject, Property, Signal, Slot, QTimer, QUrl, QFileSystemWatcher, QMimeData
-from PySide6.QtGui import QGuiApplication, QDesktopServices
+from PySide6.QtCore import QObject, Property, Signal, Slot, QTimer, QUrl, QFileSystemWatcher, QMimeData, Qt as _Qt, QRectF, QPointF, QLineF, QBuffer
+from PySide6.QtGui import QGuiApplication, QDesktopServices, QImage, QPainter, QColor, QFont, QPen, QBrush, QPolygonF
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtWebEngineQuick import QtWebEngineQuick
 
@@ -3930,6 +3945,124 @@ def _tg_send(token, chats, text, png=None):
     if ok_count == 0:
         raise RuntimeError(errs[0] if errs else "send failed")
     return ok_count, errs
+
+
+def _compose_png(spec):
+    """Compose an image in the PYTHON engine from a safe drawing-command spec (owner request) —
+    returns PNG bytes (or None on invalid input). The chart library is never involved: Qt/QPainter
+    creates the pixels from a closed, safe command set — clamped numbers and parsed colors only.
+    No files, no network, no screen access: the picture is exactly what the commands draw."""
+    if QGuiApplication.instance() is None:      # text rendering needs the font database — app must exist
+        return None
+    try:
+        w = max(160, min(2000, int(round(float(spec.get("width") or 800)))))
+        h = max(120, min(2000, int(round(float(spec.get("height") or 500)))))
+        if w * h > 4000000:
+            k = (4000000.0 / float(w * h)) ** 0.5
+            w = max(160, int(w * k)); h = max(120, int(h * k))
+        img = QImage(w, h, QImage.Format_ARGB32)
+        bg = QColor(str(spec.get("bg") or "#00000000"))
+        if not bg.isValid():
+            bg = QColor(0, 0, 0, 0)
+        img.fill(bg)
+        p = QPainter(img)
+        p.setRenderHint(QPainter.Antialiasing, True)
+        p.setRenderHint(QPainter.TextAntialiasing, True)
+        cmds = spec.get("commands")
+        if not isinstance(cmds, list):
+            cmds = []
+        if len(cmds) > 500:
+            cmds = cmds[:500]
+        def _num(c, key, dflt=0.0):
+            try:
+                v = float(c.get(key))
+                if v != v or v in (float("inf"), float("-inf")):
+                    return dflt
+                return v
+            except Exception:
+                return dflt
+        for c in cmds:
+            try:
+                if not isinstance(c, dict):
+                    continue
+                op = str(c.get("op") or "").lower()
+                col = QColor(str(c.get("color") or "#ffffff"))
+                if not col.isValid():
+                    col = QColor("#ffffff")
+                if op in ("fill", "rect"):
+                    border = str(c.get("border") or "")
+                    if border and QColor(border).isValid():
+                        p.setPen(QPen(QColor(border), max(1, min(60, _num(c, "borderW", 2)))))
+                    else:
+                        p.setPen(QPen(col, 1))
+                    p.setBrush(QBrush(col))
+                    x, y = _num(c, "x"), _num(c, "y")
+                    cw, ch = _num(c, "w", 10.0), _num(c, "h", 10.0)
+                    rr = _num(c, "r", 0.0)
+                    if rr > 0:
+                        p.drawRoundedRect(QRectF(x, y, cw, ch), min(rr, cw / 2.0), min(rr, ch / 2.0))
+                    else:
+                        p.drawRect(QRectF(x, y, cw, ch))
+                elif op == "line":
+                    p.setPen(QPen(col, max(1, min(60, _num(c, "width", 2)))))
+                    p.setBrush(QBrush())
+                    p.drawLine(QLineF(_num(c, "x1"), _num(c, "y1"), _num(c, "x2"), _num(c, "y2")))
+                elif op in ("circle", "ellipse"):
+                    bw = _num(c, "border", 0.0)
+                    if bw > 0:
+                        p.setPen(QPen(col, min(60, bw))); p.setBrush(QBrush())
+                    else:
+                        p.setPen(QPen(col, 1)); p.setBrush(QBrush(col))
+                    p.drawEllipse(QRectF(_num(c, "x"), _num(c, "y"), _num(c, "w", 10.0), _num(c, "h", 10.0)))
+                elif op == "text":
+                    t = str(c.get("text") or "")[:2000]
+                    f = QFont()
+                    f.setPixelSize(max(6, min(300, int(_num(c, "size", 28)))))
+                    f.setBold(bool(c.get("bold")))
+                    p.setFont(f)
+                    p.setPen(QPen(col))
+                    p.setBrush(QBrush())
+                    al = str(c.get("align") or "").lower()
+                    fl = _Qt.AlignVCenter
+                    if al == "center":
+                        fl |= _Qt.AlignHCenter
+                    elif al == "right":
+                        fl |= _Qt.AlignRight
+                    else:
+                        fl |= _Qt.AlignLeft
+                    if c.get("w") is not None or c.get("h") is not None:
+                        p.drawText(QRectF(_num(c, "x"), _num(c, "y"), _num(c, "w", float(w)), _num(c, "h", 40.0)), fl, t)
+                    else:
+                        p.drawText(QPointF(_num(c, "x"), _num(c, "y")), t)
+                elif op in ("poly", "polygon"):
+                    pts = []
+                    for pt in (c.get("points") or [])[:200]:
+                        try:
+                            pts.append(QPointF(float(pt[0]), float(pt[1])))
+                        except Exception:
+                            pass
+                    if len(pts) >= 2:
+                        bw = _num(c, "border", 0.0)
+                        if bw > 0:
+                            p.setPen(QPen(col, min(60, bw))); p.setBrush(QBrush())
+                        else:
+                            p.setPen(QPen(col, 1)); p.setBrush(QBrush(col))
+                        poly = QPolygonF(pts)
+                        if c.get("close") is False:
+                            p.drawPolyline(poly)
+                        else:
+                            p.drawPolygon(poly)
+            except Exception:
+                continue
+        p.end()
+        buf = QBuffer()
+        buf.open(QBuffer.ReadWrite)
+        img.save(buf, "PNG")
+        png = bytes(buf.data())
+        buf.close()
+        return png if len(png) > 8 else None
+    except Exception:
+        return None
 # ---------------------------------------------------------------- Back end
 # ═══════════════════════════════════════════════════════════════════════════
 #  BADI — BADI SECURE INDICATOR FORMAT (encrypted indicators)
@@ -4928,6 +5061,120 @@ GUIDE_JS = """/* ═════════════════════
        with a giant capture.
    Python-engine indicators (.py) send every signal as ONE message too: the signal text
    is merged into the chart screenshot as its caption, automatically.
+
+   ── 11) Your own private chart — Indicators.render() (new) ──
+   A script can build its OWN chart — completely off-screen — capture it and send it, and
+   the user's chart is NEVER touched: no size change, no zoom change, no color change,
+   nothing appears on screen. The user never sees the private chart, not even for one
+   frame: it lives on a canvas that is never attached to the page and it is destroyed the
+   moment the capture is done.
+
+     Indicators.render({ candles: 20, send: true,
+                         caption: 'Last 20 candles', chats: '@mychannel' });
+       → a picture of a chart showing ONLY the last 20 candles of the live pane — while the
+         real chart keeps its own candles, its own size and its own zoom, pixel for pixel.
+
+   Full control — every option is optional; by default the private chart copies the user's
+   current chart look (theme colors) and the pane's symbol + timeframe:
+     candles: 20           → the LAST 20 candles of the pane (default: all of them)
+     data: [...]           → your own candles [{time, open, high, low, close, volume}]
+     width / height        → the picture size in px (default 1280x720, max 2000)
+     scale: 2              → sharper bitmap (1..3, default 2)
+     symbol / tf           → legend label + timeframe ('5m', '1H', ... — default: the pane's)
+     candleW: 14           → candle width in px (1..120); fit: true fits ALL candles instead
+     bull / bear / bg      → quick colors: bullish candles, bearish candles, background
+     colors: { bull, bear, bullVol, bearVol, bg, grid, axisText, crosshair }
+                           → full color control of the private chart (any hex/rgba)
+     show: ['RSI']         → only the named indicators are copied onto the private chart
+     hide: ['EMA Cross']   → all indicators EXCEPT the named ones
+     volume: false         → hide the volume bars (default: drawn)
+     decimals: 2           → price-axis decimals for your own data
+     format / quality      → 'png' (default) or 'jpeg' + quality 0.5..1
+     send / caption / chats→ ONE Telegram message: the text rides ON the photo as its
+                             caption (up to 1024 characters) — nothing is saved to disk.
+
+   Examples:
+     Indicators.render({ candles: 20, candleW: 18, bull: '#22E08A', bear: '#FF4D5E',
+                         bg: '#0b0e14', send: true,
+                         caption: 'BTC/USD — last 20 candles', chats: '@mychannel' });
+     Indicators.render({ candles: 60, width: 900, height: 500, show: ['RSI'],
+                         format: 'jpeg', quality: 0.9, send: true, caption: 'RSI view' });
+
+   SECURITY — the same hard rules as Indicators.shot(), by design:
+     • The pixels come ONLY from the script's own off-screen canvas. There is no way to
+       point this API at the app window, the editor, the desktop or the screen — those are
+       not canvases and no screen-capture API exists for scripts. The user's chart is read
+       only as DATA (the candle numbers), never as pixels: its drawing, size and zoom are
+       untouched.
+     • The private chart is never attached to the page — invisible by design, not a hidden
+       overlay on top of the user's chart.
+     • The picture goes ONLY to the Telegram chats named in the call (or the bot settings
+       chat). Nothing is written to disk, and the private chart is destroyed right after.
+     • Output is capped (~4 megapixels, scale max 3, size max 2000x2000) so a script cannot
+       freeze the app with a giant capture.
+
+   ── 12) Compose ANY image yourself — Indicators.compose() + Indicators.composePy() (new) ──
+   A script is not limited to chart screenshots: it can CREATE a picture from nothing — draw
+   whatever it wants in it (text, shapes, colors, its own mini-graphics) and send it to Telegram
+   as ONE message (the caption rides ON the photo). Nothing is captured from the screen — the
+   pixels are created by the script's own commands, and the chart library is not involved at all.
+
+   Path 1 — draw inside the page (JavaScript): Indicators.compose()
+     Indicators.compose({
+       width: 800, height: 500,        ← the picture size (default 800x500, max 2000x2000)
+       bg: '#0b0e14',                  ← optional initial background fill
+       draw: function (ctx, w, h) {    ← YOUR drawing: the full Canvas 2D API is yours
+         ctx.fillStyle = '#22E08A';
+         ctx.fillRect(20, 20, 260, 90);
+         ctx.fillStyle = '#ffffff';
+         ctx.font = 'bold 34px sans-serif';
+         ctx.fillText('BUY EUR/USD', 40, 75);
+       },
+       format: 'png', quality: 0.95,
+       send: true,                     ← ONE Telegram message
+       caption: 'My own composed picture', chats: '@mychannel'
+     });
+     → also returns the dataURL, so you can keep a copy in your own logic.
+
+   Path 2 — compose inside the PYTHON engine: Indicators.composePy()
+     The script hands a small JSON command list to the desktop (up to ~12000 characters); Python
+     composes the picture with Qt/QPainter — the desktop's own drawing library, app-grade text
+     rendering with sharp Arabic/Unicode at any size — and sends it to Telegram itself. The
+     command set is closed and safe: files, network and the screen are unreachable from it.
+
+       Indicators.composePy({
+         width: 800, height: 500, bg: '#0b0e14',
+         commands: [
+           { op: 'fill',   color: '#22E08A', x: 20, y: 20, w: 260, h: 90, r: 12 },
+           { op: 'line',   color: '#ffffff', width: 3, x1: 20, y1: 130, x2: 780, y2: 130 },
+           { op: 'circle', color: '#FF4D5E', x: 340, y: 20, w: 80, h: 80, border: 3 },
+           { op: 'text',   text: 'BUY EUR/USD', x: 20, y: 20, w: 260, h: 90, size: 34,
+                             color: '#ffffff', bold: true, align: 'center' },
+           { op: 'text',   text: 'Hello from BadiCharts', x: 400, y: 120, size: 26, color: '#facc15' },
+           { op: 'poly',   color: '#38bdf8', points: [[400,300],[470,340],[400,380],[330,340]] }
+         ],
+         caption: 'Composed in the Python engine', chats: '@mychannel'
+       });
+     → returns true when queued (the desktop draws + sends; fire-and-forget).
+
+   Command reference (both paths keep everything clamped and validated):
+     fill / rect : color, x, y, w, h, r (corner radius), border (outline color) + borderW
+     line        : color, width, x1, y1, x2, y2
+     circle      : color, x, y, w, h, border (outline width instead of a fill)
+     text        : text (max 2000 chars), x, y, size, color, bold, align ('left|center|right'),
+                   w + h (draw the text inside a box, aligned) — Arabic renders correctly
+     poly        : color, points [[x,y], ...], border, close (false = polyline, default = filled)
+
+   SECURITY — the same design rules as shot()/render():
+     • Nothing is captured: the picture is built ONLY from the script's own drawing on a private
+       off-screen canvas (path 1) or from the closed command set in Python (path 2). There is no
+       screen-capture API for scripts at all — the screen is unreachable, by design.
+     • The Python command set is closed: clamped numbers and parsed colors only — no files, no
+       network, no app windows. A script can draw pixels, nothing else.
+     • The image goes ONLY to the Telegram chats named in the call (or the bot settings chat).
+     • NOTHING is saved to disk — the picture is composed, sent, done.
+     • Caps (2000x2000, ~4 megapixels, 500 commands, 2000-char text, ~12000-char command list)
+       so a script cannot freeze the app.
    ═══════════════════════════════════════════════════════════════════════════ */
 
 return {
@@ -6154,6 +6401,42 @@ class Backend(QObject):
             self._log("ok", f"Screenshot → Telegram {n} chat(s)" + ("; " + "; ".join(errs) if errs else ""))
         except Exception as e:
             self._log("err", f"screenshot: {str(e)[:120]}")
+
+    @Slot(str, result=str)
+    def composeImage(self, arg):
+        """A script asked the PYTHON engine to compose an image from its drawing commands
+        (owner request) and send it as ONE Telegram message — the caption rides ON the photo.
+        The chart library is never involved: _compose_png renders the closed, safe command set
+        with Qt/QPainter (no files, no network, no screen access — the pixels are exactly what
+        the commands draw) and the picture goes ONLY to the script chats (fallback: the bot
+        settings chat). Nothing is written to disk."""
+        try:
+            spec = json.loads(arg)
+            if not isinstance(spec, dict):
+                return json.dumps({"ok": False, "error": "bad spec"})
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)[:80]})
+        try:
+            png = _compose_png(spec)
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)[:80]})
+        if not png:
+            return json.dumps({"ok": False, "error": "render failed"})
+        caption = str(spec.get("caption") or "").strip() or "Chart screenshot"
+        cfg = _read_json(CFG_FILE, {})
+        chats = str(spec.get("chats") or "").strip() or cfg.get("chats", "")
+        token = cfg.get("token", "")
+        if not token or not chats:
+            return json.dumps({"ok": False, "error": "telegram not configured" if not token else
+                               "no chat id — set chats in Indicators.composePy({chats: '...'})"})
+        def run():
+            try:
+                n, errs = _tg_send(token, chats, caption, png)
+                self._log("ok", f"Composed image → Telegram {n} chat(s)" + ("; " + "; ".join(errs) if errs else ""))
+            except Exception as e:
+                self._log("err", f"composePy send: {str(e)[:120]}")
+        threading.Thread(target=run, daemon=True).start()
+        return json.dumps({"ok": True})
 
     @Slot()
     def requestShot(self):
@@ -7400,6 +7683,175 @@ function augmentIndicators() {
         return true;
       } catch (e) { return false; }
     };
+    /* ═══ Private virtual chart — Indicators.render(opts) (owner request) ═══
+       The script builds its OWN chart off-screen and captures it — and the user's chart is
+       never touched: no size change, no zoom change, no color change, nothing appears on
+       screen. The private chart lives on a canvas the script owns that is NEVER attached to
+       the page (the user cannot see it, not even for one frame) and it is destroyed the
+       moment the capture is done. What the script controls:
+         candles: 20         → the LAST 20 candles of the live pane (default: all of them)
+         data: [...]         → the script's own candles [{time,open,high,low,close,volume}]
+         width / height      → the picture size in px (default 1280x720, max 2000)
+         scale: 2            → sharper bitmap 1..3 (default 2)
+         symbol / tf         → the legend label + timeframe ('5m','1H',... default: the pane's)
+         candleW: 14         → candle width in px (1..120); fit:true fits ALL candles instead
+         bull / bear / bg    → quick colors: bullish, bearish, background
+         colors: { bull, bear, bullVol, bearVol, bg, grid, axisText, crosshair }
+                             → full color control of the private chart (any hex/rgba)
+         show: ['RSI']       → copy ONLY the named indicators onto the private chart
+         hide: ['EMA Cross'] → copy all indicators EXCEPT the named ones
+         volume: false       → hide the volume bars (default: drawn)
+         decimals: 2         → price-axis decimals for custom data
+         format / quality    → 'png' (default) or 'jpeg' + jpeg quality 0.5..1
+         send / caption / chats → the same ONE-message Telegram delivery as shot()
+       returns the dataURL ('' on failure). */
+    window.Indicators.render = function (opts) {
+      try {
+        opts = opts || {};
+        /* source data: the script's own candles, or the real candles of a chart pane */
+        var pn = (typeof opts.pane === "number") ? panes[Math.max(0, Math.min(panes.length - 1, opts.pane))] : (aPane() || panes[0]);
+        var srcCh = (pn && pn.chart) || null;
+        var data = (Array.isArray(opts.data) && opts.data.length) ? opts.data :
+                   ((srcCh && srcCh.sim && srcCh.sim.candles) || null);
+        if (!data || !data.length) return "";
+        var cnt = Math.max(1, Math.min(3000, Number(opts.candles) || data.length));
+        var noVol = opts.volume === false;
+        var slice = data.slice(Math.max(0, data.length - cnt)).map(function (c) {
+          var o = { time: c.time, open: c.open, high: c.high, low: c.low, close: c.close };
+          if (!noVol && c.volume != null) o.volume = c.volume;
+          return o;
+        });
+        /* the private canvas: script-owned, never in the page, invisible by design */
+        var w = Math.max(160, Math.min(2000, Math.round(Number(opts.width) || 1280)));
+        var h = Math.max(120, Math.min(2000, Math.round(Number(opts.height) || 720)));
+        var scale = Math.max(1, Math.min(3, Number(opts.scale) || 2));
+        var kk = (w * h * scale * scale > 4000000) ? Math.sqrt(4000000 / (w * h * scale * scale)) : 1;
+        scale = Math.max(1, Math.floor(scale * kk * 100) / 100);
+        var cv = document.createElement("canvas");
+        cv.width = w; cv.height = h;      /* logical size first — the chart reads it as W/H */
+        /* per-instance theme: the user's chart theme as base, the script overrides what it wants */
+        var th = Object.assign({}, window.__BADI_CHART_THEME__ || { drawing: "#38bdf8", drawingActive: "#7dd3fc" });
+        var COLS = { bg: 1, bull: 1, bear: 1, bullVol: 1, bearVol: 1, grid: 1, axisText: 1, crosshair: 1 };
+        var one = (opts.colors && typeof opts.colors === "object") ? opts.colors : {};
+        Object.keys(COLS).forEach(function (k2) {
+          if (typeof one[k2] === "string" && one[k2].trim()) th[k2] = one[k2].trim();
+          else if (typeof opts[k2] === "string" && opts[k2].trim()) th[k2] = opts[k2].trim();
+        });
+        var tfL = String(opts.tf || (pn && pn.tf) || "1m");
+        var vc = new window.BadiCharts(cv, {
+          symbol: { label: String(opts.symbol || (pn && pn.asset) || "SYMBOL"), priceScale: 100,
+                    decimals: Number(opts.decimals) || ((srcCh && srcCh.symbol && srcCh.symbol.decimals) || 2) },
+          timeframe: (typeof tfMs === "function") ? { label: tfL, ms: tfMs(tfL) } : { label: tfL, ms: 60000 },
+          theme: th
+        });
+        /* the canvas is detached so the library's own resize() skips it — size + layout by hand */
+        if (scale > 1) {
+          cv.width = Math.round(w * scale); cv.height = Math.round(h * scale);
+          vc.ctx.setTransform(scale, 0, 0, scale, 0, 0);
+          try { vc.dpr = scale; } catch (e) {}
+        }
+        try { vc.updateLayout(); vc.invalidateTimeMarks(); vc.autoScale(); vc.invalidate(); } catch (e) {}
+        /* copy the pane's indicators onto the private chart (copies — the real chart is untouched) */
+        var want = function (list) { return (list || []).map(function (s) { return String(s || "").toLowerCase().replace(/\.(badi|js)$/i, "").trim(); }).filter(function (s) { return s; }); };
+        var hideW = want(opts.hide), onlyW = (opts.show && opts.show.length) ? want(opts.show) : null;
+        if (srcCh && srcCh.indicatorStates && srcCh._customIndicators) {
+          srcCh.indicatorStates.forEach(function (st, id) {
+            var def = srcCh._customIndicators.get(id);
+            if (!def) return;
+            var pool = [String((def && def.label) || "")];
+            try { var fl = files.find(function (xx) { return xx.id === id; }); if (fl && fl.fileName) pool.push(String(fl.fileName)); } catch (e) {}
+            try { if (HID_IND[id] && HID_IND[id].fileName) pool.push(String(HID_IND[id].fileName)); } catch (e) {}
+            pool = pool.map(function (s) { return String(s).toLowerCase().replace(/\.(badi|js)$/i, "").trim(); });
+            var inL = function (list) { for (var i = 0; i < list.length; i++) if (pool.indexOf(list[i]) >= 0) return true; return false; };
+            try {
+              if (onlyW) { if (inL(onlyW)) vc.addIndicator(def, {}); }
+              else if (!inL(hideW)) vc.addIndicator(def, {});
+            } catch (e) {}
+          });
+        }
+        /* data + viewport: fit everything, or a fixed candle width, then ONE manual render */
+        vc.setData(slice);
+        if (opts.fit) { try { vc.fit(); } catch (e) {} }
+        else if (Number(opts.candleW) > 0) { try { vc.barSpacing = Math.max(1, Math.min(120, Number(opts.candleW))); vc.invalidate(); } catch (e) {} }
+        vc.render(performance.now());
+        var fmt = (String(opts.format || "png").toLowerCase() === "jpeg") ? "image/jpeg" : "image/png";
+        var url = "";
+        try { url = cv.toDataURL(fmt, Math.max(0.5, Math.min(1, Number(opts.quality) || 0.95))); } catch (e) {}
+        vc.destroy();                 /* listeners + caches go — nothing of the private chart survives */
+        if (!url) return "";
+        if (opts.send) {
+          window.__BADI_SCRIPT_SHOTS__ = window.__BADI_SCRIPT_SHOTS__ || {};
+          var id = "vr" + Date.now().toString(36) + Math.floor(Math.random() * 10000).toString(36);
+          window.__BADI_SCRIPT_SHOTS__[id] = url;
+          try { console.log("BADI::scriptshot " + JSON.stringify({ id: id, caption: String(opts.caption || "Chart screenshot"), chats: String(opts.chats || "") })); } catch (e) {}
+        }
+        return url;
+      } catch (e) { return ""; }
+    };
+    /* ═══ Free image composition in the page — Indicators.compose(opts) (owner request) ═══
+       The script draws ANY picture it wants on its own private off-screen canvas and can send it
+       to Telegram — the chart library is not involved at all and nothing on the screen is touched
+       or captured: the pixels are created by the script's own drawing commands.
+         width / height     → the picture size in px (default 800x500, max 2000x2000)
+         bg                 → an initial background fill color (optional)
+         draw               → YOUR function: function (ctx, w, h) { ...any Canvas 2D drawing... }
+                              text, rectangles, circles, lines, gradients, anything — the full
+                              Canvas 2D API is yours
+         format / quality   → 'png' (default) or 'jpeg' + jpeg quality 0.5..1
+         send / caption / chats → ONE Telegram message: the caption rides ON the photo
+       returns the dataURL ('' on failure). */
+    window.Indicators.compose = function (opts) {
+      try {
+        opts = opts || {};
+        var w = Math.max(160, Math.min(2000, Math.round(Number(opts.width) || 800)));
+        var h = Math.max(120, Math.min(2000, Math.round(Number(opts.height) || 500)));
+        var cv = document.createElement("canvas");
+        cv.width = w; cv.height = h;      /* private canvas — never attached to the page */
+        var ctx = cv.getContext("2d");
+        if (!ctx) return "";
+        if (typeof opts.bg === "string" && opts.bg.trim()) { ctx.fillStyle = opts.bg.trim(); ctx.fillRect(0, 0, w, h); }
+        if (typeof opts.draw === "function") opts.draw(ctx, w, h);
+        var fmt = (String(opts.format || "png").toLowerCase() === "jpeg") ? "image/jpeg" : "image/png";
+        var url = "";
+        try { url = cv.toDataURL(fmt, Math.max(0.5, Math.min(1, Number(opts.quality) || 0.95))); } catch (e) {}
+        cv = null;
+        if (!url) return "";
+        if (opts.send) {
+          window.__BADI_SCRIPT_SHOTS__ = window.__BADI_SCRIPT_SHOTS__ || {};
+          var id = "cp" + Date.now().toString(36) + Math.floor(Math.random() * 10000).toString(36);
+          window.__BADI_SCRIPT_SHOTS__[id] = url;
+          try { console.log("BADI::scriptshot " + JSON.stringify({ id: id, caption: String(opts.caption || "Chart screenshot"), chats: String(opts.chats || "") })); } catch (e) {}
+        }
+        return url;
+      } catch (e) { return ""; }
+    };
+    /* ═══ Image composition in the PYTHON engine — Indicators.composePy(opts) (owner request) ═══
+       The same freedom through the OTHER path: the script hands a small JSON command list to the
+       desktop and PYTHON composes the picture with Qt/QPainter (the desktop's own drawing library
+       — the chart library is untouched) and posts it to Telegram itself. App-grade text rendering:
+       sharp Arabic/Unicode text at any size. Closed, safe command set — files, network and the
+       screen are unreachable:
+         {op:'fill',   color, x, y, w, h, r?, border?, borderW?}   ← rectangle (r = corner radius)
+         {op:'line',   color, width?, x1, y1, x2, y2}
+         {op:'circle', color, x, y, w, h, border?}                 ← ellipse (border = outline width)
+         {op:'text',   text, x, y, size?, color?, bold?, align?('left|center|right'), w?, h?}
+         {op:'poly',   color, points:[[x,y],...], border?, close?}  ← polygon (close:false = polyline)
+       opts: { width, height, bg, commands: [...], caption, chats }
+       returns true when the request was queued — the desktop draws and sends (fire-and-forget). */
+    window.Indicators.composePy = function (opts) {
+      try {
+        opts = opts || {};
+        var cmds = Array.isArray(opts.commands) ? opts.commands : [];
+        if (!cmds.length) return false;
+        var spec = { width: Number(opts.width) || 800, height: Number(opts.height) || 500,
+                     bg: String(opts.bg || ""), caption: String(opts.caption || "Chart screenshot"),
+                     chats: String(opts.chats || ""), commands: cmds };
+        var js = JSON.stringify(spec);
+        if (js.length > 12000) return false;      /* keep the console-bridge payload small */
+        try { console.log("BADI::composepy " + js); } catch (e) { return false; }
+        return true;
+      } catch (e) { return false; }
+    };
   } catch (e) {}
 }
 
@@ -8359,6 +8811,7 @@ ApplicationWindow {
             })
             return
         }
+        if (cmd === "composepy") { backend.composeImage(arg); return }
         if (cmd === "asset") { backend.switch(arg, backend.tfLabel); return }
         if (cmd === "tf") { backend.switch(backend.assetLabel, arg); return }
         if (cmd === "live") { backend.setLive(arg === "1"); return }
