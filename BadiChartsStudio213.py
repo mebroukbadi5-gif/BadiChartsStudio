@@ -73,6 +73,21 @@ ssl_context.load_verify_locations(cert_path)
 
 
 # ==============================================================================
+# SECTION 1.6: STARTUP WELCOME (بدون ترخيص — نظام الترخيص أُزيل بالكامل)
+# v18: استُرجعت كما كانت في v16 — v17 حذفها واستبدل مرحلة الترحيب بقائمة
+#      أزواج ثابتة قبل الدخول، وأُزيلت بناءً على طلب المستخدم.
+#      قائمة العملات تُجلب من المنصة بعد الدخول وليس من قائمة مدسّسة.
+def qx_print_welcome():
+    """شعار ترحيبي بسيط — لا تحقق ترخيص ولا اتصال خارجي."""
+    print()
+    print(f"\033[96m{'═' * 62}\033[0m")
+    print(f"\033[97m\033[1m  QX Console — Quotex Candles & Assets\033[0m\033[0m")
+    print(f"\033[2m  v18 · assets list fetched live from platform after login · SQLite · every-tick · stable-after-fill\033[0m")
+    print(f"\033[96m{'═' * 62}\033[0m")
+    print()
+
+
+# ==============================================================================
 # SECTION 1.5: EVENT-DRIVEN WAIT PRIMITIVES (replaces asyncio.sleep polling)
 # ==============================================================================
 # pyquotex._api._waits — " " .
@@ -4783,70 +4798,13 @@ async def mt4_gap_filler():
 
 if __name__ == "__main__":
     # ════════════════════════════════════════════════════════════════════
-    # STAGE 1: Select Pairs — choose specific pairs or all pairs
-    # ════════════════════════════════════════════════════════════════════
-    _ALL_PAIRS = list(ASSET_LIST)  # full default list
-    _PAIR_COLS = 3
-    print()
-    print(f"{Colors.BOLD}  Select Pairs to Stream{Colors.RESET}")
-    print(f"  {Colors.DIM}{'═' * 68}{Colors.RESET}")
-    _col_w = 22
-    for _pi in range(0, len(_ALL_PAIRS), _PAIR_COLS):
-        _row_parts = []
-        for _pj in range(_PAIR_COLS):
-            _pidx = _pi + _pj
-            if _pidx < len(_ALL_PAIRS):
-                _sym = _ALL_PAIRS[_pidx]
-                _label = _sym.replace("_otc", "(OTC)").upper()
-                _row_parts.append(f"{Colors.CYAN}{_pidx+1:>3}{Colors.RESET}. {_label:<{_col_w}}")
-        print("  " + "  ".join(_row_parts))
-    print(f"  {Colors.DIM}{'═' * 68}{Colors.RESET}")
-    print(f"  {Colors.DIM}Options:{Colors.RESET}")
-    print(f"  {Colors.CYAN}[Enter]{Colors.RESET}         -> Stream ALL {len(_ALL_PAIRS)} pairs")
-    print(f"  {Colors.CYAN}1,5,12{Colors.RESET}          -> Stream by number (comma-separated)")
-    print(f"  {Colors.CYAN}EURUSD,GBPUSD{Colors.RESET}   -> Stream by name (partial match OK)")
-    print(f"  {Colors.DIM}{'═' * 68}{Colors.RESET}")
-    while True:
-        try:
-            _pair_input = input(f"{Colors.CYAN}  Your choice: {Colors.RESET}").strip()
-        except (KeyboardInterrupt, EOFError):
-            _pair_input = ""
-        if not _pair_input:
-            ASSET_LIST = list(_ALL_PAIRS)
-            print(f"{Colors.GREEN}  -> Streaming ALL {len(ASSET_LIST)} pairs{Colors.RESET}\n")
-            break
-        _selected = []
-        _tokens = [t.strip() for t in _pair_input.replace(';', ',').split(',') if t.strip()]
-        _numeric_mode = all(t.isdigit() for t in _tokens)
-        if _numeric_mode:
-            for _t in _tokens:
-                _idx = int(_t) - 1
-                if 0 <= _idx < len(_ALL_PAIRS):
-                    if _ALL_PAIRS[_idx] not in _selected:
-                        _selected.append(_ALL_PAIRS[_idx])
-                else:
-                    print(f"{Colors.RED}  Invalid number: {_t} (valid: 1-{len(_ALL_PAIRS)}){Colors.RESET}")
-        else:
-            for _token in _tokens:
-                _token_search = _token.upper().replace("-OTC","").replace("_OTC","")
-                _matches = [p for p in _ALL_PAIRS if
-                            _token_search in p.upper() or
-                            p.lower().startswith(_token.lower())]
-                if _matches:
-                    for _m in _matches:
-                        if _m not in _selected:
-                            _selected.append(_m)
-                else:
-                    print(f"{Colors.RED}  No pair found matching: {_token}{Colors.RESET}")
-        if _selected:
-            ASSET_LIST = _selected
-            print(f"{Colors.GREEN}  -> Selected {len(ASSET_LIST)} pair(s):{Colors.RESET}")
-            for _s in ASSET_LIST:
-                print(f"    {Colors.CYAN}.{Colors.RESET} {_s.replace('_otc','').upper()} (OTC)")
-            print()
-            break
-        else:
-            print(f"{Colors.RED}  No valid pairs selected. Try again.{Colors.RESET}")
+    # STAGE 1: STARTUP — ترحيب مباشر (نظام الترخيص أُزيل بالكامل بناءً على الطلب)
+    # v18: أُزيلت قائمة "Select Pairs" الثابتة (41 زوجاً مدسّسة في الكود)
+    #      التي كانت تُطبع قبل الدخول. القائمة الرسمية تُجلب حصرياً من المنصة
+    #      بعد نجاح الاتصال (42["instruments/get"] → instruments/list)
+    #      عبر print_full_asset_list_once() وتحفظ في qx_assets_payouts.json.
+    qx_print_welcome()
+    # ══════════════════════════════════════════════════════════════════
 
     # ════════════════════════════════════════════════════════════════════
     # STAGE 2: Select Timeframe — 3 أعمدة × 5 صفوف (بدون خطوط زرقاء كثيرة)
