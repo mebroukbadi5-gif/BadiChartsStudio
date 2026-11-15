@@ -82,7 +82,7 @@ def qx_print_welcome():
     print()
     print(f"\033[96m{'═' * 62}\033[0m")
     print(f"\033[97m\033[1m  QX Console — Quotex Candles & Assets\033[0m\033[0m")
-    print(f"\033[2m  v20 · assets list fetched live from platform after login · fragmented-frame safe · SQLite · every-tick\033[0m")
+    print(f"\033[2m  v21 · assets list fetched live from platform after login · 51-placeholder aware · SQLite · every-tick\033[0m")
     print(f"\033[96m{'═' * 62}\033[0m")
     print()
 
@@ -558,6 +558,16 @@ class WebsocketClient:
                     self._frag_buffer = ""   # تجاوز الحدود — نبدأ من جديد
             msg_str = _candidate
 
+            # ===== v21: التقاط placeholder الردود الضخمة (طريقة pyquotex الرسمية) =====
+            # الخادم يعلن أولاً: 51-["instruments/list",{"_placeholder":true,"num":0}]
+            # ثم يرسل الحمولة الفعلية في إطار منفصل بلا تسمية. نحفظ الإعلان في
+            # _temp_status وننتظر الحمولة في فرع الاستقبال أدناه (api.py في pyquotex).
+            if (msg_str and msg_str[0].isdigit() and "51-" in msg_str
+                    and "_placeholder" in msg_str):
+                self.api._temp_status = msg_str
+                self.state.ssl_Mutual_exclusion = False
+                return
+
             if "authorization/reject" in msg_str:
                 logger.warning("Token rejected.")
                 self.state.check_rejected_connection = True
@@ -597,6 +607,44 @@ class WebsocketClient:
                             logger.info(f"Instruments list received: {len(_data)} assets")
                 except Exception as _e:
                     logger.debug(f"instruments/list parse error: {_e}")
+
+            # ===== v21: استقبال الحمولة الحقيقية بعد 51-placeholder (pyquotex الرسمية) =====
+            # الإطار التالي غير المسبوق (يبدأ بـ [ أو {) هو حمولة الأصول الفعلية:
+            # إما قائمة صفوف خام [[...],[...]] أو {"list":[...]}. نحللها من أول
+            # قوس، نخزنها في api.instruments، نوقظ instruments_ready، ونمسح الإعلان.
+            if (getattr(self.api, "_temp_status", "") and "instruments/list" in self.api._temp_status
+                    and msg_str and not msg_str[0].isdigit()):
+                try:
+                    _si = -1
+                    for _ci, _ch in enumerate(msg_str):
+                        if _ch in ("[", "{"):
+                            _si = _ci
+                            break
+                    if _si != -1:
+                        _pdata = json.loads(msg_str[_si:])
+                        if isinstance(_pdata, list) and len(_pdata) == 1:
+                            _pdata = _pdata[0]
+                        _idata = _pdata
+                        if isinstance(_idata, dict) and "list" in _idata:
+                            _idata = _idata["list"]
+                        # فحص الشكل: صفوف أصول = قوائم ≥6 حقول — حماية من الاستهلاك الخاطئ
+                        _rows_ok = (
+                            isinstance(_idata, list) and _idata
+                            and isinstance(_idata[0], (list, tuple))
+                            and len(_idata[0]) >= 6
+                        )
+                        if _rows_ok:
+                            self.api.instruments = _idata
+                            _loop = getattr(self.api, "_async_loop", None)
+                            if _loop is not None and _loop.is_running():
+                                asyncio.run_coroutine_threadsafe(
+                                    self.api.event_registry.set_event("instruments_ready", _idata),
+                                    _loop,
+                                )
+                            self.api._temp_status = ""   # استُهلك الإعلان
+                            logger.info(f"Instruments list received from placeholder payload: {len(_idata)} assets")
+                except Exception as _e:
+                    logger.debug(f"instruments payload parse error: {_e}")
 
             message = None
             if len(msg_str) > 1 and msg_str[1] in ('[', '{'):
