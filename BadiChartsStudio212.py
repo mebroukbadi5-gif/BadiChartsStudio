@@ -551,13 +551,13 @@ svg{vertical-align:middle;flex-shrink:0}
 <body>
 <div id="app">
 
-  <!-- ═══ Top bar — timeframes · library · screenshot ‖ telegram · editor · folder · logout
+  <!-- ═══ Top bar — timeframes · library ‖ telegram · editor · folder · logout
        The dark/light toggle lives only in the desktop app top bar (user request)
-       and live candles always run directly — no play/pause button for the feed ═══ -->
+       and live candles always run directly — no play/pause button for the feed.
+       The screenshot icon is removed (user request) ═══ -->
   <header class="topbar">
     <div class="tfs" id="tfGroup"></div>
           <button id="tfArrow" class="tf-arrow" title="Hide/show the timeframes"></button>
-    <button id="shotBtn" class="ibtn" title="Screenshot the chart" aria-label="Take a chart screenshot"></button>
     <!-- Chart colors button (user request): opens the chart colors panel -->
     <button id="colorsBtn" class="ibtn" title="Chart colors" aria-label="Chart colors"></button>
     <span class="grow"></span>
@@ -1510,10 +1510,29 @@ function applyChartColors() {
     var base = (window.__badiThemeKit && window.__badiThemeKit.chartTheme(window.__BADI_APP_THEME__)) ||
                window.__BADI_CHART_THEME__ || {};
     var merged = Object.assign({}, base, user);
+    /* CRITICAL (user report: the new settings did not change the candle colors):
+       the merged map must REPLACE __BADI_CHART_THEME__ itself — a new pane is born
+       from that map, so without this the fresh pane silently lost every user color. */
+    window.__BADI_CHART_THEME__ = merged;
     panes.forEach(function (p) {
-      try { if (p.chart && typeof p.chart.setTheme === "function") p.chart.setTheme(merged); } catch (e) {}
+      try {
+        if (p.chart && typeof p.chart.setTheme === "function") p.chart.setTheme(merged);
+        if (p.chart && typeof p.chart.invalidate === "function") p.chart.invalidate();
+      } catch (e) {}
     });
     try { if (window.__badiRefitIndicatorLabels) window.__badiRefitIndicatorLabels(); } catch (e) {}
+    /* Re-apply ladder: defeats any render throttle / mid-frame race so the candles
+       are seen in the new color on the very next frames, no matter what. */
+    ["__badiCcT1", "__badiCcT2"].forEach(function (tk, i) {
+      try { clearTimeout(window[tk]); } catch (e) {}
+      window[tk] = setTimeout(function () {
+        try {
+          panes.forEach(function (p) {
+            try { if (p.chart && typeof p.chart.setTheme === "function") p.chart.setTheme(merged); } catch (e) {}
+          });
+        } catch (e) {}
+      }, i === 0 ? 120 : 400);
+    });
   } catch (e) {}
   applyIndicatorColors();
 }
@@ -2444,14 +2463,34 @@ function setupChart(ch, p) {
       const self = this;
       let done = false;
       const startVal = f.value;
+      /* Live apply (user request): the CHART candles change color the moment the
+         picker value moves — not only after Save. Chart-wide fields go through the
+         same chartColors + applyChartColors() pipeline the app settings panel uses;
+         the indicator color goes through setIndicatorColor(). Escape undoes. */
+      const liveApply = function (val) {
+        try {
+          if (f.__badiCk && typeof val === "string" && /^#[0-9a-fA-F]{6}$/.test(val.trim())) {
+            chartColors[f.__badiCk] = val.trim();
+            saveChartColors();
+            applyChartColors();
+          } else if (f.key === "__color" && typeof val === "string" && val.trim()) {
+            setIndicatorColor(self.settingsCard ? self.settingsCard.id : "", val.trim());
+          }
+        } catch (e) {}
+      };
       input.addEventListener("input", function () {
         f.value = input.value;          /* live preview inside the card */
+        liveApply(input.value);         /* live preview ON THE CHART (candles recolor now) */
         self.invalidate();
       });
       input.addEventListener("keydown", function (ev) {
         ev.stopPropagation();
         if (ev.key === "Enter") { ev.preventDefault(); done = true; self._closeFieldEditor(); }
-        else if (ev.key === "Escape") { ev.preventDefault(); f.value = startVal; done = true; self._closeFieldEditor(); }
+        else if (ev.key === "Escape") {
+          ev.preventDefault(); f.value = startVal; done = true;
+          liveApply(startVal);          /* undo the live chart change too */
+          self._closeFieldEditor();
+        }
       });
       input.addEventListener("blur", function () {
         if (!done) { done = true; self._closeFieldEditor(); }
@@ -2792,7 +2831,6 @@ function buildStatic() {
   if (beIco) beIco.innerHTML = icon("lock", 13);
   if (biIco) biIco.innerHTML = icon("dl", 13);
   if (bieIco) bieIco.innerHTML = icon("dl", 13);
-  $("shotBtn").innerHTML = icon("camera", 15);
   var cbIco = $("colorsBtn");
   if (cbIco) {
     cbIco.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>';
@@ -9167,9 +9205,8 @@ window.__badiThemeKit = (function () {
   }
 } catch (e) {} })();
 </script>
-<style>#indBtn,#shotBtn{display:none!important}
+<style>#indBtn{display:none!important}
 html.embedded #indBtn{display:inline-flex!important;align-items:center}
-html.embedded #shotBtn{display:grid!important}
 html.embedded .modal-opts{grid-template-columns:repeat(2,1fr)}</style>"""
 
 # Injected after the page script: the Python ↔ page bridge
@@ -9502,7 +9539,6 @@ buildStatic = function () {
 (function wireToolbar() {
   function click(id, fn) { var el = document.getElementById(id); if (el) el.addEventListener("click", fn); }
   click("indBtn", function () { send("page", "1"); });
-  click("shotBtn", function () { send("shot", "1"); });
   var tg = document.getElementById("tfGroup");
   if (tg) tg.addEventListener("click", function (e) {
     var b = e.target.closest(".tf");
