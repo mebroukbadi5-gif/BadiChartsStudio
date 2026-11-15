@@ -82,7 +82,7 @@ def qx_print_welcome():
     print()
     print(f"\033[96m{'═' * 62}\033[0m")
     print(f"\033[97m\033[1m  QX Console — Quotex Candles & Assets\033[0m\033[0m")
-    print(f"\033[2m  v18 · assets list fetched live from platform after login · SQLite · every-tick · stable-after-fill\033[0m")
+    print(f"\033[2m  v20 · assets list fetched live from platform after login · fragmented-frame safe · SQLite · every-tick\033[0m")
     print(f"\033[96m{'═' * 62}\033[0m")
     print()
 
@@ -525,6 +525,38 @@ class WebsocketClient:
             if msg_str == "3":
                 self.state.ssl_Mutual_exclusion = False
                 return
+
+            # ===== v20: مُجمّع الردود المجزأة (إصلاح جذر لقائمة العملات) =====
+            # الردود المسبوقة بصيغة socket.io (451-["instruments/list",[...]] وغيرها)
+            # ضخمة وقد يقسمها الخادم على عدة إطارات websocket. بدون تجميع يفشل
+            # json.loads على كل جزء بصمت وتضيع القائمة في كل المحاولات (أُثبت بمحاكاة).
+            # نجمع الأجزاء حتى يكتمل JSON ثم نسلّم النص الكامل لبقية المعالجة كما هي.
+            _acc = getattr(self, "_frag_buffer", "") or ""
+            _candidate = (_acc + msg_str) if _acc else msg_str
+            if _acc:
+                self._frag_buffer = ""      # سنعيد التخزين إن لم يكتمل بعد
+            if (re.match(r"^(\d{1,4})(-?)\[", _candidate)
+                    or (_candidate not in ("0", "40", "41") and re.match(r"^\d{1,4}-?$", _candidate))):
+                # يبدو بداية/استكمال رد مسبوق — هل اكتمل JSON؟
+                _complete = False
+                _ai = _candidate.find("[")
+                if _ai != -1:
+                    try:
+                        json.loads(_candidate[_ai:])
+                        _complete = True
+                    except Exception:
+                        _complete = False
+                if not _complete:
+                    # لم يكتمل — خزّن حتى تصل بقية الإطارات (سقف 32MB + مهلة 60s)
+                    if not _acc:
+                        self._frag_started_at = time.time()   # بداية تجميع جديدة
+                    if (len(_candidate) <= 32 * 1024 * 1024
+                            and time.time() - getattr(self, "_frag_started_at", time.time()) < 60.0):
+                        self._frag_buffer = _candidate
+                        self.state.ssl_Mutual_exclusion = False
+                        return
+                    self._frag_buffer = ""   # تجاوز الحدود — نبدأ من جديد
+            msg_str = _candidate
 
             if "authorization/reject" in msg_str:
                 logger.warning("Token rejected.")
