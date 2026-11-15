@@ -1496,15 +1496,25 @@ function saveChartColors() {
 }
 
 function applyChartColors() {
-  if (window.Indicators && typeof window.Indicators.colors === "function") {
-    if (Object.keys(chartColors).length > 0) {
-      var copy = {};
-      for (var k in chartColors) {
-        if (k !== "__indicators" && chartColors.hasOwnProperty(k)) copy[k] = chartColors[k];
-      }
-      if (Object.keys(copy).length > 0) window.Indicators.colors(copy);
-    }
-  }
+  /* Layered over the app theme: rebuilt from the pure theme every time, so the
+     user colors survive dark/light switches and never contaminate the base.
+     Includes axisBorder (the chart borders) — beyond the Indicators.colors()
+     script whitelist, applied directly through setTheme on every pane. */
+  try {
+    var user = {};
+    ["bg", "bull", "bear", "bullVol", "bearVol", "grid", "axisText", "crosshair", "drawing", "axisBorder"]
+      .forEach(function (k) {
+        if (typeof chartColors[k] === "string" && chartColors[k]) user[k] = chartColors[k];
+      });
+    window.__BADI_CHART_USER__ = user;
+    var base = (window.__badiThemeKit && window.__badiThemeKit.chartTheme(window.__BADI_APP_THEME__)) ||
+               window.__BADI_CHART_THEME__ || {};
+    var merged = Object.assign({}, base, user);
+    panes.forEach(function (p) {
+      try { if (p.chart && typeof p.chart.setTheme === "function") p.chart.setTheme(merged); } catch (e) {}
+    });
+    try { if (window.__badiRefitIndicatorLabels) window.__badiRefitIndicatorLabels(); } catch (e) {}
+  } catch (e) {}
   applyIndicatorColors();
 }
 
@@ -1670,9 +1680,7 @@ function resetOneChartColor(key) {
 function resetAllChartColors() {
   chartColors = {};
   saveChartColors();
-  if (window.Indicators && typeof window.Indicators.colors === "function") {
-    window.Indicators.colors({ reset: true });
-  }
+  applyChartColors();   /* user map empty → the pure app theme colors again */
   try {
     panes.forEach(function (p) {
       var ch = p && p.chart;
@@ -2313,23 +2321,50 @@ function setupChart(ch, p) {
 
   /* Settings card ⚙ supports any key in settings (not only the built-in ones).
      User request: the indicator main color is always shown as the FIRST color field
-     in the settings card so the user can change it directly from ⚙. */
+     in the settings card so the user can change it directly from ⚙.
+     User request (colors): the card also carries the CHART colors — candles,
+     background, grid and borders — exactly the values the Chart Colors panel
+     edits, so both stay in sync through chartColors + applyChartColors(). */
+  const CARD_COLOR_MAP = { __bull: "bull", __bear: "bear", __bg: "bg", __grid: "grid", __bord: "axisBorder" };
   ch._openSettingsCard = function (id, state) {
     const st = state || {};
     const s = st.settings || {};
     const def = st.def || {};
+    const ar = window.__BADI_LANG__ === "ar";
     const fields = [];
     /* The indicator color field always appears first (user request) */
-    const indColor = (typeof def.color === "string" && def.color) ||
-                     (typeof def.__badiOrigColor === "string" && def.__badiOrigColor) ||
-                     "#38bdf8";
-    fields.push({ key: "__color", label: "color", type: "color", value: indColor });
+    fields.push({ key: "__color", label: ar ? "لون المؤشر" : "color", type: "color",
+                  value: getIndicatorColor(id), __badiColor: true });
     for (const key of Object.keys(s)) {
       const v = s[key];
       if (typeof v === "number") fields.push({ key: key, label: key, type: "number", value: v });
       else if (typeof v === "string" && v.indexOf("#") === 0) fields.push({ key: key, label: key, type: "color", value: v });
       else fields.push({ key: key, label: key, type: "text", value: String(v) });
     }
+    /* Chart colors (user request) — current value: saved user color, else the
+       live theme color of THIS chart pane */
+    const th = this.theme || {};
+    const cc = (k, d) => {
+      const v = chartColors[k];
+      if (typeof v === "string" && v) return v;
+      const t = th[k];
+      return (typeof t === "string" && t) ? t : d;
+    };
+    const CCF = [
+      { key: "__bull", ar: "الشمعة الصاعدة", en: "Bull candle" },
+      { key: "__bear", ar: "الشمعة الهابطة", en: "Bear candle" },
+      { key: "__bg",   ar: "الخلفية",        en: "Background" },
+      { key: "__grid", ar: "الشبكة",         en: "Grid" },
+      { key: "__bord", ar: "الحدود",         en: "Borders" }
+    ];
+    CCF.forEach(function (c) {
+      fields.push({ key: c.key, label: ar ? c.ar : c.en, type: "color", __badiColor: true,
+                    __badiCk: CARD_COLOR_MAP[c.key],
+                    value: cc(CARD_COLOR_MAP[c.key],
+                              c.key === "__bull" ? "#22C55E" :
+                              c.key === "__bear" ? "#EF4444" :
+                              c.key === "__bg" ? "#000000" : "#1F1F23") });
+    });
     this.settingsCard = {
       id: id,
       x: this.chartLeft + 60,
@@ -2341,18 +2376,106 @@ function setupChart(ch, p) {
       draft: Object.assign({}, s)
     };
   };
-  /* Apply indicator color changes from the settings card live to the chart (user request). */
-  ch._applySettingsCard = function (id, draft) {
-    if (!draft) return;
-    const st = this.indicatorStates ? (this.indicatorStates.get ? this.indicatorStates.get(id) : null) : null;
-    if (!st || !st.def) return;
-    if (typeof draft.__color === "string" && draft.__color.trim()) {
-      const c = draft.__color.trim();
-      st.def.color = c;
-      st.def.__badiOrigColor = c;
-      st.def.__badiUserColor = c;
-      if (typeof this.invalidate === "function") this.invalidate();
+  /* Apply the card extras on Save (user request): the indicator color through the
+     same path as the Chart Colors panel, and the chart-wide colors through
+     chartColors + applyChartColors() so every pane follows. */
+  ch._applySettingsCard = function (id, extra) {
+    if (!extra) return;
+    try {
+      if (typeof extra.__color === "string" && extra.__color.trim()) {
+        setIndicatorColor(id, extra.__color.trim());
+      }
+    } catch (e) {}
+    let touched = false;
+    for (const k in extra) {
+      if (k === "__color" || k.indexOf("__") !== 0) continue;
+      const ck = CARD_COLOR_MAP[k];
+      if (ck && typeof extra[k] === "string" && extra[k].trim()) {
+        chartColors[ck] = extra[k].trim();
+        touched = true;
+      }
     }
+    if (touched) { saveChartColors(); applyChartColors(); }
+  };
+  /* Save path: the library writes EVERY card field into the indicator settings —
+     strip the app-level __ fields first, apply them, and keep the indicator
+     settings clean. */
+  const protoSC = Object.getPrototypeOf(ch);
+  const origSetIndSettings = protoSC.setIndicatorSettings.bind(ch);
+  ch.setIndicatorSettings = function (id, settings) {
+    const extra = {};
+    const clean = {};
+    let hasExtra = false;
+    for (const k in (settings || {})) {
+      if (k.charAt(0) === "_" && k.charAt(1) === "_") { extra[k] = settings[k]; hasExtra = true; }
+      else clean[k] = settings[k];
+    }
+    const r = origSetIndSettings(id, clean);
+    if (hasExtra) { try { this._applySettingsCard(id, extra); } catch (e) {} }
+    return r;
+  };
+  /* Real color picker for the card's color fields: the library only CYCLES 7
+     preset colors on click — the app's own color fields (the __-prefixed ones)
+     open a native <input type=color> with a live swatch preview instead. */
+  ch._openBadiColorEditor = function (f) {
+    try {
+      if (typeof document === "undefined" || !this.settingsCard) return;
+      this._closeFieldEditor(false);
+      const input = document.createElement("input");
+      input.type = "color";
+      input.value = /^#[0-9a-fA-F]{6}$/.test(String(f.value)) ? f.value : "#38bdf8";
+      input.setAttribute("data-badi-field-editor", "1");
+      const sc = this.settingsCard;
+      const idx = sc.fields.indexOf(f);
+      const fy = sc.y + 36 + Math.max(0, idx) * 30;
+      const hostRect = this.canvas.getBoundingClientRect();
+      const stl = input.style;
+      stl.position = "fixed";
+      stl.left = (hostRect.left + sc.x + 90) + "px";
+      stl.top = (hostRect.top + fy) + "px";
+      stl.width = Math.max(40, sc.w - 100) + "px";
+      stl.height = "20px";
+      stl.boxSizing = "border-box";
+      stl.zIndex = "2147483000";
+      stl.margin = "0";
+      stl.border = "none";
+      stl.padding = "0";
+      stl.background = "transparent";
+      const self = this;
+      let done = false;
+      const startVal = f.value;
+      input.addEventListener("input", function () {
+        f.value = input.value;          /* live preview inside the card */
+        self.invalidate();
+      });
+      input.addEventListener("keydown", function (ev) {
+        ev.stopPropagation();
+        if (ev.key === "Enter") { ev.preventDefault(); done = true; self._closeFieldEditor(); }
+        else if (ev.key === "Escape") { ev.preventDefault(); f.value = startVal; done = true; self._closeFieldEditor(); }
+      });
+      input.addEventListener("blur", function () {
+        if (!done) { done = true; self._closeFieldEditor(); }
+      });
+      document.body.appendChild(input);
+      this._fieldEditor = input;
+      input.focus();
+      try { if (typeof input.showPicker === "function") input.showPicker(); } catch (e) {}
+      this.invalidate();
+    } catch (e) {}
+  };
+  const origMouseDown = protoSC.onMouseDown.bind(ch);
+  ch.onMouseDown = function (e) {
+    try {
+      if (this.settingsCard && e && this.canvas) {
+        const r = this.canvas.getBoundingClientRect();
+        const hit = this._hitSettingsCard(e.clientX - r.left, e.clientY - r.top);
+        if (hit && hit.action === "field") {
+          const f = this.settingsCard.fields[hit.index];
+          if (f && f.__badiColor) { this._openBadiColorEditor(f); return; }
+        }
+      }
+    } catch (err) {}
+    return origMouseDown(e);
   };
 
   /* Delete sync: removing the indicator from the legend card updates the file state */
