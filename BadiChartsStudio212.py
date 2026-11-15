@@ -175,7 +175,7 @@ STUDIO_HTML = r'''<!DOCTYPE html>
      own page is inline); 'unsafe-eval' is required by compileScript (new Function) and
      the editor — it weakens only the EVAL layer, never the network layer below; workers
      stay blob-only for the editor. ═══ -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src https://cdn.jsdelivr.net data:; connect-src 'self' https://cdn.jsdelivr.net; worker-src 'self' blob:; child-src 'self' blob:; base-uri 'none'; form-action 'none'; object-src 'none'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net blob:; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob:; font-src https://cdn.jsdelivr.net data:; connect-src 'self' https://cdn.jsdelivr.net; worker-src 'self' blob:; child-src 'self' blob:; base-uri 'none'; form-action 'none'; object-src 'none'"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <meta name="color-scheme" content="dark"/>
 <link rel="icon" href="data:,"/>
@@ -2063,8 +2063,15 @@ function onChangeCode(v) {
 
 /* ───────────── Monaco editor (plain-text fallback) ───────────── */
 let ed = null, monacoReady = false, fbTa = null, curCodeId = null, suppressModel = false, monacoTimer = 0, monacoLoading = false;
-const MONACO_VS = "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs";
-const MONACO_LOADER = MONACO_VS + "/loader.js";
+/* Three mirrors — if one is blocked or slow on the user's network the next is
+   tried automatically, so the editor can never die because of one CDN. */
+const MONACO_CDNS = [
+  "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs",
+  "https://unpkg.com/monaco-editor@0.52.2/min/vs",
+  "https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2/min/vs"
+];
+let monacoCdnIdx = 0;
+function monacoMin() { return MONACO_CDNS[monacoCdnIdx].replace(/\/vs$/, ""); }
 
 /* Monaco loads lazily — only when the editor is opened for the first time */
 function monacoWait(on) {
@@ -2084,34 +2091,65 @@ function ensureMonaco() {
   if (monacoReady || fbTa || monacoLoading || !editorOpen) return;
   monacoLoading = true;
   monacoWait(true);
+  /* Monaco worker proxy (required when Monaco is on a CDN): Chromium forbids
+     creating a Worker straight from a cross-origin URL, so we hand Monaco a
+     blob: worker that importScripts the real workerMain.js from the CDN.
+     The CSP already allows worker-src blob: ("workers stay blob-only") and
+     script-src https://cdn.jsdelivr.net for the importScripts inside it. */
+  try {
+    if (!window.MonacoEnvironment) {
+      window.MonacoEnvironment = {
+        getWorkerUrl: function () {
+          /* baseUrl must be the /min/ root — the module ids already carry the
+             vs/ prefix. With baseUrl .../min/vs/ the worker resolved
+             .../min/vs/vs/... and every language worker died. */
+          var min = monacoMin();
+          var code = "self.MonacoEnvironment={baseUrl:'" + min + "/'};" +
+                     "importScripts('" + min + "/vs/base/worker/workerMain.js');";
+          return URL.createObjectURL(new Blob([code], { type: "text/javascript" }));
+        }
+      };
+    }
+  } catch (e) {}
+  loadMonacoLoader();
+}
+
+/* Load loader.js — on failure the next mirror is tried, and only after all of
+   them does the editor fall back to the plain textarea. */
+function loadMonacoLoader() {
   const s = document.createElement("script");
-  s.src = MONACO_LOADER;
+  s.src = MONACO_CDNS[monacoCdnIdx] + "/loader.js";
   s.onload = function () { initMonaco(); };
-  s.onerror = function () {
-    monacoLoading = false;
-    monacoWait(false);
-    console.error("[BadiCharts] Monaco failed to load from CDN — check internet connection");
-    fallbackTextarea();
-  };
+  s.onerror = function () { monacoNextCdn("loader.js failed"); };
   document.head.appendChild(s);
+}
+function monacoNextCdn(why) {
+  monacoCdnIdx++;
+  if (monacoCdnIdx < MONACO_CDNS.length) {
+    console.warn("[BadiCharts] Monaco mirror failed (" + why + ") — trying the next one…");
+    loadMonacoLoader();
+    return;
+  }
+  monacoLoading = false;
+  monacoWait(false);
+  console.error("[BadiCharts] Monaco failed to load from all mirrors — plain text editor");
+  console.log("BADI::editorEngine textarea");
+  fallbackTextarea();
 }
 
 function initMonaco() {
-  if (typeof window.require === "function") {
-    try {
-      window.require.config({ paths: { vs: MONACO_VS } });
-    } catch (e) { fallbackTextarea(); return; }
-    monacoTimer = setTimeout(fallbackTextarea, 15000);
-    window.require(["vs/editor/editor.main"], function () {
-      clearTimeout(monacoTimer);
-      bootMonaco();
-    }, function () {
-      clearTimeout(monacoTimer);
-      fallbackTextarea();
-    });
-  } else {
-    fallbackTextarea();
-  }
+  if (typeof window.require !== "function") { monacoNextCdn("loader broken"); return; }
+  try {
+    window.require.config({ paths: { vs: MONACO_CDNS[monacoCdnIdx] } });
+  } catch (e) { monacoNextCdn("config failed"); return; }
+  monacoTimer = setTimeout(function () { monacoNextCdn("timeout"); }, 15000);
+  window.require(["vs/editor/editor.main"], function () {
+    clearTimeout(monacoTimer);
+    bootMonaco();
+  }, function () {
+    clearTimeout(monacoTimer);
+    monacoNextCdn("editor.main failed");
+  });
 }
 function bootMonaco() {
   monacoWait(false);
@@ -2132,48 +2170,49 @@ function bootMonaco() {
           var _t2 = { dark: !_t.dark, c: _t.c, lang: _t.lang };
           var _mt2 = window.__badiThemeKit.monTheme(_t2);
           if (_mt2) monaco.editor.defineTheme(_t2.dark ? "badi-app-dark" : "badi-app-light", _mt2);
+          /* The editor wears the app colors — even if the bridge never pushed the theme */
+          if (!window.__BADI_MONACO_THEME__)
+            window.__BADI_MONACO_THEME__ = _t.dark ? "badi-app-dark" : "badi-app-light";
         }
       }
     }
   } catch (e) {}
   try { if (window.__badiDefineMonThemes) window.__badiDefineMonThemes(); } catch (e) {}
+  /* Last-resort theme — the same colors as the dark app (bg #000000 / card #0A0A0A
+     and the app accents) so the editor always looks like part of the app */
   monaco.editor.defineTheme("badi-dark", {
     base: "vs-dark", inherit: true,
     rules: [
-      { token: "comment", foreground: "6a737d", fontStyle: "italic" },
-      { token: "keyword", foreground: "7dd3fc" },
-      { token: "number", foreground: "79c0ff" },
+      { token: "comment", foreground: "6b7280", fontStyle: "italic" },
+      { token: "keyword", foreground: "14b8f5" },
+      { token: "number", foreground: "3b8bff" },
       { token: "string", foreground: "a5d6a7" },
-      { token: "type.identifier", foreground: "d2a8ff" },
+      { token: "type.identifier", foreground: "3b6cf5" },
       { token: "delimiter", foreground: "cfd2da" }
     ],
     colors: {
-      "editor.background": "#0d1117",
-      "editor.foreground": "#e6edf3",
-      "editorLineNumber.foreground": "#3d4451",
-      "editorLineNumber.activeForeground": "#38bdf8",
-      "editor.selectionBackground": "#264f78aa",
-      "editor.lineHighlightBackground": "#161b22",
-      "editorCursor.foreground": "#38bdf8",
-      "editorIndentGuide.background1": "#1c2030",
-      "editorGutter.background": "#0d1117"
+      "editor.background": "#0A0A0A",
+      "editor.foreground": "#e6e9ef",
+      "editorLineNumber.foreground": "#3f4654",
+      "editorLineNumber.activeForeground": "#14B8F5",
+      "editor.selectionBackground": "#3B8BFF55",
+      "editor.lineHighlightBackground": "#151518",
+      "editorCursor.foreground": "#14B8F5",
+      "editorIndentGuide.background1": "#1F1F23",
+      "editorGutter.background": "#0A0A0A"
     }
   });
+  try {
   ed = monaco.editor.create($("codeHost"), {
     value: "",
     language: "javascript",
+    lineNumbers: "on",
     theme: (function () {
-      /* Verify the requested theme is actually defined — fall back to badi-dark */
-      var requested = window.__BADI_MONACO_THEME__ || "badi-dark";
-      try {
-        if (requested !== "badi-dark" && requested !== "vs" && requested !== "vs-dark") {
-          /* Check if the theme was defined by attempting to get it */
-          var _themes = monaco.editor.defineTheme;
-          /* If defineThemes failed earlier, monaco will throw on unknown theme —
-             so we wrap the editor creation and catch to retry with badi-dark */
-        }
-      } catch (e) { requested = "badi-dark"; }
-      return requested;
+      /* The editor wears the app colors: the theme the bridge pushed, else the
+         boot theme colors (badi-app-*), else the app-like badi-dark */
+      return window.__BADI_MONACO_THEME__ ||
+        (window.__BADI_APP_THEME__ ? (window.__BADI_APP_THEME__.dark ? "badi-app-dark" : "badi-app-light") : "") ||
+        "badi-dark";
     })(),
     fontSize: 13,
     lineHeight: 20,
@@ -2193,10 +2232,27 @@ function bootMonaco() {
     overviewRulerBorder: false,
     bracketPairColorization: { enabled: true }
   });
+  } catch (e) {
+    console.error("[BadiCharts] Monaco failed to start (" + e.message + ") — plain text editor");
+    console.log("BADI::editorEngine textarea");
+    fallbackTextarea();
+    return;
+  }
   ed.onDidChangeModelContent(function () {
     if (!suppressModel) onChangeCode(ed.getValue());
   });
   monacoReady = true;
+  console.log("BADI::editorEngine monaco");
+  /* Safety net: if Monaco reports ready but nothing rendered, go plain text */
+  setTimeout(function () {
+    if (fbTa || !monacoReady) return;
+    if (!document.querySelector("#codeHost .monaco-editor")) {
+      try { ed.dispose(); } catch (e2) {}
+      ed = null; monacoReady = false;
+      console.log("BADI::editorEngine textarea");
+      fallbackTextarea();
+    }
+  }, 3000);
   curCodeId = null;
   const f = activeFile();
   if (f) editorSetCode(f.code, f.id);
@@ -8947,10 +9003,10 @@ window.__badiThemeKit = (function () {
         "editor.background": bg,
         "editor.foreground": fg,
         "editorLineNumber.foreground": dark ? "#3f4654" : "#a8b3c4",
-        "editorLineNumber.activeForeground": String(c.g1 || "#38bdf8").slice(1),
+        "editorLineNumber.activeForeground": "#" + String(c.g1 || "#38bdf8").slice(1),
         "editor.selectionBackground": String(c.accent || "#3b8bff") + (dark ? "55" : "30"),
         "editor.lineHighlightBackground": c.hover || (dark ? "#151518" : "#eaeff8"),
-        "editorCursor.foreground": String(c.g1 || "#38bdf8").slice(1),
+        "editorCursor.foreground": "#" + String(c.g1 || "#38bdf8").slice(1),
         "editorIndentGuide.background1": c.border,
         "editorGutter.background": bg
       }
