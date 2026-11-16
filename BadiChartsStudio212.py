@@ -12,7 +12,7 @@
 #             (chart, code editor, indicators, drawing tools, label dialog)
 #
 #    PART 2 — CHART LIBRARY: loaded directly from the official CDN link (owner request)
-#             https://cdn.jsdelivr.net/gh/salahbadi19/BADI-CHARTS-V2@v2.17.1/chart.js
+#             https://cdn.jsdelivr.net/gh/salahbadi19/BADI-CHARTS-V2@v2.18.1/chart.js
 #             a <script> tag in the page points straight to the link — no embedded code
 #
 #    PART 3 — THE DESKTOP APP (Python + QML)
@@ -23,6 +23,8 @@
 #  (or BadiChartsStudio_readable.py — exactly the same result)
 #
 #  Latest updates (v2.17.1):
+#   • Chart library updated: the CDN pin now loads BADI-CHARTS-V2 v2.18.1 (was v2.17.1) —
+#     identical public API, verified against every call the app makes (user request)
 #   • Badi Security Engine (BSE) — owner-requested independent permission system, four layers
 #     built to fail independently (one failing never drops the whole defense):
 #       Layer 1 — Script Sandbox: Python indicators already run with pinned safe builtins
@@ -136,7 +138,7 @@
 #     dark colors — switching dark/light recolors the whole editor area instantly
 #   • English is the official documentation language: the programming guide file
 #     (BadiCharts_Programming_Guide.js) is fully written in English (owner request)
-#   • Chart library v2.17.1 loads directly from the official CDN link instead of embedding its code (owner request)
+#   • Chart library v2.18.1 loads directly from the official CDN link instead of embedding its code (owner request)
 #   • The countdown beside the live candle is the library's own counter, used as-is — the page-side
 #     replacement and its color override were removed (owner request)
 #   • Go-to-live-edge arrow (icon-only): the chart pans/zooms freely so the empty right side stays
@@ -180,8 +182,8 @@ STUDIO_HTML = r'''<!DOCTYPE html>
 <meta name="color-scheme" content="dark"/>
 <link rel="icon" href="data:,"/>
 <title>Chart Studio — Chart + Indicator Editor & Drawing Tools</title>
-<!-- ═══ BADI-CHARTS-V2 v2.17.1 chart library ═══ -->
-<script src="https://cdn.jsdelivr.net/gh/salahbadi19/BADI-CHARTS-V2@v2.17.1/chart.js"></script>
+<!-- ═══ BADI-CHARTS-V2 v2.18.1 chart library ═══ -->
+<script src="https://cdn.jsdelivr.net/gh/salahbadi19/BADI-CHARTS-V2@v2.18.1/chart.js"></script>
 <!-- ═══ Monaco code editor — lazy-loaded on first editor open (light startup) ═══ -->
 <style>
 :root{
@@ -271,7 +273,7 @@ svg{vertical-align:middle;flex-shrink:0}
 .golive svg{width:15px;height:15px;display:block}
 .golive[hidden]{display:none}
 /* Countdown next to the live candle — the native countdown feature of the
-   BADI-CHARTS v2.17.1 library, used as-is (owner request): drawn inside the chart with the library's
+   BADI-CHARTS v2.18.1 library, used as-is (owner request): drawn inside the chart with the library's
    own coordinates and adaptive format, with no HTML element and no page-side override */
 #libLoading{position:absolute;inset:0;display:grid;place-items:center;background:var(--bg);z-index:5}
 .loadbox{display:flex;flex-direction:column;align-items:center;gap:12px}
@@ -2750,7 +2752,7 @@ function sigExpireSweep() {
 }
 
 /* ═══ Countdown next to the live candle (user request) ═══
-   The native countdown of the BADI-CHARTS v2.17.1 library is used as-is: the owner built the counter
+   The native countdown of the BADI-CHARTS v2.18.1 library is used as-is: the owner built the counter
    into the library itself (real Unix time, adaptive format, drawn beside the live candle with the
    library's own coordinates). The page keeps no replacement and applies no overrides — Settings only
    toggles it through the official setCountdown API. */
@@ -3570,7 +3572,7 @@ document.addEventListener("DOMContentLoaded", boot);
 
 # ═══════════════════════════════════════════════════════════════════════════
 #  PART 2 — CHART LIBRARY: loaded directly from the official CDN link (owner request)
-#  https://cdn.jsdelivr.net/gh/salahbadi19/BADI-CHARTS-V2@v2.17.1/chart.js
+#  https://cdn.jsdelivr.net/gh/salahbadi19/BADI-CHARTS-V2@v2.18.1/chart.js
 #  A <script> tag inside the page points straight to the link — no embedded code, no local copy.
 #  Without internet the page shows an error panel with a Retry button (showLibError).
 # ═══════════════════════════════════════════════════════════════════════════
@@ -3584,7 +3586,7 @@ document.addEventListener("DOMContentLoaded", boot);
 """
 BadiCharts Studio — desktop indicator studio (Python + PySide6/QML)
 Splash + login (same BadiCharts logo & flow) → studio:
-  • the chart & editor are the embedded HTML app (BADI-CHARTS-V2 v2.17.1 chart
+  • the chart & editor are the embedded HTML app (BADI-CHARTS-V2 v2.18.1 chart
     + Monaco editor) rendered inside the window with QtWebEngine
   • program indicators & tools in JavaScript or Python (Python runs in the
     desktop engine and its values are pushed into the chart)
@@ -7326,6 +7328,8 @@ class Backend(QObject):
         self._watcher.addPath(BADI_TOOL_DIR)
         self._watcher.directoryChanged.connect(self._on_dir_changed)
         self._hist = _read_json(os.path.join(CFG_DIR, "signals.json"), [])
+        self._closing = False    # stop_all() flips it — guards signals into a dying engine
+        self._paidBusy = False   # one paid-poll network worker at a time
         self._sigpend = []       # Signals waiting for their result (WIN/LOSS after the timeframe duration)
         # ── Chart appearance: not stored anymore — the chart always wears the app theme colors
         #    (user request). An old "chart_theme" key in config.json is ignored and dropped on
@@ -7357,6 +7361,10 @@ class Backend(QObject):
         # Actually start the timer — without this line the live-candle engine stayed completely off
         # and that is why no new candles appeared in the app (the chart was frozen)
         self._timer.start()
+        # Worker-thread results land back on the GUI thread through these queued signals —
+        # the GUI thread never waits on a network socket (crash/freeze fix, user request)
+        self.tgDelivered.connect(self._tg_delivered)
+        self.paidFetched.connect(self._paid_fetched)
 
     # ---------- UI properties ----------
     def _get_lang(self):
@@ -7557,6 +7565,8 @@ class Backend(QObject):
         return out
 
     def _log(self, kind, text):
+        if self._closing:
+            return
         self.consoleMsg.emit(kind, text)
 
     # ---------- BadiCharts folder: save indicators to disk and sync them ----------
@@ -8346,6 +8356,19 @@ class Backend(QObject):
             self._log("err", f"Telegram result: {str(e)[:90]}")
 
     @Slot()
+    def stop_all(self):
+        """Shutdown guard (user request: no more crashes): stop every internal timer so no
+        callback can fire while the QML engine and Chromium are being shut down."""
+        self._closing = True
+        for _t in ("_timer", "_paidT", "_paidW"):
+            try:
+                o = getattr(self, _t, None)
+                if o is not None:
+                    o.stop()
+            except Exception:
+                pass
+
+    @Slot()
     def refreshPy(self):
         self._compute_py()
 
@@ -8500,6 +8523,8 @@ class Backend(QObject):
         self.needShot.emit()
 
     needShot = Signal()
+    tgDelivered = Signal(str, bool, str)   # a finished Telegram send (entry-json, ok, info)
+    paidFetched = Signal(str)              # paid-poll worker results (json list of [rid, text])
 
     def _send_signal(self, fid, label, dir_, price, when, asset=None, chats=""):
         cfg = _read_json(CFG_FILE, {})
@@ -8545,19 +8570,50 @@ class Backend(QObject):
             _write_json(os.path.join(CFG_DIR, "signals.json"), self._hist[-500:])
 
     def _deliver(self, rec, png):
+        """Telegram delivery. The network send used to run here on the GUI thread and froze
+        the whole window for up to 20 s per chat on a slow network (one of the reasons the
+        app looked like it "died suddenly" — user request). It now runs in a daemon thread
+        and the result comes back through the tgDelivered signal, which Qt auto-queues
+        into the main thread — the GUI never blocks on a network socket again."""
+        if self._closing:
+            return
         entry = rec["entry"]
+
+        def _send():
+            ok, info = False, ""
+            try:
+                n, errs = _tg_send(rec["token"], rec["chats"], rec["text"],
+                                   png if rec["attach"] else None)
+                ok, info = True, f"{n} chat(s)" + ("; " + "; ".join(errs) if errs else "")
+            except Exception as e:
+                info = str(e)[:120]
+            try:
+                self.tgDelivered.emit(json.dumps(entry), ok, info)
+            except Exception:
+                pass
+        threading.Thread(target=_send, daemon=True).start()
+
+    @Slot(str, bool, str)
+    def _tg_delivered(self, entry_json, ok, info):
+        """Main-thread landing of a finished Telegram send — history bookkeeping only."""
+        if self._closing:
+            return
         try:
-            n, errs = _tg_send(rec["token"], rec["chats"], rec["text"], png if rec["attach"] else None)
-            entry["sent"] = True
-            entry["info"] = f"{n} chat(s)" + ("; " + "; ".join(errs) if errs else "")
-            self._log("ok", f"Telegram → {entry['info']} ({entry['asset']} {entry['dir']})")
-        except Exception as e:
-            entry["sent"] = False
-            entry["info"] = str(e)[:120]
-            self._log("err", f"Telegram: {entry['info']}")
+            entry = json.loads(entry_json)
+        except Exception:
+            return
+        entry["sent"] = bool(ok)
+        entry["info"] = info
         self._hist.append(entry)
         self.histChanged.emit()
-        _write_json(os.path.join(CFG_DIR, "signals.json"), self._hist[-500:])
+        try:
+            _write_json(os.path.join(CFG_DIR, "signals.json"), self._hist[-500:])
+        except Exception:
+            pass
+        if ok:
+            self._log("ok", f"Telegram → {info} ({entry.get('asset', '')} {entry.get('dir', '')})")
+        else:
+            self._log("err", f"Telegram: {info}")
 
     @Slot(str, str, str)
     def sendTest(self, token, chats, text):
@@ -8890,11 +8946,16 @@ class Backend(QObject):
     def _paid_poll(self):
         """Developer control channel through his server (user request): a small GET poll per paid indicator,
         JSON response only, ≤16KB, allow-listed commands only — no file upload or download ever,
-        and any response containing files/base64 → full rejection + a 10-minute server ban."""
+        and any response containing files/base64 → full rejection + a 10-minute server ban.
+        The HTTP fetch runs in a daemon worker — never on the GUI thread (it used to freeze
+        the window for up to 8 s per server and could get the app killed — user request)."""
+        if self._closing or self._paidBusy:
+            return
         try:
             recs = paid_records()
             today = _today_iso()
             now = time.time()
+            jobs = []
             for rid, rec in list(recs.items()):
                 srv = str(rec.get("server") or "")
                 if not srv or now < self._paid_block.get(rid, 0):
@@ -8915,29 +8976,67 @@ class Backend(QObject):
                         "st": str(rec.get("status") or ""), "v": "1"})
                     if not BSE_RATE.allow("paid:" + rid[:32], *BSE_LIMITS["paid_poll"]):
                         continue
-                    with bse_open(srv + ("&" if "?" in srv else "?") + q,
-                                  hosts=((u.hostname or "").lower(),),
+                except Exception:
+                    continue
+                jobs.append((rid, srv + ("&" if "?" in srv else "?") + q,
+                             ((u.hostname or "").lower(),)))
+        except Exception:
+            return
+        if not jobs:
+            return
+        self._paidBusy = True
+
+        def _fetch():
+            out = []
+            for rid, url, host in jobs:
+                try:
+                    with bse_open(url, hosts=host,
                                   headers={"User-Agent": "BadiCharts-Paid/1"}, timeout=8) as resp:
                         raw = resp.read(16385)
                     if len(raw) > 16384:
-                        self._paid_block[rid] = time.time() + 600
+                        out.append((rid, "@BAN@"))
                         continue
                     txt = raw.decode("utf-8", "ignore")
                     # Strict protection: any trace of files/base64 in the response → reject + ban the server
                     if re.search(r"base64|data:|file://|content-disposition|multipart", txt, re.I):
-                        self._paid_block[rid] = time.time() + 600
+                        out.append((rid, "@BAN@"))
                         continue
-                    data = json.loads(txt)
-                    if not isinstance(data, dict) or not isinstance(data.get("cmds"), list):
-                        continue
-                    if len(data["cmds"]) > 20:
-                        self._paid_block[rid] = time.time() + 600
-                        continue
-                    self._paid_apply(rid, rec, data["cmds"])
+                    out.append((rid, txt))
                 except Exception:
                     continue   # Server unavailable — no user annoyance
+            try:
+                self.paidFetched.emit(json.dumps(out))
+            except Exception:
+                pass
+        threading.Thread(target=_fetch, daemon=True).start()
+
+    @Slot(str)
+    def _paid_fetched(self, js):
+        """Main-thread landing of the paid-poll worker — parsing and applying only."""
+        self._paidBusy = False
+        if self._closing:
+            return
+        try:
+            out = json.loads(js)
         except Exception:
-            pass
+            return
+        for rid, txt in out:
+            rid = str(rid)
+            if txt == "@BAN@":
+                self._paid_block[rid] = time.time() + 600
+                continue
+            try:
+                data = json.loads(txt)
+                if not isinstance(data, dict) or not isinstance(data.get("cmds"), list):
+                    continue
+                if len(data["cmds"]) > 20:
+                    self._paid_block[rid] = time.time() + 600
+                    continue
+                rec = paid_records().get(rid)
+                if rec:
+                    self._paid_apply(rid, rec, data["cmds"])
+            except Exception:
+                continue
 
     def _paid_apply(self, rid, rec, cmds):
         """Execute the allow-listed commands decided by the database: enable/disable through the bridge + text notifications."""
@@ -9007,7 +9106,7 @@ class Backend(QObject):
         return "data:image/svg+xml;utf8," + urllib.parse.quote(svg)
 # ---------------------------------------------------------------- UI (QML)
 # ---------------------------------------------------------------- Embedded web UI (HTML inside the app)
-# The chart here is the BADI-CHARTS-V2 v2.17.1 library itself and the editor is Monaco — both inside an HTML page
+# The chart here is the BADI-CHARTS-V2 v2.18.1 library itself and the editor is Monaco — both inside an HTML page
 # written next to the app at boot and displayed inside the window through QtWebEngine.
 
 
@@ -9136,7 +9235,7 @@ html.embedded .modal-opts{grid-template-columns:repeat(2,1fr)}</style>"""
 # Injected after the page script: the Python ↔ page bridge
 BRIDGE_POST = r"""<script>
 /* ═══════════════ BadiCharts Studio — desktop bridge (post) ═══════════════
-   connects the HTML page (BADI-CHARTS v2.17.1 chart + Monaco editor) to the Python engine:
+   connects the HTML page (BADI-CHARTS v2.18.1 chart + Monaco editor) to the Python engine:
    • candles are pushed from Python (setCandles / pushTick) instead of local simulation
    • Python indicators are drawn through pyMeta / setPy
    • user files sync with the app through BADI::files
@@ -12226,11 +12325,16 @@ ApplicationWindow {
                 currentIndex: win.page
 '''
 QML += r'''
-                // ═══════ 0 — The studio: embedded HTML page (BADI-CHARTS v2.17.1 chart + Monaco editor) ═══════
+                // ═══════ 0 — The studio: embedded HTML page (BADI-CHARTS v2.18.1 chart + Monaco editor) ═══════
                 Item {
                     WebEngineView {
                         id: webView
                         objectName: "webView"
+                        // Renderer crash guard (user request: no more sudden stops): the
+                        // renderer self-heals with a paused reload — max 4 tries, the counter
+                        // resets on every successful load. An instant endless reload loop was
+                        // itself a crash amplifier.
+                        property int renderFails: 0
                         anchors.fill: parent
                         url: webUrl
                         settings.localContentCanAccessRemoteUrls: true
@@ -12253,8 +12357,23 @@ QML += r'''
                             if (sp < 0) return
                             win.onWebMessage(payload.substring(0, sp), payload.substring(sp + 1))
                         }
-                        onRenderProcessTerminated: function (terminationStatus, exitCode) { webView.reload() }
+                        onRenderProcessTerminated: function (terminationStatus, exitCode) {
+                            if (webView.renderFails >= 4) {
+                                console.log("PAGEDBG renderTerminated gave-up status=" + terminationStatus + " code=" + exitCode)
+                                return
+                            }
+                            webView.renderFails++
+                            console.log("PAGEDBG renderTerminated reload=" + webView.renderFails
+                                        + " status=" + terminationStatus + " code=" + exitCode)
+                            healT.restart()
+                        }
+                        onLoadingChanged: function (req) {
+                            // 2 === LoadSucceededStatus (numeric — identical on every Qt version)
+                            if (req.status === 2) webView.renderFails = 0
+                        }
                     }
+                    // Renderer self-heal: one paused reload per crash, at most 4 in a row
+                    Timer { id: healT; interval: 900; onTriggered: { try { webView.reload() } catch (e) {} } }
                     // Paste fallback: Ctrl+V invokes the native Chromium paste directly — needs no permission
                     // and works on every system. The context is restricted to the studio page only
                     // so the paste cannot steal from text fields in other QML windows.
@@ -13157,12 +13276,54 @@ QML += r'''
 # ══════════════════════════════ Startup ══════════════════════════════
 if __name__ == "__main__":
     os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Basic")
-    # Web engine (Chromium): GPU acceleration on the desktop (lighter and faster),
-    # and automatic safe software mode in containers/automated tests (BADI_SHOTS or headless Linux)
+    # ── Crash safety (user request: the app must never die with a sudden Segmentation fault) ──
+    # 1) Chromium flags. The GPU/driver process is the main source of sudden Segmentation
+    #    faults with QtWebEngine, so rendering defaults to the safe software path (the chart,
+    #    the editor and every screenshot were already tested pixel-perfect on it). Opt back
+    #    into GPU acceleration with BADI_GPU=1. Flags are APPENDED to any existing value so
+    #    a shell-exported variable can never silently drop them again.
     _soft = bool(os.environ.get("BADI_SHOTS")) or (
         sys.platform.startswith("linux") and not os.environ.get("DISPLAY"))
-    os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS",
-                          "--no-sandbox --disable-gpu" if _soft else "--no-sandbox")
+    _flags = [f for f in os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "").split() if f]
+    if (_soft or not os.environ.get("BADI_GPU")) and "--disable-gpu" not in _flags:
+        _flags.append("--disable-gpu")
+    for _fl in ("--no-sandbox", "--disable-dev-shm-usage", "--disable-crash-reporter",
+                "--disable-features=CalculateNativeWinOcclusion"):
+        if not any(f == _fl or f.startswith(_fl.split("=")[0] + "=") for f in _flags):
+            _flags.append(_fl)
+    os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = " ".join(_flags)
+    if os.environ.get("BADI_SHOTS"):
+        print("BADIFLAGS " + os.environ["QTWEBENGINE_CHROMIUM_FLAGS"], flush=True)
+    # 2) A crash log: if anything fatal still happens, the Python stack lands in
+    #    ~/.badi-charts/crash.log with a timestamp — send it and the exact line is found.
+    try:
+        import faulthandler as _fh
+        os.makedirs(CFG_DIR, exist_ok=True)
+        _fh.enable(file=open(os.path.join(CFG_DIR, "crash.log"), "ab", buffering=0))
+    except Exception:
+        pass
+
+    def _exc_hook(t, v, tb):
+        try:
+            import traceback
+            with open(os.path.join(CFG_DIR, "crash.log"), "ab") as f:
+                f.write(("\n[%s] Python exception\n" % datetime.now().isoformat()).encode())
+                traceback.print_exception(t, v, tb, file=f)
+        except Exception:
+            pass
+    sys.excepthook = _exc_hook
+    # 3) Ctrl+C / SIGTERM close the app gracefully instead of dying mid-render.
+    try:
+        import signal as _signal
+        def _sig_quit(*_a):
+            try:
+                app.quit()
+            except Exception:
+                pass
+        _signal.signal(_signal.SIGINT, _sig_quit)
+        _signal.signal(_signal.SIGTERM, _sig_quit)
+    except Exception:
+        pass
     QtWebEngineQuick.initialize()
     app = QGuiApplication(sys.argv)
     app.setOrganizationName("BadiCharts")
@@ -13179,11 +13340,28 @@ if __name__ == "__main__":
     engine.rootContext().setContextProperty("splashUrl", SPLASH_URL)
     engine.loadData(QML.encode("utf-8"))
     if not engine.rootObjects():
-        sys.exit(-1)
+        os._exit(-1)
     rc = app.exec()
-    del engine
-    del backend
-    sys.exit(rc)
+    # 4) Teardown (user request: no crash on close). Destroying the QML engine while
+    #    Chromium helper threads are still alive is a classic exit-time "Segmentation
+    #    fault". Every app file (config, signals, indicators) is written synchronously
+    #    the moment it changes, so a hard exit here is safe and removes that entire
+    #    crash class. The short grace period gives Chromium one last moment to flush
+    #    its storage (chart colors and page settings live in localStorage).
+    try:
+        backend.stop_all()
+    except Exception:
+        pass
+    try:
+        time.sleep(1.0)
+    except Exception:
+        pass
+    try:
+        sys.stdout.flush()
+        sys.stderr.flush()
+    except Exception:
+        pass
+    os._exit(rc)
 
 
 # ==========================================================================
