@@ -82,7 +82,7 @@ def qx_print_welcome():
     print()
     print(f"\033[96m{'═' * 62}\033[0m")
     print(f"\033[97m\033[1m  QX Console — Quotex Candles & Assets\033[0m\033[0m")
-    print(f"\033[2m  v25 · candles auto-saved to candles/<asset>_<tf>.json · typed assets + days · loud fetch log\033[0m")
+    print(f"\033[2m  v26 · native-period browser history (fast multi-day) + scaled fetch timeouts · candles JSON · every-tick\033[0m")
     print(f"\033[96m{'═' * 62}\033[0m")
     print()
 
@@ -3092,12 +3092,31 @@ def _bucketize(points, bucket):
             e['volume'] += 1
     return list(out.values())
 
+def _subsecond_fetch_timeout() -> int:
+    """v26: مهلة جلب تاريخ الفريمات الفرعية تتناسب مع المدى الزمني المطلوب.
+    الخادم يعطي ~500 ثانية تغطية لكل دفعة (سلوك مرصود في مسار 1s) والدفعة ~1s
+    → الصيغة: 60s أساس + 2s لكل 500s من المدى.
+    ساعة=74s، يوم كامل=404s، 5 أيام≈1964s. شروط الخروج المبكر تبقى كما هي،
+    فالجلب السريع لا ينتظر المهلة كاملة."""
+    try:
+        _span = int(SUBSECOND_HISTORY_SECONDS)
+    except Exception:
+        _span = 3600
+    if _span <= 0:
+        _span = 3600
+    return max(60, 60 + int(_span / 500) * 2)
+
 async def browser_style_history(api_symbol, period, seconds_back, chunk=None, timeout=15, progress=None):
     if CLIENT is None or CLIENT.api is None:
         return []
     api = CLIENT.api
     if chunk is None:
-        chunk = BROWSER_CHUNK_1S if period == 1 else period * BROWSER_CHUNK_MIN_CANDLES
+        if period == 1:
+            chunk = BROWSER_CHUNK_1S
+        elif period < 60:
+            chunk = period * 720  # v26: فريمات ثواني أصيلة — ساعة تغطية لكل دفعة (الخادم يحدّ بالنقاط)
+        else:
+            chunk = period * BROWSER_CHUNK_MIN_CANDLES
     if api.current_asset != api_symbol:
         await CLIENT.start_candles_stream(api_symbol, period)
         await asyncio.sleep(0.3)
@@ -3157,6 +3176,23 @@ async def browser_style_history(api_symbol, period, seconds_back, chunk=None, ti
 
 async def _subsecond_history_browser(asset):
     secs_back = int(SUBSECOND_HISTORY_CANDLES * SUBSECOND_SECONDS * 1.05)
+    # v26: جلب مباشر بالفريم الأصلي (5S → period=5) مثل مخطط المتصفح تماماً.
+    # الخادم يحدّ عدد النقاط لكل رد (~1000-3000) وليس المدى الزمني، فكل دفعة
+    # تغطي SUBSECOND_SECONDS أضعاف المسافة مقارنة بـ period=1 → يوم كامل في
+    # ~15-30 دفعة (~15-30 ثانية) بدل ~180 دفعة في مسار 1s.
+    try:
+        native = await browser_style_history(asset.api_symbol, SUBSECOND_SECONDS, secs_back)
+    except Exception as _ne:
+        logmsg(f"[subfetch:{asset.symbol}] native p={SUBSECOND_SECONDS} failed: {_ne}")
+        native = []
+    if native:
+        tz = _get_tz_offset()
+        for c in native:
+            c['time'] += tz
+        logmsg(f"[subfetch:{asset.symbol}] browser-style native p={SUBSECOND_SECONDS}: "
+               f"{len(native)} {SUBSECOND_LABEL} candles")
+        return native[-SUBSECOND_HISTORY_CANDLES:]
+    # v26 fallback: مسار 1s + تجميع محلي (الطريقة المجربة)
     one_s = await browser_style_history(asset.api_symbol, 1, secs_back)
     if not one_s:
         return []
@@ -3911,7 +3947,8 @@ async def subsecond_stream(asset: Asset):
         display_name = pretty_asset_name(internal)
         async def _background_history_fetch():
             try:
-                historical = await asyncio.wait_for(fetch_subsecond_history(asset), timeout=60)
+                # v26: كانت 60s ثابتة — تُلغي جلب الأيام المتعددة قبل اكتماله
+                historical = await asyncio.wait_for(fetch_subsecond_history(asset), timeout=_subsecond_fetch_timeout())
                 if historical and len(historical) > 0:
                     # Merge: keep historical candles older than any tick-collected candles
                     if asset.candles:
@@ -5517,7 +5554,10 @@ if __name__ == "__main__":
             # Poll asset.candles length and the asset._bg_tasks set, exit as
             # soon as the background fetch completes (success or failure) OR
             # the target candle count is reached. Hard cap = 15s.
-            _subsecond_wait_deadline = time.time() + 15.0  # v8.3: was 45s -- reduced to lower WebSocket pressure
+            # v26: كانت 15s ثابتة (v8.3) — أقل من زمن جلب الأيام المتعددة،
+            # فتُطبع "Only N candles" رغم أن الجلب الخلفي كان يجمع البيانات.
+            # شروط الخروج المبكر (اكتمال المهمة/بلوغ الهدف/انقطاع الاتصال) تبقى كما هي.
+            _subsecond_wait_deadline = time.time() + float(_subsecond_fetch_timeout()) + 5.0
             while time.time() < _subsecond_wait_deadline:
                 # If the background task set is empty, the fetch has finished
                 _bg_tasks = getattr(asset, '_bg_tasks', None)
