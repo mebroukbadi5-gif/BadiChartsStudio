@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
@@ -1849,11 +1848,19 @@ SUBSECOND_MAX_ZERO_STREAK = 3  # was effectively infinite (relied on MAX_RECONNE
 M1_USE_1S_BRIDGE = True       # set False to fall back to the old M1 bridge fetch
 M1_1S_BRIDGE_TARGET = 750     # v8.6: target 1s candles for the bridge (=> ~12 1m candles)
 M1_BRIDGE_TIMEOUT = 30        # seconds, bounded wait for the 1s fetch
-# v8.11: delays to prevent server throttling in M1 bridge mode.
-# User explicitly asked: "مهلات لكي لا لا يتوقف السرفر" (delays so the
-# server doesn't stop). The pattern per asset is:
-#   1s fetch -> M1_INTRA_ASSET_DELAY -> 1000 historical fetch -> M1_ASSET_DELAY -> next asset
-M1_INTRA_ASSET_DELAY = 1.0    # v8.11: delay between 1s fetch and 1000 historical fetch (same asset)
+# v11.0: PARALLEL M1 fetch — user asked why loading takes ~8s instead of 4s.
+# The old flow was strictly sequential: 1s bridge fetch (1-2s) -> sleep(1.0s)
+# -> historical fetch (2-4s) = 5-8s total. The bridge and the historical fetch
+# are INDEPENDENT history/load requests (each response is keyed by its own
+# request index in the WS event registry), so they run CONCURRENTLY now.
+# Result: total ~= max(bridge, historical) ~= 2.5-4s. Set False to restore the
+# legacy sequential flow.
+M1_PARALLEL_FETCH = True
+# v11.0: M1_INTRA_ASSET_DELAY is now only the STAGGER between starting the
+# historical fetch and the bridge fetch inside the parallel coroutine (so we
+# never fire 6 history/load requests in the exact same millisecond).
+# It is also still used as the sequential inter-step delay in the legacy path.
+M1_INTRA_ASSET_DELAY = 0.2    # v11.0: was 1.0 -- now just a stagger in parallel mode
 M1_ASSET_DELAY = 1.0          # v8.11: delay between assets in M1 bridge mode (was 0.1s)
 # v8.13: cap the bridge to the NEWEST N candles only, then REPLACE matching
 # historical candles. User explicitly asked: "نربط 6 شموع الاولى فقط" (only
@@ -3319,6 +3326,61 @@ async def fetch_1s_and_aggregate_to_1m(asset: Asset, idx: int = 1, total: int = 
     return candles_1m, len(candles_1s)
 
 
+async def _m1_bridge_and_history_parallel(asset: Asset, idx: int = 1, total: int = 1):
+    """v11.0: Run the 1s->1m bridge fetch and the historical 1m fetch CONCURRENTLY.
+
+    User question: "هل قللت من تسريع عملية سحب الشموع؟ أراها ~8 ثوانٍ والمفروض 4".
+    Root cause of the 8s: the two fetches were strictly sequential
+    (bridge 1-2s + sleep(1.0s) + historical 2-4s). They are independent
+    history/load requests and every response is keyed by its own request
+    index (candles_ready_{asset}_{index}), so running them in parallel is safe.
+    Peak in-flight requests: 5 historical workers + 1 bridge batch = 6
+    (well below the 10-workers level that used to drop the connection).
+
+    Returns:
+        (bridge_1m_candles, n_1s, candles_count, attempts)
+        - bridge_1m_candles/n_1s: the aggregated 1m bridge (may be [] on failure)
+        - candles_count/attempts: result of fetch_candles_with_retry
+    """
+    display = pretty_asset_name(asset.symbol)
+    _t0 = time.time()
+    # The old recent-candle bridge is redundant in M1 1s-bridge mode (same as
+    # the sequential flow) -- disable it around the historical fetch.
+    saved_flag = BRIDGE_FETCH_ENABLED
+    globals()['BRIDGE_FETCH_ENABLED'] = False
+    stagger = max(0.0, float(M1_INTRA_ASSET_DELAY))
+
+    async def _bridge_task():
+        # Small stagger so the historical workers' first batches go out first
+        # and we never fire 6 requests in the exact same millisecond.
+        if stagger > 0:
+            await asyncio.sleep(stagger)
+        try:
+            return await fetch_1s_and_aggregate_to_1m(asset, idx=idx, total=total)
+        except asyncio.TimeoutError:
+            logmsg(f"[m1par:{asset.symbol}] 1s bridge timeout (non-fatal)")
+            return [], 0
+        except Exception as e:
+            logmsg(f"[m1par:{asset.symbol}] 1s bridge failed (non-fatal): {e}")
+            return [], 0
+
+    try:
+        bridge_task = asyncio.ensure_future(_bridge_task())
+        hist_task = asyncio.ensure_future(
+            fetch_candles_with_retry(asset, max_retries=MAX_FETCH_RETRIES, idx=idx, total=total)
+        )
+        bridge_1m_candles, n_1s = await bridge_task
+        candles_count, attempts = await hist_task
+    finally:
+        globals()['BRIDGE_FETCH_ENABLED'] = saved_flag
+    logmsg(
+        f"[m1par:{display}] parallel load done in {time.time() - _t0:.1f}s: "
+        f"{n_1s} 1s -> {len(bridge_1m_candles)} 1m bridge + {candles_count} historical "
+        f"(was bridge+1.0s sleep+historical sequential = ~8s)"
+    )
+    return bridge_1m_candles, n_1s, candles_count, attempts
+
+
 async def subsecond_stream(asset: Asset):
     """Dedicated stream for subsecond timeframes (5s/10s/15s/30s).
 
@@ -4665,6 +4727,116 @@ def _web_pair_name(api_symbol):
 
 _web_latest_tick = {}   # pair_name -> {"price": float, "time": int, "digits": int, "ts": ms}
 
+# ==============================================================================
+# ===== CHART DATA VALIDATION GATE (لا تُرسَل الشموع إلى الشارت قبل التحقق) =====
+# ==============================================================================
+# User report: "أرى الشموع بطريقة غريبة — اجعله لا يرسلها إلى الشارت حتى
+# يتأكد أنه حمّلها". Root cause: realtime_stream pushes a full-resync to the
+# web store as soon as ONE live candle closes -- BEFORE the historical fetch
+# finishes. The chart then renders 1-3 sparse live candles (+ flat gap
+# fillers) which look strange, and only later gets the real history.
+# Fix (double gate):
+#   1) SERVER: /api/candles refuses to serve a pair until its data passes
+#      _validate_chart_candles() (complete history, sane OHLC, aligned stamps).
+#   2) CLIENT: fetchFullCandles() re-checks sanity before chart.setData().
+CHART_VALIDATE_ENABLED = True
+CHART_VALIDATE_MIN_CANDLES = 50       # never serve a pair below this candle count
+CHART_VALIDATE_MAX_BAD_RATIO = 0.02   # max fraction of structurally-broken candles
+CHART_VALIDATE_MAX_GAP_RATIO = 0.30   # max fraction of missing periods inside the span
+CHART_VALIDATE_GAP_TOLERANCE = 1800   # holes bigger than this = market closed, not gaps
+
+def _validate_chart_candles(candles, period_seconds=None, min_count=None):
+    """Verify candle data is complete and sane BEFORE it goes to the chart.
+
+    Returns (ok, reason, cleaned):
+      ok      -- True when the dataset may be rendered on the chart
+      reason  -- rejection reason string (for the log / status line)
+      cleaned -- sorted, de-duplicated, structurally-valid candles (when ok)
+    """
+    try:
+        p = int(period_seconds) if period_seconds else int(PERIOD_SECONDS)
+    except Exception:
+        p = 60
+    if not CHART_VALIDATE_ENABLED:
+        return True, "disabled", list(candles or [])
+    if not candles:
+        return False, "empty", []
+    # 1) per-candle structural sanity: positive OHLC + high/low envelope
+    good, bad = [], 0
+    for c in candles:
+        try:
+            t = int(float(c.get("time", 0)))
+            o = float(c.get("open", 0)); h = float(c.get("high", 0))
+            l = float(c.get("low", 0)); cl = float(c.get("close", 0))
+        except Exception:
+            bad += 1; continue
+        if t <= 0 or o <= 0 or h <= 0 or l <= 0 or cl <= 0:
+            bad += 1; continue
+        if h < l or h < max(o, cl) - 1e-9 or l > min(o, cl) + 1e-9:
+            bad += 1; continue
+        good.append({"time": t, "open": o, "high": h, "low": l, "close": cl,
+                     "volume": c.get("volume", 1)})
+    if not good:
+        return False, "all candles structurally invalid", []
+    if bad / max(len(good) + bad, 1) > CHART_VALIDATE_MAX_BAD_RATIO:
+        return False, f"too many malformed candles ({bad})", []
+    # 2) sort + de-duplicate by timestamp
+    good.sort(key=lambda x: x["time"])
+    seen, dedup = set(), []
+    for c in good:
+        if c["time"] in seen:
+            continue
+        seen.add(c["time"])
+        dedup.append(c)
+    # 3) minimum candle count (a couple of live candles is NOT chart-ready)
+    mn = int(min_count) if min_count else CHART_VALIDATE_MIN_CANDLES
+    if len(dedup) < mn:
+        return False, f"only {len(dedup)} candles (need {mn})", []
+    # 4) timestamps aligned to period boundaries (98% tolerance)
+    try:
+        tz = _get_tz_offset()
+    except Exception:
+        tz = 0
+    aligned = sum(1 for c in dedup if (c["time"] % p == 0) or ((c["time"] + tz) % p == 0))
+    if aligned / len(dedup) < 0.98:
+        return False, f"timestamps misaligned ({aligned}/{len(dedup)})", []
+    # 5) gap coverage: missing periods inside the covered span. Holes larger
+    #    than GAP_TOLERANCE (market closed / session break) are excluded from
+    #    BOTH the expected count and the missing count.
+    if p > 0:
+        span = dedup[-1]["time"] - dedup[0]["time"]
+        if span > 0:
+            tol = max(CHART_VALIDATE_GAP_TOLERANCE, 30 * p)
+            big_hole_slots = 0
+            for i in range(1, len(dedup)):
+                d = dedup[i]["time"] - dedup[i - 1]["time"]
+                if d - p > tol:
+                    big_hole_slots += (d - p) // p
+            expected = span // p + 1 - big_hole_slots
+            missing = expected - len(dedup)
+            if expected > 0 and missing / expected > CHART_VALIDATE_MAX_GAP_RATIO:
+                return False, f"too many missing candles ({missing}/{expected})", []
+    return True, "ok", dedup
+
+def _web_pair_validated(pair):
+    """True when the stored entry for `pair` passed chart validation."""
+    with _web_candle_lock:
+        entry = _web_candle_store.get(pair)
+        if entry is None:
+            pl = pair.lower()
+            for k, v in _web_candle_store.items():
+                if k.lower() == pl:
+                    entry = v
+                    break
+        if not entry:
+            return False
+        candles = entry.get("candles", [])
+        flag = entry.get("validated", None)
+        if flag is None:            # legacy entry without the flag: validate now
+            ok, _r, _c = _validate_chart_candles(candles)
+            return ok
+        return bool(flag)
+
 def _web_update_asset(asset, full_resync=False):
     """Called after every candle update -- pushes data to web candle store.
 
@@ -4705,13 +4877,23 @@ def _web_update_asset(asset, full_resync=False):
     # candle CLOSE (new candle started), not on every tick.
     if full_resync:
         candles_copy = [dict(c) for c in asset.candles[-3000:]]
+        # v11.0 validation gate: mark the entry chart-ready ONLY when the
+        # candle set passes completeness/sanity checks. Until then /api/candles
+        # keeps the chart page on the loading overlay instead of drawing
+        # strange partial data.
+        ok, reason, cleaned = _validate_chart_candles(candles_copy)
         with _web_candle_lock:
             _web_candle_store[pair] = {
                 "pair": pair,
                 "digits": digits,
-                "candles": candles_copy,
+                "candles": cleaned if ok else candles_copy,
+                "validated": ok,
+                "validateReason": None if ok else reason,
                 "lastUpdate": now_ms,
             }
+        if not ok:
+            logmsg(f"[web:{pair}] candles NOT chart-ready yet: {reason} "
+                   f"({len(candles_copy)} candles) -- holding them back from the chart")
 
 # == ON-DEMAND ASSETS (web dashboard click-to-load) ============================
 # When the user clicks an asset in the dashboard that is NOT part of the
@@ -4842,23 +5024,37 @@ async def _load_on_demand_asset(api_symbol):
             # 2) M1: 1s -> 1m bridge (same as default asset flow)
             _is_m1_bridge = (PERIOD_SECONDS == 60 and M1_USE_1S_BRIDGE and not M1_TEST_1S_ONLY)
             bridge_1m_candles, n_1s = [], 0
-            if _is_m1_bridge:
-                try:
-                    bridge_1m_candles, n_1s = await fetch_1s_and_aggregate_to_1m(asset, idx=1, total=1)
-                except Exception as e:
-                    logmsg(f"[on-demand:{sym}] 1s->1m bridge failed (non-fatal): {e}")
-                    bridge_1m_candles = []
             # 3) historical fetch with retry (same as default asset). In M1
             #    bridge mode the internal recent-candle bridge is disabled,
             #    exactly like the main loop does.
+            # v11.0: run bridge + historical in PARALLEL (default) -- same
+            # speedup as the startup loop (~8s -> ~4s).
             _saved_bridge = BRIDGE_FETCH_ENABLED
-            if _is_m1_bridge:
-                globals()["BRIDGE_FETCH_ENABLED"] = False
-            try:
-                await fetch_candles_with_retry(asset, max_retries=MAX_FETCH_RETRIES, idx=1, total=1)
-            finally:
+            _need_seq_hist = True
+            if _is_m1_bridge and M1_PARALLEL_FETCH:
+                try:
+                    bridge_1m_candles, n_1s, _cnt, _att = await _m1_bridge_and_history_parallel(
+                        asset, idx=1, total=1)
+                    logmsg(f"[on-demand:{sym}] parallel load: {n_1s} 1s -> "
+                           f"{len(bridge_1m_candles)} 1m bridge + {_cnt} historical")
+                    _need_seq_hist = False
+                except Exception as e:
+                    logmsg(f"[on-demand:{sym}] parallel load failed -> sequential fallback: {e}")
+                    bridge_1m_candles, n_1s = [], 0
+            if _need_seq_hist:
                 if _is_m1_bridge:
-                    globals()["BRIDGE_FETCH_ENABLED"] = _saved_bridge
+                    try:
+                        bridge_1m_candles, n_1s = await fetch_1s_and_aggregate_to_1m(asset, idx=1, total=1)
+                    except Exception as e:
+                        logmsg(f"[on-demand:{sym}] 1s->1m bridge failed (non-fatal): {e}")
+                        bridge_1m_candles = []
+                if _is_m1_bridge:
+                    globals()["BRIDGE_FETCH_ENABLED"] = False
+                try:
+                    await fetch_candles_with_retry(asset, max_retries=MAX_FETCH_RETRIES, idx=1, total=1)
+                finally:
+                    if _is_m1_bridge:
+                        globals()["BRIDGE_FETCH_ENABLED"] = _saved_bridge
             # 4) REPLACE/APPEND merge of the newest bridge candles (main-loop logic)
             if bridge_1m_candles and asset.candles:
                 bridge_for_merge = bridge_1m_candles[-M1_BRIDGE_REPLACE_COUNT:]
@@ -4882,9 +5078,26 @@ async def _load_on_demand_asset(api_symbol):
         # 5) full web resync -- the chart page polls /api/candles
         _web_update_asset(asset, full_resync=True)
         n = len(asset.candles)
-        _od_set_state(sym, status=("ready" if n > 0 else "error"), candles=n,
-                      error=None if n > 0 else "no candles returned (market closed or fetch failed)")
-        logmsg(f"[on-demand:{sym}] done: {n} candles ({'ready' if n > 0 else 'error'})")
+        # v11.0: "ready" ONLY when the stored candles passed chart validation.
+        # If validation failed the chart would otherwise draw the strange
+        # partial dataset -- the page stays on the overlay and gets a clear
+        # error instead.
+        _chart_ok = _web_pair_validated(_web_pair_name(sym))
+        if n > 0 and _chart_ok:
+            _od_set_state(sym, status="ready", candles=n, error=None)
+        elif n > 0:
+            _reason = None
+            with _web_candle_lock:
+                _entry = _web_candle_store.get(_web_pair_name(sym)) or {}
+                _reason = _entry.get("validateReason")
+            _err = f"candles failed chart verification: {_reason or 'unknown'}"
+            _od_set_state(sym, status="error", candles=n, error=_err)
+            logmsg(f"[on-demand:{sym}] NOT chart-ready: {_err}")
+        else:
+            _od_set_state(sym, status="error", candles=0,
+                          error="no candles returned (market closed or fetch failed)")
+        logmsg(f"[on-demand:{sym}] done: {n} candles "
+               f"({'ready' if (n > 0 and _chart_ok) else ('error' if n == 0 else 'verification-failed')})")
     except Exception as e:
         log_exception(f"_load_on_demand_asset:{sym}", e)
         _od_set_state(sym, status="error", error=str(e),
@@ -5113,8 +5326,8 @@ _WEB_CHART_HTML = r"""<!DOCTYPE html>
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=5.0,user-scalable=yes,viewport-fit=cover">
 <meta name="theme-color" content="#0a0e17">
 <title>PAIR_DISPLAY - Live Chart | QXChart MT4</title>
-<!-- ===== BADI-CHARTS-V2 v2.20.0 WEBGL EDITION (single-file canvas chart) ===== -->
-<script src="https://cdn.jsdelivr.net/gh/salahbadi19/BADI-CHARTS-V2@v2.20.0/chart-webgl.js"></script>
+<!-- ===== BADI-CHARTS-V2 v2.20.1 WEBGL EDITION (single-file canvas chart) ===== -->
+<script src="https://cdn.jsdelivr.net/gh/salahbadi19/BADI-CHARTS-V2@v2.20.1/chart-webgl.js"></script>
 <style>
 CSS_HERE
 html,body{height:100%;width:100%;overflow:hidden;}
@@ -5225,6 +5438,37 @@ function computeTimeframe(cs){
   return {label: fmtTfLabel(best), ms: best * 1000};
 }
 
+// ===== v11.0 client-side verification (لا ترسم الشموع قبل التأكد من سلامتها) =====
+// The server already gates /api/candles behind validation. This is the second
+// belt: even if a broken batch slips through, it is NOT drawn on the chart --
+// the loading overlay stays and polling continues.
+function candlesLookSane(cs){
+  if(!cs || cs.length < 30) return false;               // partial dataset
+  let bad = 0;
+  for(let i = 0; i < cs.length; i++){
+    const c = cs[i];
+    if(!(c.t > 0 && c.open > 0 && c.high > 0 && c.low > 0 && c.close > 0)){ bad++; continue; }
+    if(c.high < c.low ||
+       c.high < Math.max(c.open, c.close) - 1e-9 ||
+       c.low  > Math.min(c.open, c.close) + 1e-9) bad++;  // broken OHLC envelope
+  }
+  if(bad / cs.length > 0.02) return false;               // >2% malformed candles
+  for(let i = 1; i < cs.length; i++){                    // strictly increasing time
+    if(!(cs[i].t > cs[i-1].t)) return false;
+  }
+  return true;
+}
+
+function showVerifying(n){
+  const line = document.getElementById("odStatusLine");
+  if(line){
+    line.style.display = "block";
+    line.textContent = n > 0
+      ? "Verifying " + n + " candles before drawing..."
+      : "Waiting for complete candle data...";
+  }
+}
+
 function showOverlayError(title, msg){
   const box = document.getElementById("overlayBox");
   const ol = document.getElementById("loadingOverlay");
@@ -5317,6 +5561,13 @@ async function fetchFullCandles(){
       return;
     }
     const data = await r.json();
+    // ===== v11.0 validation gate (client side) =====
+    // Server says the candles are not verified yet (history still loading or
+    // verification failed) -- do NOT draw them, keep the loading overlay.
+    if(data.status === "LOADING" || data.validated === false){
+      if(!initialized) showVerifying(data.candle_count || 0);
+      return;
+    }
     if(data.status === "OK" && data.candles && data.candles.length > 0){
       digits = data.digits || 5;
       // Normalize: API sends {t, open, high, low, close} (unix seconds)
@@ -5332,6 +5583,11 @@ async function fetchFullCandles(){
 
       candles = raw;
       if(candles.length === 0) return;
+      // Second client-side check: never hand strange/partial data to the chart.
+      if(!candlesLookSane(candles)){
+        if(!initialized) showVerifying(candles.length);
+        return;
+      }
 
       // Build the chart on the first successful fetch (digits are known now).
       const tf = computeTimeframe(candles);
@@ -5532,12 +5788,34 @@ def _build_web_flask_app():
             return Response(json.dumps({"status": "ERROR", "error": f"No data for {pair}", "candles": []}),
                             content_type="application/json", status=404)
         candles = data.get("candles", [])
+        # ===== v11.0 VALIDATION GATE (لا ترسل الشموع للشارت قبل التأكد) =====
+        # Serve the candles ONLY after they passed completeness/sanity checks.
+        # Before that the chart page keeps its loading overlay (status=LOADING)
+        # instead of drawing the strange sparse live-only candles.
+        validated = data.get("validated", None)
+        if validated is None:      # legacy entry without the flag: validate now
+            ok, reason, cleaned = _validate_chart_candles(candles)
+            validated, candles = ok, (cleaned if ok else candles)
+        if CHART_VALIDATE_ENABLED and not validated:
+            result = {
+                "status": "LOADING",
+                "pair": pair,
+                "validated": False,
+                "reason": data.get("validateReason") or "validating",
+                "candle_count": len(candles),
+                "candles": [],
+            }
+            resp = Response(json.dumps(result, separators=(",", ":")), content_type="application/json")
+            resp.headers["Cache-Control"] = "no-cache"
+            resp.headers["Access-Control-Allow-Origin"] = "*"
+            return resp
         chart_candles = [{"t": int(c["time"]), "open": c["open"], "high": c["high"],
                           "low": c["low"], "close": c["close"]} for c in candles]
         result = {
             "status": "OK",
             "pair": pair,
             "digits": data.get("digits", 5),
+            "validated": True,
             "candle_count": len(chart_candles),
             "candles": chart_candles,
         }
@@ -5651,7 +5929,12 @@ def _build_web_flask_app():
             has_data = pair in _web_candle_store or asset in _web_candle_store
         if status is None and has_data:
             status = "data"
-        result = {"status": status or "unknown", "asset": asset, "candles": n, "error": error}
+        # v11.0: expose the chart-validation state so the page can tell
+        # "fetching" apart from "verifying before drawing".
+        chart_ready = _web_pair_validated(pair) if has_data else False
+        result = {"status": status or "unknown", "asset": asset, "candles": n,
+                  "error": error, "validated": chart_ready,
+                  "chartReady": bool(chart_ready and (n > 0 or has_data))}
         resp = Response(json.dumps(result, separators=(",", ":")), content_type="application/json")
         resp.headers["Cache-Control"] = "no-cache"
         resp.headers["Access-Control-Allow-Origin"] = "*"
@@ -5943,24 +6226,44 @@ if __name__ == "__main__":
             _is_m1_with_1s_bridge = (PERIOD_SECONDS == 60 and M1_USE_1S_BRIDGE)
             bridge_1m_candles = []
             if _is_m1_with_1s_bridge:
-                # Step (a): fetch 1s -> aggregate to 1m.
-                # v8.5/v8.6: fetch_1s_and_aggregate_to_1m returns (candles_1m, n_1s).
-                # It also prints its own console line showing the 1s fetch result
-                # (the user explicitly asked "must print the loading of those candles
-                # before loading 1-minute candles"). This print fires BEFORE the
-                # historical 1m fetch begins.
                 _n_1s_fetched = 0
-                try:
-                    # v8.4 fix: this is in the main SYNC thread -- no 'await'.
-                    # asyncio.run_coroutine_threadsafe(...).result(timeout=N) bridges sync->async.
-                    bridge_1m_candles, _n_1s_fetched = asyncio.run_coroutine_threadsafe(
-                        fetch_1s_and_aggregate_to_1m(asset, idx=idx, total=total_assets),
-                        ASYNC_LOOP,
-                    ).result(timeout=M1_BRIDGE_TIMEOUT + 5)
-                except Exception as e:
-                    logmsg(f"[fetch_loop:{display}] 1s->1m bridge failed (non-fatal): {e}")
-                    bridge_1m_candles = []
-                    _n_1s_fetched = 0
+                candles_count, attempts = 0, 0
+                _m1_hist_done = False   # v11.0: historical fetch already completed (parallel path)
+                if M1_PARALLEL_FETCH and not M1_TEST_1S_ONLY:
+                    # ===== v11.0: PARALLEL path (default) =====
+                    # The 1s->1m bridge AND the historical fetch run at the same
+                    # time. This is what cuts the load time from ~8s to ~4s:
+                    # old = bridge(1-2s) + sleep(1.0s) + historical(2-4s).
+                    try:
+                        _fut = asyncio.run_coroutine_threadsafe(
+                            _m1_bridge_and_history_parallel(asset, idx=idx, total=total_assets),
+                            ASYNC_LOOP,
+                        )
+                        bridge_1m_candles, _n_1s_fetched, candles_count, attempts = _fut.result(timeout=180)
+                        _m1_hist_done = True
+                    except Exception as e:
+                        logmsg(f"[fetch_loop:{display}] parallel M1 fetch failed -> sequential fallback: {e}")
+                        bridge_1m_candles = []
+                        _n_1s_fetched = 0
+                        candles_count, attempts = 0, 0
+                if not _m1_hist_done:
+                    # Step (a): fetch 1s -> aggregate to 1m (sequential fallback /
+                    # TEST MODE). v8.5/v8.6: fetch_1s_and_aggregate_to_1m returns
+                    # (candles_1m, n_1s). It also prints its own console line
+                    # showing the 1s fetch result (the user explicitly asked
+                    # "must print the loading of those candles before loading
+                    # 1-minute candles").
+                    try:
+                        # v8.4 fix: this is in the main SYNC thread -- no 'await'.
+                        # asyncio.run_coroutine_threadsafe(...).result(timeout=N) bridges sync->async.
+                        bridge_1m_candles, _n_1s_fetched = asyncio.run_coroutine_threadsafe(
+                            fetch_1s_and_aggregate_to_1m(asset, idx=idx, total=total_assets),
+                            ASYNC_LOOP,
+                        ).result(timeout=M1_BRIDGE_TIMEOUT + 5)
+                    except Exception as e:
+                        logmsg(f"[fetch_loop:{display}] 1s->1m bridge failed (non-fatal): {e}")
+                        bridge_1m_candles = []
+                        _n_1s_fetched = 0
                 logmsg(
                     f"[fetch_loop:{display}] 1s->1m bridge: {_n_1s_fetched} 1s -> {len(bridge_1m_candles)} 1m ready"
                 )
@@ -6006,22 +6309,26 @@ if __name__ == "__main__":
                     except Exception:
                         pass
                 else:
-                    # v8.11: intra-asset delay between the 1s fetch and the 1000
-                    # historical fetch. User explicitly asked: "مهلة ثم يجلب
-                    # 1000 شمعة" (a delay then fetch 1000 candles).
-                    time.sleep(M1_INTRA_ASSET_DELAY)
                     # Normal flow (M1_TEST_1S_ONLY = False): fetch 1000 historical
                     # 1m candles + merge with the 1s->1m bridge.
-                    # Step (b): fetch 1000 historical 1m candles. Temporarily disable
-                    # the old _bridge_fetch_recent_candles for this asset -- we already
-                    # have a more granular 1s->1m bridge that we'll merge in step (c).
-                    _saved_bridge_flag = BRIDGE_FETCH_ENABLED
-                    globals()['BRIDGE_FETCH_ENABLED'] = False
-                    try:
-                        fut = asyncio.run_coroutine_threadsafe(fetch_candles_with_retry(asset, max_retries=MAX_FETCH_RETRIES, idx=idx, total=total_assets), ASYNC_LOOP)
-                        candles_count, attempts = fut.result(timeout=180)
-                    finally:
-                        globals()['BRIDGE_FETCH_ENABLED'] = _saved_bridge_flag
+                    # v11.0: in parallel mode the historical fetch ALREADY ran
+                    # inside _m1_bridge_and_history_parallel (candles_count is
+                    # set) -- only run it here in the sequential fallback.
+                    if not _m1_hist_done:
+                        # v8.11: intra-asset delay between the 1s fetch and the 1000
+                        # historical fetch. User explicitly asked: "مهلة ثم يجلب
+                        # 1000 شمعة" (a delay then fetch 1000 candles).
+                        time.sleep(M1_INTRA_ASSET_DELAY)
+                        # Step (b): fetch 1000 historical 1m candles. Temporarily disable
+                        # the old _bridge_fetch_recent_candles for this asset -- we already
+                        # have a more granular 1s->1m bridge that we'll merge in step (c).
+                        _saved_bridge_flag = BRIDGE_FETCH_ENABLED
+                        globals()['BRIDGE_FETCH_ENABLED'] = False
+                        try:
+                            fut = asyncio.run_coroutine_threadsafe(fetch_candles_with_retry(asset, max_retries=MAX_FETCH_RETRIES, idx=idx, total=total_assets), ASYNC_LOOP)
+                            candles_count, attempts = fut.result(timeout=180)
+                        finally:
+                            globals()['BRIDGE_FETCH_ENABLED'] = _saved_bridge_flag
                     # Step (c): merge historical + bridge.
                     # v8.12: REPLACE matching historical candles with bridge candles
                     # (not just APPEND new ones). User explicitly asked:
