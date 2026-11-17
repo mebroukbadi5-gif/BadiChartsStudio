@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
@@ -4649,6 +4648,7 @@ def print_dashboard():
 # ==============================================================================
 WEB_SERVER_PORT = 8765
 WEB_SERVER_HOST = "127.0.0.1"
+AUTO_OPEN_BROWSER = True   # open the dashboard in the default browser at startup
 
 # Shared candle store for web server (populated by realtime_stream + fetch)
 _web_candle_store = {}          # pair_name -> {"candles": [...], "lastUpdate": ms, "digits": int}
@@ -4887,8 +4887,8 @@ _WEB_CHART_HTML = r"""<!DOCTYPE html>
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=5.0,user-scalable=yes,viewport-fit=cover">
 <meta name="theme-color" content="#0a0e17">
 <title>PAIR_DISPLAY - Live Chart | QXChart MT4</title>
-<!-- ===== Lightweight Charts (TradingView) ~45KB, no jQuery/React ===== -->
-<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<!-- ===== BADI-CHARTS-V2 v2.20.0 WEBGL EDITION (single-file canvas chart) ===== -->
+<script src="https://cdn.jsdelivr.net/gh/salahbadi19/BADI-CHARTS-V2@v2.20.0/chart-webgl.js"></script>
 <style>
 CSS_HERE
 html,body{height:100%;width:100%;overflow:hidden;}
@@ -4899,6 +4899,8 @@ body{height:100vh;display:flex;flex-direction:column;overflow:hidden;}
 .nav-back:hover{color:#fff;}
 .nav-sep{width:1px;height:16px;background:var(--border);}
 .nav-brand{font-size:13px;color:var(--text-dim);}
+.nav-engine{font-size:11px;color:var(--text-muted);border:1px solid var(--border);
+            border-radius:10px;padding:2px 8px;margin-left:auto;}
 .chart-header{display:flex;align-items:center;padding:12px 16px;
               background:var(--bg-nav);border-bottom:1px solid var(--border);
               flex-shrink:0;flex-wrap:wrap;gap:8px 16px;}
@@ -4910,6 +4912,7 @@ body{height:100vh;display:flex;flex-direction:column;overflow:hidden;}
 .price-change.down{color:var(--red);}
 .chart-wrap{flex:1;position:relative;background:var(--bg-primary);min-height:0;width:100%;overflow:hidden;}
 #chartContainer{position:absolute;inset:0;width:100%;height:100%;}
+#chart{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;}
 .overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
          background:rgba(10,14,23,0.92);z-index:10;}
 .overlay-box{text-align:center;padding:24px;max-width:400px;}
@@ -4917,6 +4920,7 @@ body{height:100vh;display:flex;flex-direction:column;overflow:hidden;}
          border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 16px;}
 @keyframes spin{to{transform:rotate(360deg);}}
 .overlay p{font-size:14px;color:var(--text-dim);}
+.overlay .err-title{font-size:16px;font-weight:700;color:var(--red);margin-bottom:8px;}
 @media(max-width:380px){.nav{padding:6px 10px;}.chart-header{padding:8px 10px;}.pair-title{font-size:14px;}.current-price{font-size:18px;}}
 @media(max-width:600px){.pair-title{font-size:16px;}.current-price{font-size:20px;}}
 </style>
@@ -4926,6 +4930,7 @@ body{height:100vh;display:flex;flex-direction:column;overflow:hidden;}
   <a href="/" class="nav-back"><svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg></a>
   <div class="nav-sep"></div>
   <span class="nav-brand">QXChart MT4 Pro</span>
+  <span class="nav-engine" id="engineBadge">BADI WebGL</span>
 </div>
 <div class="chart-header">
   <div class="chart-header-left">
@@ -4935,126 +4940,111 @@ body{height:100vh;display:flex;flex-direction:column;overflow:hidden;}
   </div>
 </div>
 <div class="chart-wrap">
-  <div id="chartContainer"></div>
+  <div id="chartContainer">
+    <canvas id="chart"></canvas>
+  </div>
   <div class="overlay" id="loadingOverlay">
-    <div class="overlay-box">
+    <div class="overlay-box" id="overlayBox">
       <div class="spinner"></div>
       <p>Loading chart data...</p>
     </div>
   </div>
 </div>
 <script>
-// ===== Lightweight Charts (TradingView) — Same dark theme as the rest of the app =====
+// ===== BADI-CHARTS-V2 (WebGL edition) — same dark theme as the rest of the app =====
+// Library API used here (chart-webgl.js):
+//   new BadiCharts(canvas, {symbol, timeframe, theme, countdown, timezone})
+//   chart.setData(candles, {keepView:true})   candles: {time(sec), open, high, low, close}
+//   chart.update(candle)                      real-time tick (in-place or append)
+//   chart.setTimeframe({label, ms})           switch candle width
+//   chart.start()                             rAF render loop
 const PAIR_NAME = "PAIR_NAME_RAW";
-let candles = [];       // [{t, open, high, low, close}]
+let candles = [];       // local mirror: [{t, open, high, low, close}] (header calc)
 let digits = 5;
-let lastBarTime = 0;     // last candle time we fed to the series (for series.update)
 let initialized = false;
+let chart = null;       // BadiCharts instance
+let curDigits = -1;     // last decimals pushed into the chart
 
 // Colors (match the existing palette)
 const C = {
   bg:"#0a0e17", grid:"#1a2235", up:"#22c55e", down:"#ef4444",
   text:"#9ca3af", textBright:"#e5e7eb", crosshair:"rgba(255,255,255,0.3)",
-  border:"#1f2937"
+  border:"#1f2937", accent:"#3b82f6"
 };
 
-// ===== Create chart =====
-const container = document.getElementById("chartContainer");
-const chart = LightweightCharts.createChart(container, {
-  layout: {
-    background: { type: 'solid', color: C.bg },
-    textColor: C.text,
-    fontSize: 11,
-    fontFamily: "'SF Mono','Fira Code',monospace"
-  },
-  grid: {
-    vertLines: { color: C.grid, style: 1 },
-    horzLines: { color: C.grid, style: 1 }
-  },
-  crosshair: {
-    mode: LightweightCharts.CrosshairMode.Normal,
-    vertLine: { color: C.crosshair, width: 1, style: 2, labelBackgroundColor: "#3b82f6" },
-    horzLine: { color: C.crosshair, width: 1, style: 2, labelBackgroundColor: "#3b82f6" }
-  },
-  rightPriceScale: {
-    borderColor: C.border,
-    scaleMargins: { top: 0.08, bottom: 0.08 }
-  },
-  timeScale: {
-    borderColor: C.border,
-    timeVisible: true,
-    secondsVisible: false,
-    rightOffset: 4,
-    barSpacing: 8
-  },
-  handleScroll: true,
-  handleScale: true,
-  autoSize: true
-});
-
-// ===== Candlestick series =====
-const series = chart.addCandlestickSeries({
-  upColor: C.up,
-  downColor: C.down,
-  borderUpColor: C.up,
-  borderDownColor: C.down,
-  wickUpColor: C.up,
-  wickDownColor: C.down,
-  borderVisible: false,
-  priceFormat: { type: 'price', precision: digits, minMove: 0.00001 }
-});
-
-// Current price line (dashed, colored by last candle direction)
-const priceLine = series.createPriceLine({
-  price: 0,
-  color: C.up,
-  lineWidth: 1,
-  lineStyle: LightweightCharts.LineStyle.Dashed,
-  axisLabelVisible: true,
-  title: ''
-});
-
-// ===== Helpers =====
+// ===== helpers =====
 function fmtPrice(p){ return Number(p).toFixed(digits); }
-
-function updatePriceLine(){
-  if(candles.length === 0) return;
-  const last = candles[candles.length - 1];
-  const isUp = last.close >= last.open;
-  // Remove and recreate to update color (Lightweight Charts limitation)
-  series.removePriceLine(priceLine);
-  const newLine = series.createPriceLine({
-    price: last.close,
-    color: isUp ? C.up : C.down,
-    lineWidth: 1,
-    lineStyle: LightweightCharts.LineStyle.Dashed,
-    axisLabelVisible: true,
-    title: ''
-  });
-  // Replace reference (we re-declare via the variable name)
-  // Note: cannot reassign const, so we keep using a function-local approach below
+function fmtTfLabel(sec){
+  if(sec < 60) return sec + "S";
+  if(sec % 3600 === 0) return (sec / 3600) + "H";
+  return (sec / 60) + "M";
 }
-
-function refreshPriceLine(){
-  if(candles.length === 0) return;
-  const last = candles[candles.length - 1];
-  const isUp = last.close >= last.open;
-  // Simpler: remove all price lines and add a new one each tick
-  // (Lightweight Charts does not allow updating an existing price line in place)
-  // We track it via a module-level variable
-  if(window._activePriceLine){
-    try { series.removePriceLine(window._activePriceLine); } catch(e){}
+// Infer the candle width (in seconds) from the most common time delta,
+// so the BadiCharts timeframe snapping + countdown match the real feed.
+function computeTimeframe(cs){
+  if(!cs || cs.length < 3) return {label:"1M", ms:60000};
+  const counts = {};
+  let best = 60, bestN = 0;
+  for(let i = 1; i < cs.length; i++){
+    const d = cs[i].t - cs[i-1].t;
+    if(d <= 0 || d > 86400) continue;
+    counts[d] = (counts[d] || 0) + 1;
+    if(counts[d] > bestN){ bestN = counts[d]; best = d; }
   }
-  window._activePriceLine = series.createPriceLine({
-    price: last.close,
-    color: isUp ? C.up : C.down,
-    lineWidth: 1,
-    lineStyle: LightweightCharts.LineStyle.Dashed,
-    axisLabelVisible: true,
-    title: ''
-  });
+  return {label: fmtTfLabel(best), ms: best * 1000};
 }
 
+function showOverlayError(title, msg){
+  const box = document.getElementById("overlayBox");
+  const ol = document.getElementById("loadingOverlay");
+  if(!box || !ol) return;
+  ol.style.display = "flex";
+  box.innerHTML = '<div class="err-title">' + title + '</div>'
+                + '<p>' + msg + '</p>'
+                + '<p style="margin-top:8px;">URL: /pairs=' + encodeURIComponent(PAIR_NAME) + '</p>';
+  const sp = box.querySelector(".spinner"); if(sp) sp.style.display = "none";
+}
+
+// ===== chart creation =====
+function createChart(tf){
+  const ChartCls = window.BadiCharts || window.BadiChartsWebGL;
+  if(typeof ChartCls !== "function"){
+    showOverlayError("Chart library failed to load",
+      "BADI-CHARTS-V2 (chart-webgl.js) could not be fetched from the CDN. Check the internet connection and reload.");
+    return false;
+  }
+  const canvas = document.getElementById("chart");
+  let tz = null;
+  try{ tz = Intl.DateTimeFormat().resolvedOptions().timeZone || null; }catch(e){}
+  chart = new ChartCls(canvas, {
+    symbol: {
+      label: PAIR_NAME,
+      priceScale: Math.pow(10, digits),
+      decimals: digits
+    },
+    timeframe: {label: tf.label, ms: tf.ms},
+    theme: {
+      bg: C.bg, grid: C.grid, gridStrong: "#243044",
+      axisBg: "#0d1117", axisBorder: C.border, axisText: C.text,
+      text: C.text, textDim: C.text, textBright: C.textBright, textFade: "#6b7280",
+      bull: C.up, bear: C.down,
+      bullVol: "rgba(34,197,94,0.45)", bearVol: "rgba(239,68,68,0.45)",
+      accent: C.accent, crosshair: C.crosshair, crosshairLabel: "#1f2937",
+      currentPriceBull: C.up, currentPriceBear: C.down
+    },
+    countdown: {enabled: true, color: C.textBright, fontSize: 11, offsetX: 8},
+    timezone: tz
+  });
+  chart.start();
+  const badge = document.getElementById("engineBadge");
+  if(badge){
+    const webgl = chart._glBackend && chart._glBackend.ready === true;
+    badge.textContent = webgl ? "BADI WebGL" : "BADI Canvas2D";
+  }
+  return true;
+}
+
+// ===== price header =====
 function updatePriceHeader(){
   if(!candles || candles.length === 0) return;
   const last = candles[candles.length - 1];
@@ -5076,10 +5066,9 @@ function updatePriceHeader(){
     changeEl.textContent = sign + change.toFixed(digits) + " (" + sign + pct.toFixed(2) + "%)";
     changeEl.className = "price-change " + (change >= 0 ? "up" : "down");
   }
-  refreshPriceLine();
 }
 
-// ===== Data fetching =====
+// ===== data fetching =====
 async function fetchFullCandles(){
   try{
     const r = await fetch("/api/candles?pair=" + encodeURIComponent(PAIR_NAME), {cache:"no-store"});
@@ -5087,38 +5076,48 @@ async function fetchFullCandles(){
     const data = await r.json();
     if(data.status === "OK" && data.candles && data.candles.length > 0){
       digits = data.digits || 5;
-      // Update price format precision
-      series.applyOptions({ priceFormat: { type: 'price', precision: digits, minMove: Math.pow(10, -digits) } });
-      // Normalize: API sends {t, open, high, low, close}
-      // Lightweight Charts expects {time, open, high, low, close}
+      // Normalize: API sends {t, open, high, low, close} (unix seconds)
       let raw = data.candles.map(c => ({
-        time: Number(c.t || c.time || 0),
+        t: Number(c.t || c.time || 0),
         open: Number(c.open), high: Number(c.high),
         low: Number(c.low), close: Number(c.close)
-      })).filter(c => c.time > 0 && c.open > 0);
-      raw.sort((a,b) => a.time - b.time);
-      // Deduplicate by time (Lightweight Charts requires strictly ascending unique times)
+      })).filter(c => c.t > 0 && c.open > 0);
+      raw.sort((a,b) => a.t - b.t);
+      // Deduplicate by time (last wins)
       const seen = new Set();
-      raw = raw.filter(c => { if(seen.has(c.time)) return false; seen.add(c.time); return true; });
+      raw = raw.filter(c => { if(seen.has(c.t)) return false; seen.add(c.t); return true; });
 
       candles = raw;
-      if(candles.length > 0){
-        lastBarTime = candles[candles.length - 1].time;
+      if(candles.length === 0) return;
+
+      // Build the chart on the first successful fetch (digits are known now).
+      const tf = computeTimeframe(candles);
+      if(!chart){
+        if(!createChart(tf)) return;   // library missing -> error overlay shown
+      } else if(tf.ms !== chart.timeframe.ms){
+        chart.setTimeframe(tf);        // candle width changed (e.g. sub-second frames)
+      }
+      // Keep the price-axis precision in sync with the feed.
+      if(curDigits !== digits && typeof chart.setSymbol === "function"){
+        try{
+          chart.setSymbol({label: PAIR_NAME, priceScale: Math.pow(10, digits), decimals: digits});
+          curDigits = digits;
+        }catch(e){}
       }
 
-      // Push to series
-      series.setData(candles);
+      // BadiCharts format: {time(sec), open, high, low, close}
+      const series = candles.map(c => ({
+        time: c.t, open: c.open, high: c.high, low: c.low, close: c.close
+      }));
+      // keepView: only the FIRST load resets the viewport; later resyncs
+      // (500ms poll) must not fight the user's zoom/pan position.
+      chart.setData(series, {keepView: initialized});
 
       // Hide loading overlay
       const ol = document.getElementById("loadingOverlay");
       if(ol && candles.length > 0) ol.style.display = "none";
 
-      // Fit content on first load, then keep the latest view
-      if(!initialized){
-        chart.timeScale().fitContent();
-        initialized = true;
-      }
-
+      if(!initialized) initialized = true;
       updatePriceHeader();
     }
   } catch(e){ console.error("[Chart] fetch error:", e); }
@@ -5132,21 +5131,23 @@ async function fetchLiveTick(){
     if(d.status === "OK" && d.time && d.open){
       const t = Number(d.time);
       const tick = {
-        time: t, open: Number(d.open), high: Number(d.high),
+        t: t, open: Number(d.open), high: Number(d.high),
         low: Number(d.low), close: Number(d.close)
       };
       if(t > 0 && tick.open > 0 && candles.length > 0){
         const last = candles[candles.length - 1];
-        if(t === last.time){
-          // Update current candle in place
+        if(t === last.t){
           last.high = Math.max(last.high, tick.high);
           last.low = Math.min(last.low, tick.low);
           last.close = tick.close;
-          series.update(last);
-        } else if(t > last.time){
+        } else if(t > last.t){
           candles.push(tick);
-          lastBarTime = t;
-          series.update(tick);
+        }
+        // BadiCharts handles both cases: in-place update of the forming
+        // candle and appending a new one, and ignores stale/late ticks.
+        if(chart){
+          chart.update({time: t, open: tick.open, high: tick.high,
+                        low: tick.low, close: tick.close});
         }
         updatePriceHeader();
       }
@@ -5154,16 +5155,20 @@ async function fetchLiveTick(){
   } catch(e){}
 }
 
-// Start
+// ===== boot =====
+// If the library tag fails, surface it immediately instead of an endless spinner.
+window.addEventListener("load", () => {
+  if(typeof window.BadiCharts !== "function" && typeof window.BadiChartsWebGL !== "function"){
+    showOverlayError("Chart library failed to load",
+      "BADI-CHARTS-V2 (chart-webgl.js) could not be fetched from the CDN. Check the internet connection and reload.");
+  }
+});
 fetchFullCandles();
-// v9.0: MAX-SPEED polling intervals.
-//   - fetchLiveTick: 300ms -> 50ms (20 ticks/sec, near-instant chart updates)
-//     This is the hot path: the dashboard polls /api/last-tick for the live price.
-//   - fetchFullCandles: 3000ms -> 500ms (rare full resync; the live tick path
-//     handles 99% of updates). 500ms is enough to catch missed candles without
-//     hammering the Flask server.
-// Note: these are CLIENT-side polls to the local Flask server. The Flask server
-// itself receives updates from realtime_stream at STREAM_POLL_INTERVAL=0.05s.
+// MAX-SPEED polling (unchanged from v9.0):
+//   - fetchLiveTick: 50ms (20 ticks/sec) — hot path for the live price.
+//   - fetchFullCandles: 500ms — rare full resync; the live tick path handles
+//     99% of updates. BadiCharts.update() is O(1) per tick (batched indicator
+//     recompute once per frame), so 20 ticks/sec is cheap.
 setInterval(fetchFullCandles, 500);
 setInterval(fetchLiveTick, 50);
 </script>
@@ -5316,11 +5321,24 @@ def _start_web_server():
     t = threading.Thread(target=_run, name="WebDashboard", daemon=True)
     t.start()
     time.sleep(0.6)
+    url = f"http://{WEB_SERVER_HOST}:{WEB_SERVER_PORT}/"
     print(f"\n{Colors.GREEN}{'='*60}{Colors.RESET}")
     print(f"{Colors.GREEN}  [WebServer] Dashboard running at:{Colors.RESET}")
-    print(f"{Colors.BOLD}  http://{WEB_SERVER_HOST}:{WEB_SERVER_PORT}/{Colors.RESET}")
+    print(f"{Colors.BOLD}  {url}{Colors.RESET}")
     print(f"{Colors.DIM}  Click any pair card to view its live chart{Colors.RESET}")
     print(f"{Colors.GREEN}{'='*60}{Colors.RESET}\n")
+    # v10.0: open the dashboard automatically in the default browser.
+    if AUTO_OPEN_BROWSER:
+        try:
+            import webbrowser as _webbrowser
+            _opened = _webbrowser.open(url, new=2)
+        except Exception as _e:
+            _opened = False
+            logmsg(f"[WebServer] Auto-open browser failed: {_e}")
+        if _opened:
+            print(f"{Colors.DIM}  [WebServer] Browser opened automatically -> {url}{Colors.RESET}")
+        else:
+            print(f"{Colors.DIM}  [WebServer] No browser available -- open manually: {url}{Colors.RESET}")
 
 
 if __name__ == "__main__":
