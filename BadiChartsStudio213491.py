@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
@@ -4846,6 +4845,16 @@ def _web_update_asset(asset, full_resync=False):
         Used by realtime_stream on every tick. Does NOT copy the full candle list.
       - full_resync=True: refreshes the full _web_candle_store[pair] entry.
         Used after initial historical fetch and on candle close (new candle started).
+
+    v11.1 COUNTDOWN FIX (العداد التنازلي الثابت):
+      Internal candle stamps carry the local TZ offset (_align_time adds it for
+      the MT4/HST local-time convention). The browser countdown in BADI-CHARTS
+      (drawCountdown) computes remaining = last.time + tf - Date.now()/1000,
+      and Date.now() is TRUE UTC -- so TZ-shifted stamps pinned the countdown
+      at a constant number (e.g. "60"/"61" on UTC+1, "06" on UTC+6) instead of
+      counting down 59..00. Convert stamps back to true UTC at this web
+      boundary: the chart then shows the correct local time on the axis AND a
+      live per-second countdown. The MT4/HST path keeps its shifted stamps.
     """
     if not asset.candles:
         return
@@ -4856,13 +4865,17 @@ def _web_update_asset(asset, full_resync=False):
         digits = 5
     last_c = asset.candles[-1]
     now_ms = int(time.time() * 1000)
+    try:
+        tz_off = int(_get_tz_offset())
+    except Exception:
+        tz_off = 0
 
     # Always update the lightweight tick cache (fast path for /api/last-tick).
     # This is what the chart polls at 50ms — must be O(1).
     with _web_candle_lock:
         _web_latest_tick[pair] = {
             "price": float(asset.price) if asset.price else float(last_c.get("close", 0)),
-            "time": int(last_c.get("time", 0)),
+            "time": int(last_c.get("time", 0)) - tz_off,
             "open": float(last_c.get("open", 0)),
             "high": float(last_c.get("high", 0)),
             "low": float(last_c.get("low", 0)),
@@ -4877,7 +4890,14 @@ def _web_update_asset(asset, full_resync=False):
     # realtime_stream calls _web_update_asset(asset, full_resync=True) only on
     # candle CLOSE (new candle started), not on every tick.
     if full_resync:
-        candles_copy = [dict(c) for c in asset.candles[-3000:]]
+        # v11.1: convert shifted stamps to true UTC for the web chart (see
+        # COUNTDOWN FIX note above). TZ offsets are always whole minutes, so
+        # period alignment is preserved for every supported timeframe.
+        candles_copy = []
+        for c in asset.candles[-3000:]:
+            d = dict(c)
+            d["time"] = int(c.get("time", 0)) - tz_off
+            candles_copy.append(d)
         # v11.0 validation gate: mark the entry chart-ready ONLY when the
         # candle set passes completeness/sanity checks. Until then /api/candles
         # keeps the chart page on the loading overlay instead of drawing
