@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
@@ -4712,6 +4713,183 @@ def _web_update_asset(asset, full_resync=False):
                 "lastUpdate": now_ms,
             }
 
+# == ON-DEMAND ASSETS (web dashboard click-to-load) ============================
+# When the user clicks an asset in the dashboard that is NOT part of the
+# startup ASSET_LIST, it is loaded EXACTLY like the default asset:
+#   1) live stream first (realtime_stream / subsecond_stream)
+#   2) M1: 1s -> 1m bridge fetch (same as the default asset flow)
+#   3) historical fetch with retry (fetch_candles_with_retry)
+#   4) REPLACE/APPEND merge of the newest bridge candles (same as main loop)
+#   5) full web resync -> the chart page picks the data up automatically
+# All on-demand loads are serialized through ONE asyncio worker so the broker's
+# WebSocket is never hammered by parallel history requests.
+_on_demand_state = {}      # api_symbol -> {"status","started","last_requested","error","asset","candles"}
+_on_demand_lock = threading.RLock()
+_ON_DEMAND_MAX = 30        # hard cap of tracked on-demand assets per session
+_on_demand_queue = None    # asyncio.Queue (created inside the worker loop)
+_on_demand_worker = None   # concurrent.futures.Future handle
+_on_demand_queue_evt = threading.Event()
+
+_web_assets_cache = {"entries": [], "fetched_at": 0.0, "last_attempt": 0.0}
+_web_assets_lock = threading.RLock()
+
+def _pair_name_to_api(pair_name):
+    """Reverse of _web_pair_name: 'USDDZD-OTCq' -> 'USDDZD_otc'."""
+    s = (pair_name or "").strip()
+    if s.endswith("-OTCq"):
+        return s[:-5] + "_otc"
+    if s.endswith("-OTC"):
+        return s[:-4] + "_otc"
+    return s
+
+def _od_set_state(sym, **kw):
+    with _on_demand_lock:
+        st = _on_demand_state.setdefault(sym, {})
+        st.update(kw)
+        return st
+
+async def _on_demand_worker_loop():
+    """Single worker: process on-demand asset loads one at a time."""
+    global _on_demand_queue
+    _on_demand_queue = asyncio.Queue()
+    _on_demand_queue_evt.set()
+    while True:
+        try:
+            sym = await _on_demand_queue.get()
+        except asyncio.CancelledError:
+            raise
+        if not sym:
+            continue
+        try:
+            await _load_on_demand_asset(sym)
+        except Exception as e:
+            log_exception("_on_demand_worker", e)
+            _od_set_state(sym, status="error", error=str(e))
+        await asyncio.sleep(0.3)
+
+async def _on_demand_enqueue(sym):
+    await _on_demand_queue.put(sym)
+
+def _ensure_on_demand_worker():
+    """Start the single on-demand worker on ASYNC_LOOP (idempotent)."""
+    global _on_demand_worker
+    if ASYNC_LOOP is None or ASYNC_LOOP.is_closed():
+        return False
+    w = _on_demand_worker
+    if w is not None and not w.done():
+        return True
+    try:
+        _on_demand_queue_evt.clear()
+        _on_demand_worker = asyncio.run_coroutine_threadsafe(_on_demand_worker_loop(), ASYNC_LOOP)
+        return _on_demand_queue_evt.wait(3.0)
+    except Exception:
+        return False
+
+def _request_on_demand_asset(api_symbol):
+    """Called from Flask threads: queue an asset for the same-as-default load."""
+    sym = (api_symbol or "").strip()
+    if not sym:
+        return {"status": "ERROR", "error": "empty asset code"}
+    if ASYNC_LOOP is None or ASYNC_LOOP.is_closed():
+        return {"status": "ERROR", "error": "engine not ready (not connected yet)"}
+    with _on_demand_lock:
+        st = _on_demand_state.get(sym)
+        if st is not None and st.get("status") in ("queued", "loading"):
+            st["last_requested"] = time.time()
+            return {"status": st.get("status"), "asset": sym}
+        if sym not in _on_demand_state and len(_on_demand_state) >= _ON_DEMAND_MAX:
+            return {"status": "ERROR",
+                    "error": f"on-demand cache full ({_ON_DEMAND_MAX} assets) -- restart the bot to clear"}
+        _od_set_state(sym, status="queued", started=time.time(),
+                      last_requested=time.time(), error=None, asset=None, candles=0)
+    if not _ensure_on_demand_worker():
+        _od_set_state(sym, status="error", error="engine not ready")
+        return {"status": "ERROR", "error": "engine not ready (event loop unavailable)"}
+    try:
+        asyncio.run_coroutine_threadsafe(_on_demand_enqueue(sym), ASYNC_LOOP).result(timeout=5)
+    except Exception as e:
+        _od_set_state(sym, status="error", error=str(e))
+        return {"status": "ERROR", "error": str(e)}
+    return {"status": "queued", "asset": sym}
+
+async def _load_on_demand_asset(api_symbol):
+    """Load ONE asset exactly like the default asset (same fetch machinery)."""
+    sym = (api_symbol or "").strip()
+    _od_set_state(sym, status="loading", started=time.time(), error=None)
+    logmsg(f"[on-demand:{sym}] loading candles (same engine as default asset)")
+    asset = Asset(sym)
+    _od_set_state(sym, asset=asset)
+    ALL_STREAMING_ASSETS.append(asset)
+    try:
+        if IS_SUBSECOND:
+            # Same dispatch as the main loop: subsecond_stream schedules its own
+            # background history fetch (fetch_subsecond_history).
+            asset.stream_task = asyncio.ensure_future(subsecond_stream(asset))
+            deadline = time.time() + float(_subsecond_fetch_timeout()) + 5.0
+            while time.time() < deadline:
+                bg = getattr(asset, "_bg_tasks", None)
+                if bg is not None and len(bg) == 0:
+                    break
+                if len(getattr(asset, "candles", [])) >= SUBSECOND_HISTORY_CANDLES:
+                    break
+                if not CONNECTION_ALIVE:
+                    break
+                await asyncio.sleep(0.5)
+        else:
+            # 1) live stream FIRST (same order as the default asset)
+            asset.stream_task = asyncio.ensure_future(realtime_stream(asset))
+            await asyncio.sleep(0.1)
+            # 2) M1: 1s -> 1m bridge (same as default asset flow)
+            _is_m1_bridge = (PERIOD_SECONDS == 60 and M1_USE_1S_BRIDGE and not M1_TEST_1S_ONLY)
+            bridge_1m_candles, n_1s = [], 0
+            if _is_m1_bridge:
+                try:
+                    bridge_1m_candles, n_1s = await fetch_1s_and_aggregate_to_1m(asset, idx=1, total=1)
+                except Exception as e:
+                    logmsg(f"[on-demand:{sym}] 1s->1m bridge failed (non-fatal): {e}")
+                    bridge_1m_candles = []
+            # 3) historical fetch with retry (same as default asset). In M1
+            #    bridge mode the internal recent-candle bridge is disabled,
+            #    exactly like the main loop does.
+            _saved_bridge = BRIDGE_FETCH_ENABLED
+            if _is_m1_bridge:
+                globals()["BRIDGE_FETCH_ENABLED"] = False
+            try:
+                await fetch_candles_with_retry(asset, max_retries=MAX_FETCH_RETRIES, idx=1, total=1)
+            finally:
+                if _is_m1_bridge:
+                    globals()["BRIDGE_FETCH_ENABLED"] = _saved_bridge
+            # 4) REPLACE/APPEND merge of the newest bridge candles (main-loop logic)
+            if bridge_1m_candles and asset.candles:
+                bridge_for_merge = bridge_1m_candles[-M1_BRIDGE_REPLACE_COUNT:]
+                bridge_by_time = {c["time"]: c for c in bridge_for_merge}
+                merged_list = []
+                for c in asset.candles:
+                    if c["time"] in bridge_by_time:
+                        merged_list.append(bridge_by_time.pop(c["time"]))
+                    else:
+                        merged_list.append(c)
+                merged_list.extend(bridge_by_time.values())
+                seen, deduped = set(), []
+                for c in sorted(merged_list, key=lambda x: x["time"]):
+                    if c["time"] not in seen:
+                        seen.add(c["time"])
+                        deduped.append(c)
+                asset.candles = deduped
+                logmsg(f"[on-demand:{sym}] merged 1s->1m bridge: {len(bridge_for_merge)} candles (from {n_1s} 1s)")
+        if asset.candles:
+            asset.price = asset.candles[-1]["close"]
+        # 5) full web resync -- the chart page polls /api/candles
+        _web_update_asset(asset, full_resync=True)
+        n = len(asset.candles)
+        _od_set_state(sym, status=("ready" if n > 0 else "error"), candles=n,
+                      error=None if n > 0 else "no candles returned (market closed or fetch failed)")
+        logmsg(f"[on-demand:{sym}] done: {n} candles ({'ready' if n > 0 else 'error'})")
+    except Exception as e:
+        log_exception(f"_load_on_demand_asset:{sym}", e)
+        _od_set_state(sym, status="error", error=str(e),
+                      candles=len(getattr(asset, "candles", [])))
+
 # == HTML & CSS (same dark theme as ap.py) =====================================
 _WEB_SHARED_CSS = """
 :root{--bg-primary:#0a0e17;--bg-secondary:#111827;--bg-nav:#0d1117;
@@ -4759,34 +4937,39 @@ CSS_HERE
 .stat-card .value{font-size:24px;font-weight:700;}
 .stat-card .value.green{color:var(--green);}
 .stat-card .value.red{color:var(--red);}
-.search-box{position:relative;margin-bottom:24px;}
+.stat-card .value.blue{color:var(--blue);}
+.search-box{position:relative;margin-bottom:8px;}
 .search-box input{width:100%;padding:12px 16px 12px 44px;background:var(--bg-secondary);
                   border:1px solid var(--border);border-radius:12px;color:var(--text);
                   font-size:14px;outline:none;transition:border-color 0.2s;}
 .search-box input:focus{border-color:var(--blue);}
 .search-box svg{position:absolute;left:14px;top:50%;transform:translateY(-50%);
                 width:20px;height:20px;color:var(--text-muted);}
-.pairs-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;}
-.pair-card{background:var(--bg-secondary);border:1px solid var(--border);
-           border-radius:12px;padding:16px;cursor:pointer;
-           transition:all 0.2s;display:flex;align-items:center;justify-content:space-between;}
-.pair-card:hover{background:#162032;border-color:rgba(59,130,246,0.5);transform:translateY(-1px);}
-.pair-left{display:flex;align-items:center;gap:12px;}
-.pair-flag{font-size:24px;}
-.pair-name{font-weight:600;font-size:15px;}
-.pair-detail{font-size:12px;color:var(--text-muted);}
-.pair-right{text-align:right;}
-.pair-status{font-size:11px;padding:2px 8px;border-radius:10px;display:inline-flex;
-             align-items:center;gap:4px;margin-bottom:4px;}
-.pair-status.live{background:rgba(34,197,94,0.1);color:var(--green);}
-.pair-status.stale{background:rgba(239,68,68,0.1);color:var(--red);}
-.pair-status .dot{width:6px;height:6px;border-radius:50%;display:inline-block;}
-.pair-status.live .dot{background:var(--green);}
-.pair-status.stale .dot{background:var(--red);}
-.pair-time{font-size:11px;color:var(--text-muted);}
+.list-meta{font-size:12px;color:var(--text-muted);margin-bottom:16px;}
+.assets-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;}
+.asset-card{background:var(--bg-secondary);border:1px solid var(--border);
+           border-radius:12px;padding:14px 16px;cursor:pointer;
+           transition:all 0.2s;display:flex;align-items:center;justify-content:space-between;
+           color:var(--text);}
+.asset-card:hover{background:#162032;border-color:rgba(59,130,246,0.5);transform:translateY(-1px);}
+.asset-card.live{border-color:rgba(34,197,94,0.45);}
+.asset-card.closed{opacity:0.62;}
+.asset-left{display:flex;align-items:center;gap:12px;min-width:0;}
+.asset-flag{font-size:24px;}
+.asset-name{font-weight:600;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.asset-code{font-size:11px;color:var(--text-muted);font-family:monospace;}
+.asset-right{text-align:right;flex-shrink:0;}
+.asset-badges{display:flex;gap:6px;justify-content:flex-end;margin-bottom:4px;}
+.badge{font-size:10px;font-weight:700;padding:3px 8px;border-radius:10px;letter-spacing:0.4px;}
+.badge.payout{background:rgba(59,130,246,0.12);color:var(--blue);}
+.badge.live{background:rgba(34,197,94,0.12);color:var(--green);}
+.badge.open{background:rgba(34,197,94,0.10);color:var(--green);}
+.badge.closed{background:rgba(239,68,68,0.10);color:var(--red);}
+.badge.loading{background:rgba(251,191,36,0.12);color:#fbbf24;animation:pulse 1.2s infinite;}
+.asset-sub{font-size:11px;color:var(--text-muted);}
 .empty-state{text-align:center;padding:60px 24px;}
 .empty-state h3{font-size:20px;margin-bottom:8px;}
-.empty-state p{color:var(--text-dim);font-size:14px;max-width:400px;margin:0 auto;}
+.empty-state p{color:var(--text-dim);font-size:14px;max-width:460px;margin:0 auto;}
 .footer{border-top:1px solid var(--border);background:var(--bg-nav);padding:16px 24px;margin-top:32px;}
 .footer-inner{max-width:1200px;margin:0 auto;display:flex;
               justify-content:space-between;font-size:12px;color:var(--text-muted);flex-wrap:wrap;gap:8px;}
@@ -4794,9 +4977,9 @@ CSS_HERE
   .header{padding:12px 16px;flex-wrap:wrap;gap:8px;}
   .logo h1{font-size:16px;}.logo p{font-size:11px;}
   .main{padding:16px;}
-  .pairs-grid{grid-template-columns:1fr;}
+  .assets-grid{grid-template-columns:1fr;}
   .stats-grid{grid-template-columns:repeat(2,1fr);}
-  .pair-card{padding:12px;}
+  .asset-card{padding:12px;}
 }
 </style>
 </head>
@@ -4804,7 +4987,7 @@ CSS_HERE
 <div class="header">
   <div class="logo">
     <div class="logo-icon">Q</div>
-    <div><h1>QXChart MT4 Pro</h1><p>Live Quotex OTC Chart Dashboard</p></div>
+    <div><h1>QXChart MT4 Pro</h1><p id="subtitle">Live Quotex Asset List</p></div>
   </div>
   <div class="status-badge">
     <span class="status-dot offline" id="statusDot"></span>
@@ -4813,69 +4996,112 @@ CSS_HERE
 </div>
 <div class="main">
   <div class="stats-grid">
-    <div class="stat-card"><div class="label">Active Pairs</div><div class="value" id="statPairs">0</div></div>
+    <div class="stat-card"><div class="label">Total Assets</div><div class="value blue" id="statAssets">0</div></div>
+    <div class="stat-card"><div class="label">Open Now</div><div class="value green" id="statOpen">0</div></div>
+    <div class="stat-card"><div class="label">With Live Data</div><div class="value" id="statLive">0</div></div>
     <div class="stat-card"><div class="label">Total Pushes</div><div class="value" id="statPushes">0</div></div>
-    <div class="stat-card"><div class="label">Last Push</div><div class="value" id="statLastPush">Never</div></div>
-    <div class="stat-card"><div class="label">Status</div><div class="value red" id="statStatus">OFFLINE</div></div>
   </div>
   <div class="search-box">
     <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-    <input type="text" id="searchInput" placeholder="Search pairs... (e.g. USD, EUR, BDT)">
+    <input type="text" id="searchInput" placeholder="Search assets... (e.g. USD, EUR, BDT, XAU)">
   </div>
-  <div class="pairs-grid" id="pairsGrid"></div>
+  <div class="list-meta" id="listMeta">Loading asset list from broker...</div>
+  <div class="assets-grid" id="assetsGrid"></div>
   <div class="empty-state" id="emptyState" style="display:none;">
-    <h3>No Data Yet</h3>
-    <p>Waiting for candle data from Quotex... The script is fetching history for all pairs.</p>
+    <h3 id="emptyTitle">Waiting for the asset list...</h3>
+    <p id="emptyMsg">The instruments list is fetched from the broker right after login. If the bot just started, this page will fill automatically.</p>
   </div>
 </div>
 <div class="footer">
   <div class="footer-inner">
     <span>QXChart MT4 Pro - Live Dashboard &copy; 2026</span>
-    <span>Pairs refresh every 3s &bull; Chart updates every 1s</span>
+    <span>Click any asset to load its candles (same engine as the default asset)</span>
   </div>
 </div>
 <script>
-const FLAGS={USD:"\u{1F1FA}\u{1F1F8}",EUR:"\u{1F1EA}\u{1F1FA}",GBP:"\u{1F1EC}\u{1F1E7}",JPY:"\u{1F1EF}\u{1F1F5}",AUD:"\u{1F1E6}\u{1F1FA}",NZD:"\u{1F1F3}\u{1F1FF}",CAD:"\u{1F1E8}\u{1F1E6}",CHF:"\u{1F1E8}\u{1F1ED}",BDT:"\u{1F1E7}\u{1F1E9}",ARS:"\u{1F1E6}\u{1F1F7}",INR:"\u{1F1EE}\u{1F1F3}",MXN:"\u{1F1F2}\u{1F1FD}",PHP:"\u{1F1F5}\u{1F1ED}",PKR:"\u{1F1F5}\u{1F1F0}",NGN:"\u{1F1F3}\u{1F1EC}",COP:"\u{1F1E8}\u{1F1F4}",IDR:"\u{1F1EE}\u{1F1E9}",EGP:"\u{1F1EA}\u{1F1EC}",DZD:"\u{1F1E9}\u{1F1FF}",BRL:"\u{1F1E7}\u{1F1F7}",ZAR:"\u{1F1FF}\u{1F1E6}"};
+const FLAGS={USD:"\u{1F1FA}\u{1F1F8}",EUR:"\u{1F1EA}\u{1F1FA}",GBP:"\u{1F1EC}\u{1F1E7}",JPY:"\u{1F1EF}\u{1F1F5}",AUD:"\u{1F1E6}\u{1F1FA}",NZD:"\u{1F1F3}\u{1F1FF}",CAD:"\u{1F1E8}\u{1F1E6}",CHF:"\u{1F1E8}\u{1F1ED}",BDT:"\u{1F1E7}\u{1F1E9}",ARS:"\u{1F1E6}\u{1F1F7}",INR:"\u{1F1EE}\u{1F1F3}",MXN:"\u{1F1F2}\u{1F1FD}",PHP:"\u{1F1F5}\u{1F1ED}",PKR:"\u{1F1F5}\u{1F1F0}",NGN:"\u{1F1F3}\u{1F1EC}",COP:"\u{1F1E8}\u{1F1F4}",IDR:"\u{1F1EE}\u{1F1E9}",EGP:"\u{1F1EA}\u{1F1EC}",DZD:"\u{1F1E9}\u{1F1FF}",BRL:"\u{1F1E7}\u{1F1F7}",ZAR:"\u{1F1FF}\u{1F1E6}",XAU:"\u{1F947}",XAG:"\u{1F948}",BTC:"\u{20BF}",ETH:"\u{26D3}"};
 function getFlag(pair){const base=pair.replace(/-OTCq?$/,"").replace(/[-_].*$/,"");const codes=Object.keys(FLAGS).sort((a,b)=>b.length-a.length);let rem=base,f=[];for(const c of codes){if(rem.startsWith(c)){f.push(FLAGS[c]);rem=rem.slice(c.length);}}return f.join("")||"\u{1F4B1}";}
-function cleanName(p){return p.replace("-OTCq"," (OTC)").replace("-OTC"," (OTC)");}
+function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
 function timeSince(ts){if(!ts)return"Never";const d=Math.floor((Date.now()-ts)/1000);if(d<3)return"Just now";if(d<60)return d+"s ago";if(d<3600)return Math.floor(d/60)+"m ago";return Math.floor(d/3600)+"h ago";}
-async function loadPairs(){
+let ASSETS=[],OD={},META={};
+
+function badgeFor(a){
+  const od=OD[a.asset];
+  if(od&&(od.status==="queued"||od.status==="loading")) return '<span class="badge loading">'+(od.status==="loading"?"LOADING":"QUEUED")+'</span>';
+  if(a.live) return '<span class="badge live">LIVE</span>';
+  if(a.open) return '<span class="badge open">OPEN</span>';
+  return '<span class="badge closed">CLOSED</span>';
+}
+function cardHTML(a){
+  const payout=(a.payout!==null&&a.payout!==undefined&&!isNaN(Number(a.payout)))?("+"+a.payout+"%"):"--";
+  const sub=a.live?(a.candleCount+" candles \u2022 "+timeSince(a.lastUpdate)):(a.open?"Click to load candles":"Market closed");
+  return '<a class="asset-card'+(a.live?" live":"")+(a.open?"":" closed")+'" href="/pairs='+encodeURIComponent(a.pair)+'?asset='+encodeURIComponent(a.asset)+'">'
+    +'<div class="asset-left"><span class="asset-flag">'+getFlag(a.pair)+'</span>'
+    +'<div><div class="asset-name">'+esc(a.name||a.asset)+'</div>'
+    +'<div class="asset-code">'+esc(a.asset)+'</div></div></div>'
+    +'<div class="asset-right"><div class="asset-badges"><span class="badge payout">'+payout+'</span>'+badgeFor(a)+'</div>'
+    +'<div class="asset-sub">'+sub+'</div></div></a>';
+}
+function renderAssets(){
+  const search=document.getElementById("searchInput").value.toLowerCase().trim();
+  const grid=document.getElementById("assetsGrid");
+  const empty=document.getElementById("emptyState");
+  document.getElementById("listMeta").textContent=
+    "Showing "+ASSETS.length+" assets \u2022 frame "+(META.periodSeconds||60)+"s \u2022 "
+    +"target "+(META.candleTarget||700)+" candles per asset \u2022 sorted: open first, highest payout";
+  if(!ASSETS.length){
+    grid.innerHTML="";
+    empty.style.display="block";
+    return;
+  }
+  empty.style.display="none";
+  const filtered=ASSETS.filter(a=>(a.name+" "+a.asset).toLowerCase().includes(search));
+  if(!filtered.length){
+    grid.innerHTML='<div style="text-align:center;padding:40px;color:var(--text-dim);grid-column:1/-1;">No assets matching "'+esc(search)+'"</div>';
+    return;
+  }
+  filtered.sort((x,y)=>{
+    const ox=x.open?1:0,oy=y.open?1:0;
+    if(ox!==oy)return oy-ox;
+    return (Number(y.payout)||0)-(Number(x.payout)||0);
+  });
+  grid.innerHTML=filtered.map(cardHTML).join("");
+}
+async function loadStats(){
   try{
     const r=await fetch("/api/pairs",{cache:"no-store"});
     const d=await r.json();
     if(d.status==="OK"){
-      const pairs=d.pairs||[];const stats=d.stats||{};
-      document.getElementById("statPairs").textContent=pairs.length;
-      document.getElementById("statPushes").textContent=(stats.totalPushes||0).toLocaleString();
-      document.getElementById("statLastPush").textContent=timeSince(stats.lastPushTime);
+      const stats=d.stats||{};
       const isLive=stats.isLive;
+      document.getElementById("statPushes").textContent=(stats.totalPushes||0).toLocaleString();
+      document.getElementById("statLive").textContent=(d.pair_count||0);
       document.getElementById("statusDot").className="status-dot "+(isLive?"live":"offline");
       document.getElementById("statusText").textContent=isLive?"LIVE":"Waiting for data...";
-      const sv=document.getElementById("statStatus");
-      sv.textContent=isLive?"LIVE":"OFFLINE";sv.className="value "+(isLive?"green":"red");
-      const search=document.getElementById("searchInput").value.toLowerCase();
-      const filtered=pairs.filter(p=>p.pair.toLowerCase().includes(search));
-      const grid=document.getElementById("pairsGrid");
-      const empty=document.getElementById("emptyState");
-      if(pairs.length===0){grid.innerHTML="";empty.style.display="block";return;}
-      empty.style.display="none";
-      if(filtered.length===0&&search){grid.innerHTML='<div style="text-align:center;padding:40px;color:var(--text-dim);">No pairs matching "'+search+'"</div>';return;}
-      grid.innerHTML=filtered.map(p=>{
-        const live=Date.now()-p.lastUpdate<10000;
-        return '<a href="/pairs='+encodeURIComponent(p.pair)+'" class="pair-card">'
-          +'<div class="pair-left"><span class="pair-flag">'+getFlag(p.pair)+'</span>'
-          +'<div><div class="pair-name">'+cleanName(p.pair)+'</div>'
-          +'<div class="pair-detail">'+(p.candleCount||0)+' candles</div></div></div>'
-          +'<div class="pair-right">'
-          +'<div class="pair-status '+(live?"live":"stale")+'"><span class="dot"></span>'+(live?"Live":"Stale")+'</div>'
-          +'<div class="pair-time">'+timeSince(p.lastUpdate)+'</div></div></a>';
-      }).join("");
+    }
+  }catch(e){}
+}
+async function loadAssets(){
+  try{
+    const r=await fetch("/api/assets",{cache:"no-store"});
+    const d=await r.json();
+    if(d.status==="OK"&&d.assets){
+      ASSETS=d.assets;OD=d.onDemand||{};META=d;
+      document.getElementById("statAssets").textContent=d.total;
+      document.getElementById("statOpen").textContent=d.openCount;
+      document.getElementById("subtitle").textContent=
+        "Live Quotex Asset List \u2022 "+d.total+" instruments \u2022 "+d.openCount+" open";
+      renderAssets();
+    }else{
+      document.getElementById("listMeta").textContent="Waiting for the broker asset list (instruments) after login...";
+      document.getElementById("emptyState").style.display="block";
     }
   }catch(e){console.error(e);}
 }
-loadPairs();
-setInterval(loadPairs,3000);
-document.getElementById("searchInput").addEventListener("input",loadPairs);
+loadStats();loadAssets();
+setInterval(loadStats,3000);
+setInterval(loadAssets,5000);
+document.getElementById("searchInput").addEventListener("input",renderAssets);
 </script>
 </body>
 </html>"""
@@ -4947,6 +5173,7 @@ body{height:100vh;display:flex;flex-direction:column;overflow:hidden;}
     <div class="overlay-box" id="overlayBox">
       <div class="spinner"></div>
       <p>Loading chart data...</p>
+      <p id="odStatusLine" style="display:none;font-size:12px;color:#3b82f6;margin-top:6px;"></p>
     </div>
   </div>
 </div>
@@ -4959,6 +5186,10 @@ body{height:100vh;display:flex;flex-direction:column;overflow:hidden;}
 //   chart.setTimeframe({label, ms})           switch candle width
 //   chart.start()                             rAF render loop
 const PAIR_NAME = "PAIR_NAME_RAW";
+const ASSET_CODE = "ASSET_CODE_RAW";   // real api code, e.g. USDDZD_otc
+let odRequested = false;               // /api/request-asset sent?
+let odMode = false;                    // waiting for the on-demand fetch
+let odDeadline = 0;                    // give up after 150s
 let candles = [];       // local mirror: [{t, open, high, low, close}] (header calc)
 let digits = 5;
 let initialized = false;
@@ -5072,7 +5303,19 @@ function updatePriceHeader(){
 async function fetchFullCandles(){
   try{
     const r = await fetch("/api/candles?pair=" + encodeURIComponent(PAIR_NAME), {cache:"no-store"});
-    if(!r.ok) return;
+    if(!r.ok){
+      // HTTP 404 = this asset has no candles in the bot yet. Trigger the
+      // on-demand load (same engine as the default asset) and keep polling.
+      if(!initialized){
+        if(!odRequested) ensureAssetData();
+        else if(Date.now() > odDeadline){
+          odMode = false;
+          showOverlayError("No candle data",
+            "The on-demand fetch timed out for " + ASSET_CODE + ". Reload the page to retry.");
+        }
+      }
+      return;
+    }
     const data = await r.json();
     if(data.status === "OK" && data.candles && data.candles.length > 0){
       digits = data.digits || 5;
@@ -5119,6 +5362,15 @@ async function fetchFullCandles(){
 
       if(!initialized) initialized = true;
       updatePriceHeader();
+    } else if(!initialized){
+      // No data for this asset yet -- ask the bot to load it with the SAME
+      // engine as the default asset (stream + history), then keep polling.
+      if(!odRequested) ensureAssetData();
+      else if(Date.now() > odDeadline){
+        odMode = false;
+        showOverlayError("No candle data",
+          "The on-demand fetch timed out for " + ASSET_CODE + ". Reload the page to retry.");
+      }
     }
   } catch(e){ console.error("[Chart] fetch error:", e); }
 }
@@ -5163,6 +5415,37 @@ window.addEventListener("load", () => {
       "BADI-CHARTS-V2 (chart-webgl.js) could not be fetched from the CDN. Check the internet connection and reload.");
   }
 });
+// ===== on-demand asset loading (click from the dashboard) =====
+function ensureAssetData(){
+  if(odRequested) return;
+  odRequested = true; odMode = true;
+  odDeadline = Date.now() + 150000;
+  const box = document.getElementById("overlayBox");
+  if(box){
+    box.innerHTML = '<div class="spinner"></div>'
+      + '<p style="font-weight:700;">Fetching candles from broker...</p>'
+      + '<p id="odStatusLine" style="font-size:12px;color:#3b82f6;margin-top:6px;">'
+      + 'Same engine as the default asset (live stream + history) -- can take up to ~2 minutes.</p>';
+  }
+  fetch("/api/request-asset?asset=" + encodeURIComponent(ASSET_CODE)
+        + "&pair=" + encodeURIComponent(PAIR_NAME), {cache:"no-store"}).catch(function(){});
+}
+async function pollAssetStatus(){
+  if(!odMode) return;
+  try{
+    const r = await fetch("/api/asset-status?asset=" + encodeURIComponent(ASSET_CODE)
+        + "&pair=" + encodeURIComponent(PAIR_NAME), {cache:"no-store"});
+    const d = await r.json();
+    const line = document.getElementById("odStatusLine");
+    if(d.status === "loading" && line) line.textContent = "Loading: " + (d.candles || 0) + " candles so far...";
+    else if(d.status === "queued" && line) line.textContent = "Queued -- another asset is still loading...";
+    else if(d.status === "error"){
+      odMode = false;
+      showOverlayError("Fetch failed", (d.error || "unknown error") + " -- reload the page to retry.");
+    }
+    else if(d.status === "ready" && line) line.textContent = "Loaded " + (d.candles || 0) + " candles -- opening chart...";
+  } catch(e){}
+}
 fetchFullCandles();
 // MAX-SPEED polling (unchanged from v9.0):
 //   - fetchLiveTick: 50ms (20 ticks/sec) — hot path for the live price.
@@ -5171,6 +5454,7 @@ fetchFullCandles();
 //     recompute once per frame), so 20 ticks/sec is cheap.
 setInterval(fetchFullCandles, 500);
 setInterval(fetchLiveTick, 50);
+setInterval(pollAssetStatus, 1500);
 </script>
 </body>
 </html>"""
@@ -5193,7 +5477,10 @@ def _build_web_flask_app():
     def web_pair_chart(pair_name):
         pair_name = pair_name.strip()
         display = pair_name.replace("-OTCq", " (OTC)").replace("-OTC", " (OTC)")
+        # Real api code (e.g. "USDDZD_otc") from ?asset= or reverse-mapped.
+        asset_code = (flask_request.args.get("asset") or "").strip() or _pair_name_to_api(pair_name)
         html = _WEB_CHART_HTML.replace("PAIR_NAME_RAW", pair_name)
+        html = html.replace("ASSET_CODE_RAW", asset_code)
         html = html.replace("PAIR_DISPLAY", display)
         html = html.replace("CSS_HERE", _WEB_SHARED_CSS)
         return Response(html, content_type="text/html; charset=utf-8",
@@ -5278,6 +5565,93 @@ def _build_web_flask_app():
             return Response(json.dumps({"status": "WAIT"}),
                             content_type="application/json", status=200)
         result = {"status": "OK", "pair": pair, **tick}
+        resp = Response(json.dumps(result, separators=(",", ":")), content_type="application/json")
+        resp.headers["Cache-Control"] = "no-cache"
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        return resp
+
+    @web_app.route("/api/assets")
+    def web_api_assets():
+        """Full platform asset list (instruments) merged with live data."""
+        force = flask_request.args.get("refresh") == "1"
+        now = time.time()
+        entries = []
+        with _web_assets_lock:
+            fresh = bool(_web_assets_cache["entries"]) and (now - _web_assets_cache["fetched_at"] < 60.0)
+            if force or not fresh:
+                entries = _instruments_snapshot()
+                if not entries and ASYNC_LOOP is not None and (now - _web_assets_cache["last_attempt"] > 15.0):
+                    _web_assets_cache["last_attempt"] = now
+                    try:
+                        asyncio.run_coroutine_threadsafe(fetch_instruments_now(8.0), ASYNC_LOOP).result(timeout=12)
+                        entries = _instruments_snapshot()
+                    except Exception:
+                        entries = []
+                if entries:
+                    _web_assets_cache["entries"] = entries
+                    _web_assets_cache["fetched_at"] = now
+            else:
+                entries = _web_assets_cache["entries"]
+        with _web_candle_lock:
+            live = {k: (len(v.get("candles", [])), v.get("lastUpdate", 0))
+                    for k, v in _web_candle_store.items()}
+        assets_out = []
+        for e in entries:
+            code = (e.get("asset") or "").strip()
+            if not code:
+                continue
+            pair = _web_pair_name(code)
+            cnt, lu = live.get(pair, (0, 0))
+            assets_out.append({
+                "asset": code, "pair": pair,
+                "name": e.get("name") or code,
+                "payout": e.get("payout"),
+                "open": e.get("open"),
+                "live": cnt > 0, "candleCount": cnt, "lastUpdate": lu,
+            })
+        with _on_demand_lock:
+            od = {k: {"status": v.get("status"), "candles": v.get("candles", 0)}
+                  for k, v in _on_demand_state.items()}
+        result = {
+            "status": "OK" if assets_out else "WAIT",
+            "total": len(assets_out),
+            "openCount": sum(1 for a in assets_out if a.get("open")),
+            "periodSeconds": PERIOD_SECONDS,
+            "candleTarget": INITIAL_CANDLES,
+            "assets": assets_out,
+            "onDemand": od,
+        }
+        resp = Response(json.dumps(result, separators=(",", ":")), content_type="application/json")
+        resp.headers["Cache-Control"] = "no-cache"
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        return resp
+
+    @web_app.route("/api/request-asset")
+    def web_api_request_asset():
+        """Queue an on-demand asset load (same fetch engine as default asset)."""
+        pair = flask_request.args.get("pair", "").strip()
+        asset = flask_request.args.get("asset", "").strip() or _pair_name_to_api(pair)
+        res = _request_on_demand_asset(asset)
+        resp = Response(json.dumps(res, separators=(",", ":")), content_type="application/json")
+        resp.headers["Cache-Control"] = "no-cache"
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        return resp
+
+    @web_app.route("/api/asset-status")
+    def web_api_asset_status():
+        """Progress of an on-demand asset load (polled by the chart page)."""
+        pair = flask_request.args.get("pair", "").strip()
+        asset = flask_request.args.get("asset", "").strip() or _pair_name_to_api(pair)
+        with _on_demand_lock:
+            st = _on_demand_state.get(asset)
+            status = st.get("status") if st else None
+            error = st.get("error") if st else None
+            n = len(st["asset"].candles) if (st and st.get("asset") is not None) else 0
+        with _web_candle_lock:
+            has_data = pair in _web_candle_store or asset in _web_candle_store
+        if status is None and has_data:
+            status = "data"
+        result = {"status": status or "unknown", "asset": asset, "candles": n, "error": error}
         resp = Response(json.dumps(result, separators=(",", ":")), content_type="application/json")
         resp.headers["Cache-Control"] = "no-cache"
         resp.headers["Access-Control-Allow-Origin"] = "*"
