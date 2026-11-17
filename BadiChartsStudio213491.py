@@ -82,7 +82,7 @@ def qx_print_welcome():
     print()
     print(f"\033[96m{'═' * 62}\033[0m")
     print("\033[97m\033[1m  QX Console — Quotex Candles & Assets\033[0m\033[0m")
-    print("\033[2m  v46 · native one-shot fetch for >=60s frames + live gap bridge (replaces closed candles, adds missing, flat-fills, pushes fixed candles to the chart) · sub-minute frames keep browser-style walk · candles UNCOMPRESSED ready-built in Python ({time,open,high,low,close,volume}) + ready live price · chart via CDN link · auto-opens at http://127.0.0.1:8899 (assets list + USDDZD_otc default, 300 candles only) · email 2FA + monitors from login (reconnect 1s) · ws://127.0.0.1:8765 + console (--console) · JSON save\033[0m")
+    print("\033[2m  v48 · gap ROOT CAUSE fixed: get_candles re-subscribed the live tick channel at the fetch period (killing live candles) — all hub fetches + the 1s bridge now use history/load with a UNIQUE per-request event (original _fetch_historical_batch pattern, 500s chunks) + full-window real-candle merge + tick-stream restore after any legacy fallback · native one-shot fetch for >=60s frames · sub-minute frames keep browser-style walk · candles UNCOMPRESSED ready-built in Python ({time,open,high,low,close,volume}) + ready live price · chart via CDN link · auto-opens at http://127.0.0.1:8899 (assets list + USDDZD_otc default, 300 candles only) · email 2FA + monitors from login (reconnect 1s) · ws://127.0.0.1:8765 + console (--console) · JSON save\033[0m")
     print(f"\033[96m{'═' * 62}\033[0m")
     print()
 
@@ -1708,6 +1708,7 @@ if not MT4_HISTORY_PATH:
 SESSION_FILE = Path("session.json")
 SESSION_STATE_FILE = Path("session_state.json")
 EMAIL_FILE = Path("saved_email.txt")
+PASSWORD_FILE = Path("saved_password.txt")   # v47: حفظ كلمة السر لوضع التطوير
 
 class SessionManager:
     def __init__(self): self.state = self._load_state()
@@ -1743,6 +1744,22 @@ class SessionManager:
     def get_saved_host(self) -> str:
         # FIX K:
         return self.state.get("host", "qxbroker.com")
+    def save_password(self, password: str):
+        # v47: حفظ كلمة السر لوضع التطوير — إعادة التشغيل بلا إعادة إدخال
+        try:
+            PASSWORD_FILE.write_text(password)
+            try:
+                PASSWORD_FILE.chmod(0o600)
+            except Exception:
+                pass
+        except Exception:
+            pass
+    def get_saved_password(self) -> str:
+        # v47: كلمة السر المحفوظة (نمط saved_email نفسه)
+        try:
+            return PASSWORD_FILE.read_text().strip() if PASSWORD_FILE.exists() else ""
+        except Exception:
+            return ""
     @staticmethod
     def delete_session_file():
         if SESSION_FILE.exists():
@@ -1911,6 +1928,16 @@ GAP_FILL_CANDLES = 10  # fetch 10 recent candles to replace incomplete ones
 # : _gap_filled = True => .
 # : GAP_FILL_REFRESH_INTERVAL .
 GAP_FILL_REFRESH_INTERVAL = 300  # 5
+# v47: جسر الشموع الأصلية المجمّعة من 1 ثانية — كما في الأصل (M1_USE_1S_BRIDGE)
+M1_USE_1S_BRIDGE = True        # جسر 1s->فريم السلسلة ببيانات أصلية (لا مسطحة)
+M1_1S_BRIDGE_TARGET = 750      # شموع 1s المستهدفة (~12 دقيقة) — كما في الأصل v8.6
+BRIDGE_1S_OFFSET = int(M1_1S_BRIDGE_TARGET * 1.3)   # نافذة الطلب بالثواني (هامش الأصل 1.3x)
+M1_BRIDGE_REPLACE_COUNT = 6    # أحدث 6 مجمّعة تُستبدل — كما في الأصل v8.13 (الفجوة القصوى 5)
+BRIDGE_1S_TIMEOUT = 30         # مهلة جلب 1s — كما في الأصل M1_BRIDGE_TIMEOUT
+BRIDGE_1S_CHUNK_SECONDS = 500  # ~500 شمعة 1s لكل طلب (حد الخادم كما في الأصل)
+BRIDGE_1S_MAX_CHUNKS = 5       # دفعات كحد أقصى (SUBSECOND_MAX_CHUNKS في الأصل)
+BRIDGE_1S_TARGET_RAW = int(M1_1S_BRIDGE_TARGET * 1.3)   # هدف الشموع الخام (هامش 1.3x)
+M1_BRIDGE_USE_FULL = True      # v48: دمج النافذة الكاملة (استبدال+إلحاق الكل)
 
 # ==============================================================================
 # ===== BRIDGE FETCH (سد فجوة 4-5 شموع بين التاريخي والبث المباشر) =====
@@ -4948,7 +4975,7 @@ def _acquire_instance_lock():
         return (True, 0)
 
 # ==============================================================================
-# v46: CANDLE HUB — خادم شموع كاملة غير مضغوطة تُبنى في بايثون + شارت WebGL عبر رابط CDN (الفريمات >= دقيقة عبر الجلب الأصلي السريع + جسر الثغرات الحي الذي يرسل الشموع المسددة إلى الشارت)
+# v48: CANDLE HUB — خادم شموع كاملة غير مضغوطة تُبنى في بايثون + شارت WebGL عبر رابط CDN (الفريمات >= دقيقة عبر الجلب الأصلي السريع بحدث فريد لكل طلب — لا يقلب قناة التيك الحي + جسر الشموع الأصلية المجمّعة من 1 ثانية على دفعات 500s: النافذة الكاملة استبدالاً وإلحاقاً — بلا شموع مسطحة — ويُدمج قبل التقديم) + حفظ كلمة السر لوضع التطوير
 # ==============================================================================
 import collections as _collections
 
@@ -5200,14 +5227,34 @@ class CandleHub:
         # _fill_missing_slots تسد الثغرات بشموع مسطحة (إغلاق سابق، volume=0).
         # عند الفشل نعود للمسار الحالي — أما <60s فمسارنا الحالي كما هو.
         if period >= 60:
-            _gc = getattr(CLIENT, "get_candles", None) if CLIENT is not None else None
-            if _gc is not None:
-                try:
-                    raw = await _gc(s.asset, time.time(), int(want * period) + period * 2, period)
-                except Exception:
-                    raw = None
-                if raw:
-                    return _fill_missing_slots(raw, period, max_gap=1440)[-(want + 2):]
+            # v48: الطلب الواحد السريع نفسه لكن عبر history/load بحدث فريد
+            # (candles_ready_{asset}_{index} — نمط الأصل _fetch_historical_batch):
+            # لا يعيد start_candles_stream الاشتراك بفترة الجلب فيقتل تيك
+            # period=1 (كانت الشموع الحية تتوقف بعد كل جلب)، ولا يتشارك
+            # حدثاً واحداً بين الطلبات المتوازية.
+            raw = None
+            try:
+                _idx = next(_request_counter)
+                _raw = await CLIENT._fetch_historical_batch(
+                    s.asset, round(time.time(), 3), int(want * period) + period * 2,
+                    period, _idx, min(float(HUB_LOAD_TIMEOUT), 45.0))
+                if isinstance(_raw, (dict, list)):
+                    raw = CLIENT.prepare_candles(s.asset, period, _raw)
+            except Exception:
+                raw = None
+            if not raw:
+                # احتياط: get_candles القديمة — لكنها تقلب فترة قناة البث،
+                # لذا نعيد اشتراك التيك (period=1) فوراً بعدها
+                _gc = getattr(CLIENT, "get_candles", None) if CLIENT is not None else None
+                if _gc is not None:
+                    try:
+                        raw = await _gc(s.asset, time.time(), int(want * period) + period * 2, period)
+                    except Exception:
+                        raw = None
+                    if raw:
+                        await self._restore_tick_stream(s.asset)
+            if raw:
+                return _fill_missing_slots(raw, period, max_gap=1440)[-(want + 2):]
         res = await browser_style_history(s.asset, period, int(want * period * 3) + 3600,
                                           want=want, subscribe=False)
         if not res and period < 60:
@@ -5261,11 +5308,18 @@ class CandleHub:
                 s.pending.clear()
                 s.candles = candles
                 s.exhausted = False
+                # v47: جسر الشموع الأصلية المجمّعة من 1 ثانية قبل تقديم اللقطة —
+                # كما في الأصل (الدمج قبل الكتابة/العرض): تصحيح الشمعة غير المكتملة
+                # عند الدرز وإلحاق الفجوة المفقودة 4-5 ببيانات أصلية من 1s.
+                if s.period >= 60 and M1_USE_1S_BRIDGE:
+                    try:
+                        await asyncio.wait_for(self._bridge_1s(s), timeout=BRIDGE_1S_TIMEOUT)
+                    except Exception as _be:
+                        logmsg(f"[hub] 1s bridge (non-fatal) {s.asset} p={s.period}: {_be}")
                 s.state = "ready"
                 s.last_used = time.time()
-                # v46: سد درز الجسر بين التاريخي والحي — الجسر يصير مستحقاً بعد ~4 ثوانٍ
-                s.last_bridge = time.time() - GAP_FILL_REFRESH_INTERVAL + 4.0
-                rows = [_hub_out(c) for c in candles]
+                s.last_bridge = time.time()   # v47: دُمج الآن — الدورة القادمة بعد كامل المدة
+                rows = [_hub_out(c) for c in s.candles]
                 for cl, req in list(s.waiting.items()):
                     gen = cl.subs.get(key)
                     if gen is None:
@@ -5555,61 +5609,151 @@ class CandleHub:
             if not s.live and not s.waiting and now - s.last_used > HUB_CACHE_TTL:
                 self._remove_series(key)
 
-    async def _gap_bridge(self, s):
-        """v46: جسر الثغرات — نقل آلية fill_gap_once الأصلية إلى الشارت حرفياً:
-        يجلب آخر GAP_FILL_CANDLES شموعاً عبر الطريقة الأصلية (طلب واحد)،
-        يبني candle_map: الشمعة الجارية لا تُلمس (البث الحي يتكفل بها)، الشموع
-        المغلقة داخل النطاق تُستبدل ببيانات حقيقية (إصلاح الأجسام الناقصة)،
-        المفقودة تُضاف — ثم sort/limit و _fill_missing_slots — وما تغيّر
-        يُرسل فوراً إلى الشارت عبر _push_history_snapshot.
-        """
-        period = s.period
-        _gc = getattr(CLIENT, "get_candles", None) if CLIENT is not None else None
-        if _gc is None:
-            return
-        try:
-            raw = await _gc(s.asset, time.time(), GAP_FILL_CANDLES * period + period * 2, period)
-        except Exception:
-            raw = None
-        prev = s.candles
-        if not raw:
-            # مسار الفشل كما في الأصل (4219-4230): سد الفجوات الموجودة فقط ثم العرض
-            merged = sorted(prev, key=lambda x: x['time'])[-HUB_MAX_COUNT:]
-            filled = _fill_missing_slots(merged, period, max_gap=1440)
-            if len(filled) > len(merged):
-                s.candles = filled
-                self._push_history_snapshot(s)
-            return
-        current_start = (int(time.time()) // period) * period
-        cmap = {int(c['time']): c for c in prev}
-        changed = False
-        for c in raw:
+    async def _fetch_1s_chunks(self, asset, target_raw=None):
+        """v48: جلب شموع 1s على دفعات عبر history/load بحدث فريد لكل طلب —
+        كما في الأصل (fetch_subsecond_history): ~500 شمعة لكل طلب، دفعات متتالية
+        نحو الماضي، توقف بعد دفعتين فارغتين أو بلوغ الهدف. لا يستدعي
+        start_candles_stream إطلاقاً فلا تتأثر قناة التيك الحي (period=1)."""
+        target_raw = target_raw or BRIDGE_1S_TARGET_RAW
+        if CLIENT is None:
+            return []
+        out, seen = [], set()
+        empty = 0
+        now = time.time()
+        for k in range(BRIDGE_1S_MAX_CHUNKS):
             try:
-                t = int(c['time'])
-                o = float(c['open']); h = float(c['high']); l = float(c['low']); cl = float(c['close'])
+                index = next(_request_counter)
+                raw = await CLIENT._fetch_historical_batch(
+                    asset, round(now - k * BRIDGE_1S_CHUNK_SECONDS, 3),
+                    BRIDGE_1S_CHUNK_SECONDS, 1, index, 8.0)
+            except Exception:
+                raw = None
+            candles = self._parse_1s_batch(raw) if raw is not None else []
+            # حارس: لا ثقة بأي ثانية بعد الآن (انحراف ساعة الخادم)
+            candles = [c for c in candles if int(c['time']) <= now + 5]
+            fresh = [c for c in candles if int(c['time']) not in seen]
+            logmsg(f"[hub] 1s chunk {asset} #{k + 1}: +{len(fresh)} (raw {len(candles)})")
+            if not fresh:
+                empty += 1
+                if empty >= 2:
+                    break
+                continue
+            empty = 0
+            seen.update(int(c['time']) for c in fresh)
+            out.extend(fresh)
+            if len(out) >= target_raw:
+                break
+        out.sort(key=lambda x: x['time'])
+        return out
+
+    @staticmethod
+    def _parse_1s_batch(raw):
+        """فك رد history/load: قاموس بمفاتيح candles/data/history أو قائمة،
+        والصفوف إما قوائم [time, open, close, high, low] (ترتيب الأصل) أو قواميس."""
+        if isinstance(raw, dict):
+            rows = raw.get("candles") or raw.get("data") or raw.get("history") or []
+            if isinstance(rows, dict):
+                rows = rows.get("candles") or rows.get("data") or []
+        elif isinstance(raw, (list, tuple)):
+            rows = raw
+        else:
+            return []
+        out = []
+        for c in rows or []:
+            try:
+                if isinstance(c, (list, tuple)) and len(c) >= 5:
+                    t = int(c[0]); o = float(c[1]); cl = float(c[2])
+                    h = float(c[3]); l = float(c[4]); v = 0
+                elif isinstance(c, dict):
+                    t = int(c['time']); o = float(c['open']); cl = float(c['close'])
+                    h = float(c['high']); l = float(c['low'])
+                    v = int(c.get('volume') or 0)
+                else:
+                    continue
+                if o > 0 and cl > 0 and h > 0 and l > 0:
+                    out.append({"time": t, "open": o, "high": h, "low": l,
+                                "close": cl, "volume": v})
             except Exception:
                 continue
-            if not (o > 0 and h > 0 and l > 0 and cl > 0):
-                continue
-            ex = cmap.get(t)
-            if ex is None:
-                # شمعة مفقودة فعلاً (فجوة حقيقية) — تُضاف ببيانات حقيقية
-                cmap[t] = {"time": t, "open": o, "high": h, "low": l, "close": cl,
-                           "volume": int(c.get('volume') or 0)}
-                changed = True
-            elif t >= current_start:
-                continue          # الشمعة الجارية — البث الحي يتكفل بها (كما في الأصل 4258)
-            elif (int(ex.get('volume') or 0) == 0 or abs(float(ex['close']) - cl) > 1e-9
-                  or abs(float(ex['open']) - o) > 1e-9):
-                # شمعة مغلقة داخل النطاق — استبدال ببيانات حقيقية (إصلاح جسم ناقص)
-                cmap[t] = {"time": t, "open": o, "high": h, "low": l, "close": cl,
-                           "volume": int(c.get('volume') or 0) or int(ex.get('volume') or 0)}
-                changed = True
-        merged = sorted(cmap.values(), key=lambda x: x['time'])[-HUB_MAX_COUNT:]
-        filled = _fill_missing_slots(merged, period, max_gap=1440)
-        if changed or len(filled) != len(prev):
-            s.candles = filled
+        return out
+
+    async def _restore_tick_stream(self, asset):
+        """v48: إعادة اشتراك قناة التيك الحي (period=1) — تُستدعى فوراً بعد أي
+        نداء get_candles الاحتياطي لأنه يقلب فترة القناة (سبب توقف الشموع الحية)."""
+        try:
+            if CLIENT is not None and getattr(CLIENT, "api", None) is not None:
+                await CLIENT.start_candles_stream(asset, 1)
+        except Exception:
+            pass
+
+    async def _bridge_1s(self, s):
+        """v47: جسر الشموع الأصلية المجمّعة من 1 ثانية — نقل آلية الأصل
+        (M1_USE_1S_BRIDGE + الدمج v8.13) إلى الشارت:
+        1) طلب واحد للشموع ذات فترة 1 ثانية بالطريقة الحالية (get_candles) —
+           الخادم يعيد ~6-13 دقيقة (360-780 شمعة 1s).
+        2) تجميعها محلياً إلى فريم السلسلة (_aggregate_sub_minute): 60 شمعة 1s
+           متتالية = شمعة واحدة بلا أي فجوات.
+        3) الدمج بقواعد الأصل v8.13: أحدث M1_BRIDGE_REPLACE_COUNT (6) مجمّعة
+           تستبدل نظيراتها (الشمعة عند الدرز غير المكتملة بسبب جلب التاريخية
+           تُصحَّح ببياناتها الكاملة من 1s)، والباقي يُلحق (الفجوة المفقودة 4-5)،
+           ثم ترتيب وإزالة تكرار — بلا أي شموع مسطحة كي لا يضيع ولا جزء.
+        4) ما تغيّر يُرسل إلى الشارت دفعة واحدة (لقطة history).
+        """
+        period = s.period
+        if CLIENT is None or period < 60 or not s.candles:
+            return
+        _t0 = time.time()
+        # v48: الجلب عبر الدفعات (حدث فريد لكل طلب) — لا يقلب قناة البث الحي
+        # ولا يتشارك حدثاً مع طلبات أخرى. get_candles القديمة كانت تعيد
+        # الاشتراك بفترة 1/الجلب فيقتل تيك البث وتوقف الشموع الحية.
+        try:
+            raw1s = await self._fetch_1s_chunks(s.asset)
+        except Exception as _e1:
+            logmsg(f"[hub] 1s bridge chunks failed {s.asset}: {_e1}")
+            raw1s = []
+        if not raw1s:
+            # احتياط: get_candles القديمة — لكنها تقلب فترة قناة البث،
+            # لذا نعيد اشتراك التيك (period=1) فوراً بعدها
+            _gc = getattr(CLIENT, "get_candles", None)
+            try:
+                raw1s = await _gc(s.asset, time.time(), BRIDGE_1S_OFFSET, 1) if _gc else None
+            except Exception:
+                raw1s = None
+            await self._restore_tick_stream(s.asset)
+        logmsg(f"[hub] 1s bridge {s.asset} p={period}: fetched {len(raw1s or [])} raw 1s "
+               f"in {time.time() - _t0:.1f}s")
+        if not raw1s:
+            return          # بلا بيانات = بلا سد مسطح — الدورة القادمة تعيد المحاولة
+        agg = _aggregate_sub_minute(raw1s, period)
+        if not agg:
+            return
+        # قواعد الأصل v8.13 + v48: النافذة الكاملة للمجمّع (استبدال كل المطابق
+        # وإلحاق كل المفقود) — كي لا يضيع ولا جزء، والشموع أصلية من 1s بأي حال
+        bridge_for_merge = agg if M1_BRIDGE_USE_FULL else agg[-M1_BRIDGE_REPLACE_COUNT:]
+        bridge_by_time = {int(c['time']): dict(c) for c in bridge_for_merge}
+        merged = []
+        replaced = 0
+        for c in s.candles:
+            t = int(c['time'])
+            if t in bridge_by_time:
+                merged.append(bridge_by_time.pop(t))   # استبدال — الجسر أدق (كما الأصل)
+                replaced += 1
+            else:
+                merged.append(c)
+        appended = len(bridge_by_time)
+        merged.extend(bridge_by_time.values())          # إلحاق المفقودة (الفجوة 4-5)
+        merged.sort(key=lambda x: int(x['time']))
+        seen = set()
+        deduped = []
+        for c in merged:
+            if c['time'] not in seen:
+                seen.add(c['time'])
+                deduped.append(c)
+        if replaced or appended:
+            s.candles = deduped[-HUB_MAX_COUNT:]
             self._push_history_snapshot(s)
+            logmsg(f"[hub] 1s bridge {s.asset} p={period}: replaced {replaced} + appended {appended} "
+                   f"(used {len(bridge_for_merge)} of {len(agg)} aggregated, raw1s={len(raw1s)})")
 
     def _push_history_snapshot(self, s):
         """v46: إرسال الشموع المسددة إلى الشارت فوراً — نفس رسالة history؛
@@ -5639,7 +5783,7 @@ class CandleHub:
                     if now - s.last_bridge < GAP_FILL_REFRESH_INTERVAL:
                         continue
                     s.last_bridge = now
-                    await self._gap_bridge(s)
+                    await self._bridge_1s(s)
             except Exception as e:
                 logmsg(f"[hub] bridge error: {e}")
 
@@ -6012,12 +6156,15 @@ def run_server_mode():
     print(f"{Colors.GREEN}  Domain: {QX_HOST}{Colors.RESET}\n")
     email = os.environ.get("QX_EMAIL", "").strip() or session_manager.get_saved_email() \
         or _ask_raw(f"{Colors.CYAN}Email: {Colors.RESET}")
-    password = os.environ.get("QX_PASSWORD", "").strip() or _ask_raw(f"{Colors.CYAN}Password: {Colors.RESET}")
+    # v47: كلمة السر المحفوظة أولاً (وضع التطوير — بلا إعادة إدخال)
+    password = os.environ.get("QX_PASSWORD", "").strip() or session_manager.get_saved_password() \
+        or _ask_raw(f"{Colors.CYAN}Password: {Colors.RESET}")
     ok = asyncio.run_coroutine_threadsafe(
         connect_quotex(email, password, force_fresh=True, max_attempts=3), ASYNC_LOOP).result(timeout=300)
     if not ok:
         print(f"\n{Colors.RED}[FAILED] Could not connect after all attempts.{Colors.RESET}")
         sys.exit(1)
+    session_manager.save_password(password)              # v47: حفظ بعد نجاح الدخول فقط
     start_monitors_once()                                # v37: فور الدخول — قبل طباعة القائمة وأي جلب
     # v34: طباعة قائمة العملات أولاً (بأسماء الواجهة) قبل بدء المراقبة وقبل
     # hub_start وجلب أي شموع — كانت مضغوطة هنا (العلامة True قبل بدء المراقبة)
