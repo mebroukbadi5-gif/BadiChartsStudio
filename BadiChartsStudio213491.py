@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
@@ -82,7 +83,7 @@ def qx_print_welcome():
     print()
     print(f"\033[96m{'═' * 62}\033[0m")
     print("\033[97m\033[1m  QX Console — Quotex Candles & Assets\033[0m\033[0m")
-    print("\033[2m  v48 · gap ROOT CAUSE fixed: get_candles re-subscribed the live tick channel at the fetch period (killing live candles) — all hub fetches + the 1s bridge now use history/load with a UNIQUE per-request event (original _fetch_historical_batch pattern, 500s chunks) + full-window real-candle merge + tick-stream restore after any legacy fallback · native one-shot fetch for >=60s frames · sub-minute frames keep browser-style walk · candles UNCOMPRESSED ready-built in Python ({time,open,high,low,close,volume}) + ready live price · chart via CDN link · auto-opens at http://127.0.0.1:8899 (assets list + USDDZD_otc default, 300 candles only) · email 2FA + monitors from login (reconnect 1s) · ws://127.0.0.1:8765 + console (--console) · JSON save\033[0m")
+    print("\033[2m  v49 · full 300-candle load restored (proven get_candles one-shot — the unique-event history/load endpoint accepts only ~30min windows and returned ~29 candles) + tick-stream re-subscribe right after every legacy fetch + tick-stale watchdog + saved password anchored to the script dir and auto-loaded in BOTH startup modes · native one-shot fetch for >=60s frames · sub-minute frames keep browser-style walk · candles UNCOMPRESSED ready-built in Python ({time,open,high,low,close,volume}) + ready live price · chart via CDN link · auto-opens at http://127.0.0.1:8899 (assets list + USDDZD_otc default, 300 candles only) · email 2FA + monitors from login (reconnect 1s) · ws://127.0.0.1:8765 + console (--console) · JSON save\033[0m")
     print(f"\033[96m{'═' * 62}\033[0m")
     print()
 
@@ -1708,7 +1709,7 @@ if not MT4_HISTORY_PATH:
 SESSION_FILE = Path("session.json")
 SESSION_STATE_FILE = Path("session_state.json")
 EMAIL_FILE = Path("saved_email.txt")
-PASSWORD_FILE = Path("saved_password.txt")   # v47: حفظ كلمة السر لوضع التطوير
+PASSWORD_FILE = Path(__file__).resolve().parent / "saved_password.txt"   # v49: بجانب السكربت — لا يضيع بتغير مجلد التشغيل
 
 class SessionManager:
     def __init__(self): self.state = self._load_state()
@@ -4975,11 +4976,12 @@ def _acquire_instance_lock():
         return (True, 0)
 
 # ==============================================================================
-# v48: CANDLE HUB — خادم شموع كاملة غير مضغوطة تُبنى في بايثون + شارت WebGL عبر رابط CDN (الفريمات >= دقيقة عبر الجلب الأصلي السريع بحدث فريد لكل طلب — لا يقلب قناة التيك الحي + جسر الشموع الأصلية المجمّعة من 1 ثانية على دفعات 500s: النافذة الكاملة استبدالاً وإلحاقاً — بلا شموع مسطحة — ويُدمج قبل التقديم) + حفظ كلمة السر لوضع التطوير
+# v49: CANDLE HUB — خادم شموع كاملة غير مضغوطة تُبنى في بايثون + شارت WebGL عبر رابط CDN (الفريمات >= دقيقة عبر get_candles المجرب بطلب واحد كامل + إعادة اشتراك التيك فوراً + حارس توقف التيك + جسر الشموع الأصلية المجمّعة من 1 ثانية على دفعات 500s: النافذة الكاملة استبدالاً وإلحاقاً — بلا شموع مسطحة — ويُدمج قبل التقديم) + كلمة السر المحفوظة بجانب السكربت تُقرأ في الوضعين — بلا إعادة إدخال
 # ==============================================================================
 import collections as _collections
 
 HUB_HOST = os.environ.get("QX_HUB_HOST", "127.0.0.1")   # 0.0.0.0 فقط إن احتجت شبكة محلية
+_TICK_STALE_RESUB = {}   # v49: آخر إعادة اشتراك لكل (asset, period) — حارس توقف التيك
 HUB_PORT = int(os.environ.get("QX_HUB_PORT", "8765"))
 HUB_TOKEN = os.environ.get("QX_HUB_TOKEN", "")          # إن وُضع: يجب أن يرسل التطبيق op=auth أولاً
 HUB_DEFAULT_ASSET = "USDDZD_otc"   # v39: العملة الافتراضية للشارت (طلب المستخدم)
@@ -5227,32 +5229,30 @@ class CandleHub:
         # _fill_missing_slots تسد الثغرات بشموع مسطحة (إغلاق سابق، volume=0).
         # عند الفشل نعود للمسار الحالي — أما <60s فمسارنا الحالي كما هو.
         if period >= 60:
-            # v48: الطلب الواحد السريع نفسه لكن عبر history/load بحدث فريد
-            # (candles_ready_{asset}_{index} — نمط الأصل _fetch_historical_batch):
-            # لا يعيد start_candles_stream الاشتراك بفترة الجلب فيقتل تيك
-            # period=1 (كانت الشموع الحية تتوقف بعد كل جلب)، ولا يتشارك
-            # حدثاً واحداً بين الطلبات المتوازية.
+            # v49: get_candles المجرّبة أولاً (طلب واحد كامل ~300 شمعة كما
+            # v45-v47). طلب history/load الفريد يقبل نافذة صغيرة (~30 دقيقة
+            # فقط — مصمم للترقيم الصفحي) فكان يعيد ~29 شمعة بدل 300.
+            # بعد get_candles نعيد اشتراك التيك فوراً لأنها تقلب فترة قناة
+            # البث (السبب الذي كان يوقف الشموع الحية)، والحدث الفريد احتياط.
             raw = None
-            try:
-                _idx = next(_request_counter)
-                _raw = await CLIENT._fetch_historical_batch(
-                    s.asset, round(time.time(), 3), int(want * period) + period * 2,
-                    period, _idx, min(float(HUB_LOAD_TIMEOUT), 45.0))
-                if isinstance(_raw, (dict, list)):
-                    raw = CLIENT.prepare_candles(s.asset, period, _raw)
-            except Exception:
-                raw = None
+            _gc = getattr(CLIENT, "get_candles", None) if CLIENT is not None else None
+            if _gc is not None:
+                try:
+                    raw = await _gc(s.asset, time.time(), int(want * period) + period * 2, period)
+                except Exception:
+                    raw = None
+                if raw:
+                    await self._restore_tick_stream(s.asset)
             if not raw:
-                # احتياط: get_candles القديمة — لكنها تقلب فترة قناة البث،
-                # لذا نعيد اشتراك التيك (period=1) فوراً بعدها
-                _gc = getattr(CLIENT, "get_candles", None) if CLIENT is not None else None
-                if _gc is not None:
-                    try:
-                        raw = await _gc(s.asset, time.time(), int(want * period) + period * 2, period)
-                    except Exception:
-                        raw = None
-                    if raw:
-                        await self._restore_tick_stream(s.asset)
+                try:
+                    _idx = next(_request_counter)
+                    _raw = await CLIENT._fetch_historical_batch(
+                        s.asset, round(time.time(), 3), int(want * period) + period * 2,
+                        period, _idx, min(float(HUB_LOAD_TIMEOUT), 45.0))
+                    if isinstance(_raw, (dict, list)):
+                        raw = CLIENT.prepare_candles(s.asset, period, _raw)
+                except Exception:
+                    raw = None
             if raw:
                 return _fill_missing_slots(raw, period, max_gap=1440)[-(want + 2):]
         res = await browser_style_history(s.asset, period, int(want * period * 3) + 3600,
@@ -5736,7 +5736,10 @@ class CandleHub:
         for c in s.candles:
             t = int(c['time'])
             if t in bridge_by_time:
-                merged.append(bridge_by_time.pop(t))   # استبدال — الجسر أدق (كما الأصل)
+                _nb = bridge_by_time.pop(t)            # استبدال — الجسر أدق (كما الأصل)
+                if not int(_nb.get('volume') or 0) and int(c.get('volume') or 0):
+                    _nb['volume'] = int(c.get('volume') or 0)   # v49: حجم التيك الحقيقي أدق من صفر صفوف 1s
+                merged.append(_nb)
                 replaced += 1
             else:
                 merged.append(c)
@@ -5780,6 +5783,17 @@ class CandleHub:
                         continue
                     if not (s.live or s.pinned):
                         continue
+                    # v49: حارس توقف التيك — إذا جمّدت الحافة الحية أطول من
+                    # 2×الفترة (حد أدنى 90 ثانية) مع سلسلة مراقَبة، أعد اشتراك
+                    # قناة البث (period=1) — مرة كل 120 ثانية كحد أقصى
+                    _stale = now - int(s.candles[-1]['time'])
+                    _rk = (s.asset, s.period)
+                    if _stale > max(90, s.period * 2) and \
+                            now - _TICK_STALE_RESUB.get(_rk, 0.0) > 120:
+                        _TICK_STALE_RESUB[_rk] = now
+                        logmsg(f"[hub] tick stale {s.asset} p={s.period} "
+                               f"({_stale:.0f}s) — إعادة اشتراك البث الحي")
+                        await self._restore_tick_stream(s.asset)
                     if now - s.last_bridge < GAP_FILL_REFRESH_INTERVAL:
                         continue
                     s.last_bridge = now
@@ -6473,7 +6487,9 @@ if __name__ == "__main__":
     success = False
     if saved_email and not should_force:
         print(f"{Colors.GREEN}Found saved email: {saved_email}{Colors.RESET}")
-        PASSWORD_INPUT = _ask_raw(f"{Colors.CYAN} Password: {Colors.RESET}")
+        # v49: كلمة السر المحفوظة أولاً — وضع التطوير بلا إعادة إدخال (كما وضع الخادم)
+        PASSWORD_INPUT = session_manager.get_saved_password() \
+            or _ask_raw(f"{Colors.CYAN} Password: {Colors.RESET}")
         fut = asyncio.run_coroutine_threadsafe(connect_quotex(saved_email, PASSWORD_INPUT, force_fresh=False, max_attempts=3), ASYNC_LOOP)
         success = fut.result(timeout=1200)   # v38: مهلة تكفي لانتظار رمز 2FA من البريد
     if not success:
@@ -6485,6 +6501,7 @@ if __name__ == "__main__":
     if not success:
         print(f"\n{Colors.RED}[FAILED] Could not connect after all attempts.{Colors.RESET}")
         sys.exit(1)
+    session_manager.save_password(PASSWORD_INPUT)        # v49: حفظ بعد نجاح الدخول (الوضع التفاعلي أيضاً — لا إعادة إدخال)
         
     # v33: طباعة جدول العملات فور نجاح الدخول مباشرة — قبل sleep(1)/winapi
     # والفريمات — حتى يظهر بأسرع وقت ممكن (القائمة تصل عادة مع الاتصال نفسه
