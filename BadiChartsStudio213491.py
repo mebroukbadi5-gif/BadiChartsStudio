@@ -82,7 +82,7 @@ def qx_print_welcome():
     print()
     print(f"\033[96m{'═' * 62}\033[0m")
     print("\033[97m\033[1m  QX Console — Quotex Candles & Assets\033[0m\033[0m")
-    print("\033[2m  v50 · PAGINATED load — the original's own load_more engine: ~200-candle pages walking backwards via get_candles (the real server truncates any big window to a short recent one: 755 rows ≈ 12.6min per request, which is why the load returned 13 candles) + tick-stream re-subscribe after every page + 1s bridge uses get_candles@1 first (returned 755 rows on the real server while unique-event chunks returned 0) + tick-stale watchdog + saved password anchored to the script dir in BOTH startup modes · one-shot and unique-event kept as fallbacks · sub-minute frames keep browser-style walk · candles UNCOMPRESSED ready-built in Python ({time,open,high,low,close,volume}) + ready live price · chart via CDN link · auto-opens at http://127.0.0.1:8899 (assets list + USDDZD_otc default, 300 candles only) · email 2FA + monitors from login (reconnect 1s) · ws://127.0.0.1:8765 + console (--console) · JSON save\033[0m")
+    print("\033[2m  v51 · VERBATIM original engine — get_historical_candles copied as-is from the original library (5 parallel workers, unique-event history/load batches with INT times, blind fixed-step backward walk period*200, 3-consecutive-failure exit, 0.1s delay) + _fetch_historical_batch now sends int time (the real server IGNORES float-time requests: our float-time batches returned +0 raw 0 while int-time requests worked — that was the real root cause) + 1s bridge copied from fetch_subsecond_history (get_candles@1, 500s chunks, 3-empty stop, target 975 rows) + page keeps pan position + tick-stale watchdog + saved password anchored to the script dir in BOTH startup modes · sub-minute frames keep browser-style walk · candles UNCOMPRESSED ready-built in Python ({time,open,high,low,close,volume}) + ready live price · chart via CDN link · auto-opens at http://127.0.0.1:8899 (assets list + USDDZD_otc default, 300 candles only) · email 2FA + monitors from login (reconnect 1s) · ws://127.0.0.1:8765 + console (--console) · JSON save\033[0m")
     print(f"\033[96m{'═' * 62}\033[0m")
     print()
 
@@ -1310,7 +1310,7 @@ class Quotex:
 
     async def _fetch_historical_batch(self, asset, fetch_time, offset, period, index, timeout):
         if self.api is None: return None
-        payload = {"asset": asset, "index": index, "time": fetch_time, "offset": offset, "period": period}
+        payload = {"asset": asset, "index": index, "time": int(fetch_time), "offset": offset, "period": period}   # v51: الأصل يرسل زمن int — العشري يتجاهله الخادم
         ws_msg = f'42["history/load",{json.dumps(payload)}]'
         event_name = f'candles_ready_{asset}_{index}'
         await self.api.event_registry.clear_event(event_name)
@@ -1349,6 +1349,73 @@ class Quotex:
         candles = self.prepare_candles(asset, period, history_data)
         if progressive: return self.api.historical_candles.get("data", {})
         return candles
+
+    async def get_historical_candles(self, asset, amount_of_seconds, period, timeout=30, max_workers=5, progress_callback=None):
+        # v51: منقولة حرفياً من الأصل (FIX 7: 5 workers + chunk=200) — هذا هو
+        # المحرك الذي يعمل على الخادم الحقيقي: دفعات فريدة بأزمنة int،
+        # تراجع أعمى بخطوة ثابتة (period * 200 ثانية)، خروج بعد 3 إخفاقات
+        # متتالية، وتأخير 0.1s بين الدفعات.
+        max_workers = max_workers or 1
+        chunk_seconds = period * FETCH_CHUNK_SIZE  # period * 200 = 12000s batch
+        all_candles = {}
+        current_time = int(time.time())
+        target_start_time = current_time - amount_of_seconds
+        block_size = amount_of_seconds // max_workers
+        semaphore = asyncio.Semaphore(max_workers)
+
+        async def worker(start_t, end_t, worker_id):
+            worker_candles = {}
+            async with semaphore:
+                oldest_t = start_t
+                consecutive_failures_in_worker = 0
+                while oldest_t > end_t:
+                    if not self.api or not getattr(self.api.state, 'check_accepted_connection', False):
+                        break
+                    index = next(_request_counter)
+                    batch_data = await self._fetch_historical_batch(asset, oldest_t, chunk_seconds, period, index, timeout)
+                    if not batch_data:
+                        oldest_t -= chunk_seconds
+                        consecutive_failures_in_worker += 1
+                        if consecutive_failures_in_worker >= 3:
+                            # 3 consecutive failures = connection dead — exit
+                            break
+                        # backoff
+                        await asyncio.sleep(FETCH_BATCH_DELAY * 2)
+                        continue
+                    consecutive_failures_in_worker = 0
+                    new_batch = self._parse_historical_candles(batch_data)
+                    if not new_batch:
+                        oldest_t -= chunk_seconds
+                        continue
+                    batch_times = []
+                    for c in new_batch:
+                        ts = c['time']
+                        if ts >= end_t and ts <= start_t:
+                            worker_candles[ts] = c
+                            batch_times.append(ts)
+                    if not batch_times:
+                        oldest_t -= chunk_seconds
+                        continue
+                    batch_times.sort()
+                    new_oldest = batch_times[0]
+                    if progress_callback:
+                        progress_callback(start_t - new_oldest, start_t - end_t, len(worker_candles), f"Worker-{worker_id}")
+                    oldest_t = new_oldest if new_oldest < oldest_t else oldest_t - chunk_seconds
+                    # batches (0.1s — )
+                    await asyncio.sleep(FETCH_BATCH_DELAY)
+            return list(worker_candles.values())
+
+        await self.start_candles_stream(asset, period)
+        tasks = []
+        for i in range(max_workers):
+            s = current_time - (i * block_size)
+            e = max(target_start_time, s - block_size)
+            tasks.append(worker(s, e, i))
+        results = await asyncio.gather(*tasks)
+        for batch in results:
+            for c in batch:
+                all_candles[c['time']] = c
+        return sorted(all_candles.values(), key=lambda x: x['time'])
 
     def prepare_candles(self, asset, period, history=None):
         # v45: منقول حرفياً من الأصل — تنقية + محاذاة الوقت للفريم + دمج v2
@@ -4975,7 +5042,7 @@ def _acquire_instance_lock():
         return (True, 0)
 
 # ==============================================================================
-# v50: CANDLE HUB — خادم شموع كاملة غير مضغوطة تُبنى في بايثون + شارت WebGL عبر رابط CDN (الفريمات >= دقيقة عبر الجلب الصفحي — محرك الأصل load_more: صفحات ~200 شمعة تمشي نحو الماضي عبر get_candles لأن الخادم الحقيقي يقصّ النوافذ الكبيرة + إعادة اشتراك التيك بعد كل صفحة + حارس توقف التيك + جسر 1s عبر get_candles@1 أولاً ثم دفعات الحدث الفريد: النافذة الكاملة استبدالاً وإلحاقاً — بلا شموع مسطحة — ويُدمج قبل التقديم) + الصفحة تحفظ موضع السحب عند كل لقطة + كلمة السر المحفوظة بجانب السكربت — بلا إعادة إدخال
+# v51: CANDLE HUB — خادم شموع كاملة غير مضغوطة تُبنى في بايثون + شارت WebGL عبر رابط CDN (الفريمات >= دقيقة عبر محرك الأصل حرفياً get_historical_candles: 5 عمال متوازين ودفعات 200 شمعة بحدث فريد وأزمنة int وتراجع أعمى بخطوة ثابتة نحو الماضي + إعادة اشتراك التيك بعد المحرك + حارس توقف التيك + جسر 1s كما في الأصل fetch_subsecond_history: get_candles@1 على دفعات 500s — النافذة الكاملة استبدالاً وإلحاقاً — بلا شموع مسطحة — ويُدمج قبل التقديم) + الصفحة تحفظ موضع السحب عند كل لقطة + كلمة السر المحفوظة بجانب السكربت — بلا إعادة إدخال
 # ==============================================================================
 import collections as _collections
 
@@ -4990,7 +5057,8 @@ HUB_MAX_COUNT = 300                # v39: سقف ثابت — أي اختيار 
 HUB_PERIODS = {5, 10, 15, 30, 60, 120, 180, 300, 600, 900, 1800, 3600, 14400, 86400}
 HUB_MAX_PARALLEL_LOADS = 2         # أقصى عمليات جلب تاريخ متزامنة (حماية من خنق الخادم)
 HUB_LOAD_TIMEOUT = 150             # مهلة محاولة جلب واحدة (ثانية)
-HUB_PAGE_CANDLES = 200             # v50: صفحة الجلب الصفحي (~200 شمعة لكل طلب — محرك الأصل load_more)
+FETCH_CHUNK_SIZE = 200             # v51: من الأصل حرفياً — 200 شمعة لكل دفعة (chunk = period * 200)
+FETCH_BATCH_DELAY = 0.1            # v51: من الأصل حرفياً — 0.1s بين الدفعات
 HUB_CACHE_TTL = 600                # حذف السلسلة غير المستخدمة بعد 10 دقائق
 HUB_CLIENT_QUEUE = 2000            # طابور الإرسال لكل عميل (العميل البطيء لا يوقف أحداً)
 HUB_TZ_SECONDS = 0                 # إزاحة زمنية تُضاف لكل t في الرسائل (0 = UTC)
@@ -5229,14 +5297,21 @@ class CandleHub:
         # _fill_missing_slots تسد الثغرات بشموع مسطحة (إغلاق سابق، volume=0).
         # عند الفشل نعود للمسار الحالي — أما <60s فمسارنا الحالي كما هو.
         if period >= 60:
-            # v50: الجلب الصفحي أولاً — محرك الأصل نفسه (load_more): الخادم
-            # الحقيقي يقصّ النوافذ الكبيرة ويعيد نافذة حديثة قصيرة فقط،
-            # فكان التحميل يعيد 13 شمعة بدل 300. الصفحات عبر get_candles
-            # (المسار الوحيد الذي رد على الخادم الحقيقي) تمشي نحو الماضي.
-            raw = await self._fetch_paginated(s.asset, period, want)
-            if raw:
-                return _fill_missing_slots(raw, period, max_gap=1440)[-(want + 2):]
-            # احتياط 1: طلب واحد بإزاحة كاملة (أساس v45-v49)
+            # v51: محرك الأصل حرفياً — get_historical_candles: 5 عمال متوازين
+            # ودفعات 200 شمعة بحدث فريد لكل طلب وأزمنة int وتراجع أعمى
+            # بخطوة ثابتة نحو الماضي (المحرك نفسه الذي يعمل على الخادم
+            # الحقيقي في الأصل — لا اختراع ولا بدائل قبل أن يُجرب).
+            raw = None
+            _gh = getattr(CLIENT, "get_historical_candles", None)
+            if _gh is not None:
+                try:
+                    raw = await _gh(s.asset, int(want) * period, period)
+                except Exception:
+                    raw = None
+                if raw:
+                    await self._restore_tick_stream(s.asset)   # المحرك يبدأ ببث الفريم — أعِد قناة التيك
+                    return _fill_missing_slots(list(raw), period, max_gap=1440)[-(want + 2):]
+            # احتياط 1: get_candles بطلب واحد (زمن int داخلياً كما في الأصل)
             raw = None
             _gc = getattr(CLIENT, "get_candles", None) if CLIENT is not None else None
             if _gc is not None:
@@ -5270,59 +5345,6 @@ class CandleHub:
             # v46: السد قبل العرض دائماً — حتى في مسار البديل (كما في الأصل 4272)
             res = _fill_missing_slots(res, period, max_gap=1440)[-(want + 2):]
         return res
-
-    async def _fetch_paginated(self, asset, period, want):
-        """v50: الجلب الصفحي — محرك الأصل نفسه (load_more/get_historical_candles):
-        الخادم الحقيقي يقصّ النوافذ الكبيرة ويعيد نافذة حديثة قصيرة فقط
-        (على خادم المستخدم: 755 صفاً ≈ 12.6 دقيقة لكل طلب مهما كبرت الإزاحة
-        فكان التحميل يعيد 13 شمعة بدل 300). صفحات ~200 شمعة عبر get_candles
-        تمشي نحو الماضي: كل صفحة تنتهي عند أقدم شمعة محمّلة، وتتوقف عند
-        want أو نفاد الخادم (صفحتان بلا شموع أقدم) أو سقف الوقت.
-        تسلسلية — get_candles تستخدم حدثاً مشتركاً فلا تُشغَّل بالتوازي،
-        وبعد كل صفحة تُعاد اشتراك قناة التيك (period=1) لأن get_candles
-        تقلب فترة القناة."""
-        _gc = getattr(CLIENT, "get_candles", None) if CLIENT is not None else None
-        if _gc is None:
-            return None
-        page_sec = HUB_PAGE_CANDLES * period
-        collected = {}
-        cursor = time.time()
-        oldest = None
-        deadline = time.time() + min(float(HUB_LOAD_TIMEOUT), 75.0)
-        empty = 0
-        pages = 0
-        _t0 = time.time()
-        while len(collected) < want and pages < 30 and time.time() < deadline:
-            try:
-                rows = await _gc(asset, cursor, page_sec + period, period)
-            except Exception:
-                rows = None
-            await self._restore_tick_stream(asset)   # القناة قلبت — أعد period=1 فوراً
-            new = {}
-            for c in (rows or []):
-                try:
-                    t = int(c['time'])
-                except Exception:
-                    continue
-                if t <= cursor and (oldest is None or t < oldest):
-                    new[t] = c
-            if not new:
-                empty += 1
-                if empty >= 2:
-                    break            # الخادم نفد — لا شموع أقدم من هذا
-                cursor = (oldest - 1) if oldest is not None else (cursor - page_sec)
-                continue
-            empty = 0
-            pages += 1
-            collected.update(new)
-            oldest = min(collected)
-            cursor = oldest - 1
-        if collected:
-            out = [collected[t] for t in sorted(collected)]
-            logmsg(f"[hub] pages {asset} p={period}: {pages} صفحة → {len(out)} شمعة "
-                   f"في {time.time() - _t0:.1f}s")
-            return out
-        return None
 
     async def _load(self, s):
         key = (s.asset, s.period)
@@ -5667,39 +5689,52 @@ class CandleHub:
                 self._remove_series(key)
 
     async def _fetch_1s_chunks(self, asset, target_raw=None):
-        """v48: جلب شموع 1s على دفعات عبر history/load بحدث فريد لكل طلب —
-        كما في الأصل (fetch_subsecond_history): ~500 شمعة لكل طلب، دفعات متتالية
-        نحو الماضي، توقف بعد دفعتين فارغتين أو بلوغ الهدف. لا يستدعي
-        start_candles_stream إطلاقاً فلا تتأثر قناة التيك الحي (period=1)."""
-        target_raw = target_raw or BRIDGE_1S_TARGET_RAW
+        """v51: مسار الأصل حرفياً (fetch_subsecond_history): get_candles بفترة 1
+        على دفعات 500s نحو الماضي (chunk_end = int(now) - k*500)، توقف بعد 3
+        دفعات فارغة متتالية أو رد <10 صفوف بعد الأولى أو بلوغ الهدف
+        (M1_1S_BRIDGE_TARGET * هامش 1.3 = 975 صف). لا يستخدم الحدث الفريد
+        إطلاقاً — الدفعات الفريدة بأزمنة عشرية كانت تعيد صفراً على الخادم."""
+        target_raw = int(target_raw or BRIDGE_1S_TARGET_RAW)
         if CLIENT is None:
             return []
+        _gc = getattr(CLIENT, "get_candles", None)
+        if _gc is None:
+            return []
         out, seen = [], set()
-        empty = 0
-        now = time.time()
-        for k in range(BRIDGE_1S_MAX_CHUNKS):
+        chunks_done = 0
+        empty_in_row = 0
+        now = int(time.time())
+        while len(out) < target_raw and chunks_done < BRIDGE_1S_MAX_CHUNKS:
+            chunk_end = now - (chunks_done * BRIDGE_1S_CHUNK_SECONDS)
             try:
-                index = next(_request_counter)
-                raw = await CLIENT._fetch_historical_batch(
-                    asset, round(now - k * BRIDGE_1S_CHUNK_SECONDS, 3),
-                    BRIDGE_1S_CHUNK_SECONDS, 1, index, 8.0)
+                res_chunk = await asyncio.wait_for(
+                    _gc(asset, chunk_end, BRIDGE_1S_CHUNK_SECONDS, 1), timeout=20)
             except Exception:
-                raw = None
-            candles = self._parse_1s_batch(raw) if raw is not None else []
-            # حارس: لا ثقة بأي ثانية بعد الآن (انحراف ساعة الخادم)
-            candles = [c for c in candles if int(c['time']) <= now + 5]
-            fresh = [c for c in candles if int(c['time']) not in seen]
-            logmsg(f"[hub] 1s chunk {asset} #{k + 1}: +{len(fresh)} (raw {len(candles)})")
-            if not fresh:
-                empty += 1
-                if empty >= 2:
-                    break
+                # الأصل: خطأ عابر -> يعيد نفس الدفعة (حتى مرتين) ثم يتوقف
+                if empty_in_row < 2:
+                    empty_in_row += 1
+                    await asyncio.sleep(0.2)
+                    continue
+                break
+            if not res_chunk or len(res_chunk) == 0:
+                empty_in_row += 1
+                if empty_in_row >= 3:
+                    break                      # نهاية التاريخ المتاح (عتبة الأصل)
+                chunks_done += 1
                 continue
-            empty = 0
+            candles = [c for c in res_chunk
+                       if isinstance(c, dict) and 'time' in c
+                       and int(c['time']) <= now + 5]   # حارس انحراف ساعة الخادم
+            fresh = [c for c in candles if int(c['time']) not in seen]
+            logmsg(f"[hub] 1s chunk {asset} #{chunks_done + 1}: +{len(fresh)} (raw {len(candles)})")
+            if len(res_chunk) < 10 and chunks_done > 0:
+                seen.update(int(c['time']) for c in fresh)
+                out.extend(fresh)
+                break                        # عتبة الأصل: رد صغير = نهاية التاريخ
+            empty_in_row = 0
             seen.update(int(c['time']) for c in fresh)
             out.extend(fresh)
-            if len(out) >= target_raw:
-                break
+            chunks_done += 1
         out.sort(key=lambda x: x['time'])
         return out
 
@@ -5760,24 +5795,16 @@ class CandleHub:
         if CLIENT is None or period < 60 or not s.candles:
             return
         _t0 = time.time()
-        # v50: get_candles بفترة 1 أولاً — على الخادم الحقيقي أعادت 755 صفاً
-        # بينما دفعات الحدث الفريد أعادت صفراً. فترة 1 = فترة تيك البث فلا
-        # قلبَ ضار، وإعادة الاشتراك بعدها أمان لا أكثر.
-        raw1s = None
-        _gc = getattr(CLIENT, "get_candles", None)
-        if _gc is not None:
-            try:
-                raw1s = await _gc(s.asset, time.time(), BRIDGE_1S_OFFSET, 1)
-            except Exception:
-                raw1s = None
-            await self._restore_tick_stream(s.asset)
-        if not raw1s:
-            # احتياط: دفعات الحدث الفريد (500s لكل طلب، بلا لمس قناة البث)
-            try:
-                raw1s = await self._fetch_1s_chunks(s.asset)
-            except Exception as _e1:
-                logmsg(f"[hub] 1s bridge chunks failed {s.asset}: {_e1}")
-                raw1s = []
+        # v51: مسار الأصل حرفياً (fetch_subsecond_history): get_candles بفترة 1
+        # على دفعات 500s نحو الماضي — الفترة 1 = فترة تيك البث فلا قلبَ ضار،
+        # وإعادة الاشتراك بعدها أمان لا أكثر.
+        raw1s = []
+        try:
+            raw1s = await self._fetch_1s_chunks(s.asset)
+        except Exception as _e1:
+            logmsg(f"[hub] 1s bridge failed {s.asset}: {_e1}")
+            raw1s = []
+        await self._restore_tick_stream(s.asset)
         logmsg(f"[hub] 1s bridge {s.asset} p={period}: fetched {len(raw1s or [])} raw 1s "
                f"in {time.time() - _t0:.1f}s")
         if not raw1s:
