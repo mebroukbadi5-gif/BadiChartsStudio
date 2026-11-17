@@ -3654,6 +3654,14 @@ async def realtime_stream(asset: Asset):
                         _web_update_asset(asset, full_resync=_is_new_candle)
                     except Exception:
                         pass
+                    # v12.0: once M1 is chart-ready, kick the background 5S/5M
+                    # loads (guarded, fires once per asset), then feed the
+                    # builders with this tick so 5S/5M stay live.
+                    try:
+                        _maybe_start_tf_background(internal)
+                        _tf_stream_tick(internal, ts, price, _is_new_candle)
+                    except Exception:
+                        pass
                     # asset.mark_dirty() — MT4_WRITER.update_candle
             await asyncio.sleep(STREAM_POLL_INTERVAL)
         except asyncio.CancelledError:
@@ -4916,6 +4924,356 @@ def _web_update_asset(asset, full_resync=False):
             logmsg(f"[web:{pair}] candles NOT chart-ready yet: {reason} "
                    f"({len(candles_copy)} candles) -- holding them back from the chart")
 
+# ==============================================================================
+# v12.0 MULTI-TIMEFRAME BACKGROUND LOADER (5S / 1M / 5M)
+# ==============================================================================
+# User request: "عندما يتم تحميل فريم 1 دقيقة للعملة تلك نذهب الى تحميل فريم
+# 5 ثواني وفريم 5 دقائق في الخلفية ... بخصوص فريم 5 ثواني نريد تحميل 1 يوم
+# ... ولا تنسى يمكننا تنزيل شموع تلك على شكل ملف جيسون"
+#
+# Flow:
+#   1) The M1 flow loads an asset exactly as before (startup or on-demand).
+#   2) As soon as the M1 store entry passes chart validation, the asset is
+#      enqueued for TWO background jobs:
+#        - 5S: 1 full day of 5-second candles (86,400s -> ~17,280 candles)
+#        - 5M: TF_5M_CANDLES 5-minute candles (default 700 ~= 2.4 days)
+#      ONE background worker on ASYNC_LOOP processes them serially so the
+#      broker WebSocket is never hammered by parallel history requests.
+#   3) Live ticks from the asset's running stream feed in-memory per-timeframe
+#      builders (same shifted-clock convention as asset.candles; _align_time).
+#   4) /api/candles?tf=5S|5M, /api/last-tick?tf=..., /api/tf-status serve the
+#      extra timeframes; /api/export downloads the FULL dataset as JSON file.
+#   5) Candle stamps are converted back to true UTC at the web boundary
+#      (same v11.1 countdown fix as _web_update_asset).
+# ==============================================================================
+TF_ACTIVE_SECONDS = (5, 300)           # background timeframes fed after M1 is ready
+TF_5S_HISTORY_DAYS = 1.0               # 5S: load 1 day (user request)
+TF_5M_CANDLES = 700                    # 5M: same default depth as M1 (INITIAL_CANDLES)
+TF_SERVE_MAX = 5000                    # /api/candles serves at most this many tf candles
+TF_KEEP_MAX = {5: 40000, 300: 3000}    # engine memory caps (>= 2 days of 5S)
+TF_REVALIDATE_INTERVAL = 300.0         # re-run the chart gate every 5 min per tf entry
+_TF_BG_STATE = {}                      # api_symbol -> {"requested": bool, "5"/"300": {...}}
+_TF_BG_LOCK = threading.RLock()
+_TF_CANDLES = {}                       # (api_symbol, tf_sec) -> [candles, internal clock]
+_TF_LAST_PRICE = {}                    # (api_symbol, tf_sec) -> last tick price
+_TF_BG_QUEUE = None                    # asyncio.Queue (created inside the worker loop)
+_TF_BG_WORKER = None
+_TF_BG_QUEUE_EVT = threading.Event()
+_web_tf_store = {}                     # "pair|sec" -> store entry (M1 entry shape + periodSeconds)
+_web_tf_tick = {}                      # "pair|sec" -> tick cache (same shape as _web_latest_tick)
+
+def _tf_label(sec):
+    """5 -> '5S', 60 -> '1M', 300 -> '5M', 3600 -> '1H'."""
+    sec = int(sec)
+    if sec < 60: return f"{sec}S"
+    if sec % 3600 == 0: return f"{sec // 3600}H"
+    return f"{sec // 60}M"
+
+def _tf_seconds_from_label(label):
+    """'5S'/'1M'/'5M'/'1H'/... -> seconds (None when unparsable)."""
+    s = (label or "").strip().upper()
+    if not s: return None
+    try:
+        if s.endswith("S"): return max(1, int(s[:-1]))
+        if s.endswith("M"): return max(1, int(s[:-1])) * 60
+        if s.endswith("H"): return max(1, int(s[:-1])) * 3600
+        return int(s)
+    except Exception:
+        return None
+
+def _tf_store_key(pair, tf_sec):
+    return f"{pair}|{int(tf_sec)}"
+
+def _tf_set_state(sym, tf_sec, **kw):
+    with _TF_BG_LOCK:
+        st = _TF_BG_STATE.setdefault(sym, {})
+        sub = st.setdefault(str(int(tf_sec)), {})
+        sub.update(kw)
+        return sub
+
+def _tf_get_state(sym, tf_sec):
+    with _TF_BG_LOCK:
+        return dict(_TF_BG_STATE.get(sym, {}).get(str(int(tf_sec)), {}) or {})
+
+def _tf_update_tick(api_symbol, tf_sec, ts, price):
+    """Feed ONE tick into the in-memory builder (internal shifted clock).
+
+    Returns True when a NEW candle was appended (caller should full_resync);
+    False for in-place updates / late ticks / no change."""
+    key = (api_symbol, int(tf_sec))
+    try:
+        aligned = _align_time(int(ts), int(tf_sec))
+        price = float(price)
+    except Exception:
+        return False
+    if aligned <= 0 or price <= 0:
+        return False
+    with _TF_BG_LOCK:
+        cs = _TF_CANDLES.get(key)
+        appended = False
+        if cs is None:
+            cs = []
+            _TF_CANDLES[key] = cs
+        if cs:
+            last = cs[-1]
+            if aligned < last["time"]:
+                return False                      # late tick for a closed candle
+            if aligned == last["time"]:
+                if price == _TF_LAST_PRICE.get(key):
+                    return False                  # unchanged price -> no push needed
+                if price > last["high"]: last["high"] = price
+                if price < last["low"]: last["low"] = price
+                last["close"] = price
+                last["volume"] += 1
+            else:
+                cs.append({"time": aligned, "open": price, "high": price,
+                           "low": price, "close": price, "volume": 1})
+                appended = True
+                cap = TF_KEEP_MAX.get(int(tf_sec), 5000)
+                if len(cs) > cap:
+                    del cs[:len(cs) - cap]
+        else:
+            cs.append({"time": aligned, "open": price, "high": price,
+                       "low": price, "close": price, "volume": 1})
+            appended = True
+        _TF_LAST_PRICE[key] = price
+    return appended
+
+def _web_tf_validated(pair, tf_sec):
+    """True when the per-tf store entry passed chart validation."""
+    with _web_candle_lock:
+        entry = _web_tf_store.get(_tf_store_key(pair, tf_sec))
+        if entry is None:
+            pl = pair.lower()
+            for k, v in _web_tf_store.items():
+                if k.endswith(f"|{int(tf_sec)}") and k.split("|")[0].lower() == pl:
+                    entry = v
+                    break
+    return bool(entry and entry.get("validated"))
+
+def _web_update_tf(api_symbol, tf_sec, full_resync=False):
+    """Push a timeframe builder's candles into the per-tf web store.
+
+    Same v11.1 countdown convention as _web_update_asset: internal shifted
+    stamps are converted back to true UTC at this boundary, so the browser
+    countdown counts down correctly for 5S/5M candles too.
+    The FULL dataset is stored (for /api/export); /api/candles serves the
+    newest TF_SERVE_MAX candles to keep the 500ms poll light."""
+    sym = (api_symbol or "").strip()
+    if not sym:
+        return
+    tf_sec = int(tf_sec)
+    pair = _web_pair_name(sym)
+    key = _tf_store_key(pair, tf_sec)
+    try:
+        tz_off = int(_get_tz_offset())
+    except Exception:
+        tz_off = 0
+    now_ms = int(time.time() * 1000)
+    with _TF_BG_LOCK:
+        cs = _TF_CANDLES.get((sym, tf_sec))
+        if not cs:
+            return
+        snap = list(cs)
+        price = _TF_LAST_PRICE.get((sym, tf_sec)) or float(snap[-1]["close"])
+    try:
+        digits = _resolve_digits(sym, price)
+    except Exception:
+        digits = 5
+    with _web_candle_lock:
+        _web_tf_tick[key] = {
+            "price": float(price),
+            "time": int(snap[-1]["time"]) - tz_off,
+            "open": float(snap[-1]["open"]), "high": float(snap[-1]["high"]),
+            "low": float(snap[-1]["low"]), "close": float(snap[-1]["close"]),
+            "digits": digits, "ts": now_ms,
+        }
+        _web_push_stats["total_pushes"] += 1
+        _web_push_stats["last_push_time"] = now_ms
+        if full_resync:
+            entry = _web_tf_store.get(key)
+            already_ok = bool(entry and entry.get("validated"))
+            need_reval = (not already_ok) or (
+                now_ms - (entry.get("lastValidateMs") or 0) > TF_REVALIDATE_INTERVAL * 1000)
+            candles_copy = []
+            for c in snap:
+                d = dict(c)
+                d["time"] = int(c.get("time", 0)) - tz_off
+                candles_copy.append(d)
+            if need_reval:
+                ok, reason, cleaned = _validate_chart_candles(candles_copy, period_seconds=tf_sec)
+            else:
+                ok, reason, cleaned = True, "ok", candles_copy
+            _web_tf_store[key] = {
+                "pair": pair,
+                "digits": digits,
+                "candles": cleaned if ok else candles_copy,
+                "validated": bool(ok),
+                "validateReason": None if ok else reason,
+                "lastUpdate": now_ms,
+                "lastValidateMs": now_ms if need_reval else (entry.get("lastValidateMs") or 0),
+                "periodSeconds": tf_sec,
+                "timeframe": _tf_label(tf_sec),
+            }
+            if not ok:
+                logmsg(f"[web-tf:{pair}:{_tf_label(tf_sec)}] candles NOT chart-ready: "
+                       f"{reason} ({len(candles_copy)}) -- holding them back")
+
+async def _tf_bg_worker_loop():
+    """Single background worker: process TF history loads one at a time."""
+    global _TF_BG_QUEUE
+    _TF_BG_QUEUE = asyncio.Queue()
+    _TF_BG_QUEUE_EVT.set()
+    while True:
+        try:
+            job = await _TF_BG_QUEUE.get()
+        except asyncio.CancelledError:
+            raise
+        if not job:
+            continue
+        sym, tf_sec = job
+        try:
+            await _load_tf_history(sym, tf_sec)
+        except Exception as e:
+            log_exception(f"tf-bg:{sym}:{_tf_label(tf_sec)}", e)
+            _tf_set_state(sym, tf_sec, status="error", error=str(e))
+        await asyncio.sleep(0.3)
+
+def _ensure_tf_bg_worker():
+    """Start the single TF background worker on ASYNC_LOOP (idempotent)."""
+    global _TF_BG_WORKER
+    if ASYNC_LOOP is None or ASYNC_LOOP.is_closed():
+        return False
+    w = _TF_BG_WORKER
+    if w is not None and not w.done():
+        return True
+    try:
+        _TF_BG_QUEUE_EVT.clear()
+        _TF_BG_WORKER = asyncio.run_coroutine_threadsafe(_tf_bg_worker_loop(), ASYNC_LOOP)
+        return _TF_BG_QUEUE_EVT.wait(3.0)
+    except Exception:
+        return False
+
+def _maybe_start_tf_background(api_symbol):
+    """Fire-and-forget trigger: once M1 for this asset is chart-ready, enqueue
+    the background 5S (1 day) + 5M loads. Safe to call on every tick."""
+    sym = (api_symbol or "").strip()
+    if not sym:
+        return
+    if PERIOD_SECONDS != 60:
+        return                      # multi-tf background is an M1-run feature
+    if ASYNC_LOOP is None or ASYNC_LOOP.is_closed() or CLIENT is None:
+        return
+    with _TF_BG_LOCK:
+        st = _TF_BG_STATE.get(sym)
+        if st is not None and st.get("requested"):
+            return
+    if not _web_pair_validated(_web_pair_name(sym)):
+        return                      # M1 not chart-ready yet
+    with _TF_BG_LOCK:
+        _TF_BG_STATE[sym] = {"requested": True, "startedAt": time.time()}
+    if not _ensure_tf_bg_worker():
+        with _TF_BG_LOCK:
+            _TF_BG_STATE.pop(sym, None)
+        return
+    for tf_sec in TF_ACTIVE_SECONDS:
+        if tf_sec == PERIOD_SECONDS:
+            continue
+        _tf_set_state(sym, tf_sec, status="queued", candles=0)
+        try:
+            _TF_BG_QUEUE.put_nowait((sym, tf_sec))
+        except Exception as e:
+            _tf_set_state(sym, tf_sec, status="error", error=str(e))
+    logmsg(f"[tf:{sym}] M1 chart-ready -> background load: "
+           f"5S ({TF_5S_HISTORY_DAYS:.0f} day) + 5M ({TF_5M_CANDLES} candles)")
+
+def _tf_stream_tick(api_symbol, ts, price, new_candle=False):
+    """Per-tick hook from realtime_stream: feed builders + push the web store.
+    Zero-cost when the asset has no background timeframes registered."""
+    with _TF_BG_LOCK:
+        st = _TF_BG_STATE.get(api_symbol)
+        if not st or not st.get("requested"):
+            return
+    for tf_sec in TF_ACTIVE_SECONDS:
+        if tf_sec == PERIOD_SECONDS:
+            continue
+        try:
+            appended = _tf_update_tick(api_symbol, tf_sec, ts, price)
+            _web_update_tf(api_symbol, tf_sec, full_resync=(appended or new_candle))
+        except Exception:
+            pass
+
+async def _load_tf_history(api_symbol, tf_sec):
+    """Fetch one timeframe's history in the background and seed its builder.
+
+    5S: 1 full day via the browser-style chunked fetch (native period=5,
+        fallback: 1s fetch + local aggregation).
+    5M: TF_5M_CANDLES candles via the same chunked fetch (period=300).
+    Broker stamps are true UTC -> moved onto the internal shifted clock and
+    aligned to the tf boundary, exactly like the live tick path."""
+    sym = (api_symbol or "").strip()
+    tf_sec = int(tf_sec)
+    label = _tf_label(tf_sec)
+    if CLIENT is None or CLIENT.api is None:
+        _tf_set_state(sym, tf_sec, status="error", error="not connected")
+        return
+    if tf_sec < 60:
+        seconds_back = int(TF_5S_HISTORY_DAYS * 86400)
+    else:
+        seconds_back = int(TF_5M_CANDLES * tf_sec * 1.1)
+    _tf_set_state(sym, tf_sec, status="loading", seconds_back=seconds_back,
+                  error=None, candles=0)
+    logmsg(f"[tf:{sym}:{label}] background history fetch: {seconds_back}s "
+           f"({seconds_back / 86400:.2f} day)")
+    raw = []
+    try:
+        # subscribe=False: the asset's M1 stream is already running -- a second
+        # stream subscription would disturb the live feed.
+        raw = await browser_style_history(sym, tf_sec, seconds_back, subscribe=False)
+    except Exception as e:
+        logmsg(f"[tf:{sym}:{label}] native {label} fetch failed: {e}")
+        raw = []
+    if not raw and tf_sec < 60:
+        # Fallback: fetch 1s candles and aggregate locally (subsecond pattern).
+        try:
+            one_s = await browser_style_history(sym, 1, seconds_back, subscribe=False)
+            raw = _aggregate_sub_minute(one_s, tf_sec) if one_s else []
+        except Exception as e:
+            logmsg(f"[tf:{sym}:{label}] 1s fallback failed: {e}")
+            raw = []
+    if not raw:
+        _tf_set_state(sym, tf_sec, status="error", error="no history returned")
+        logmsg(f"[tf:{sym}:{label}] no history returned (market closed or fetch failed)")
+        return
+    for c in raw:
+        try:
+            c["time"] = _align_time(int(c["time"]), tf_sec)
+        except Exception:
+            pass
+    raw.sort(key=lambda x: x["time"])
+    seen, dedup = set(), []
+    for c in raw:
+        if c["time"] in seen:
+            continue
+        seen.add(c["time"])
+        dedup.append(c)
+    # Merge with any live candles the builder collected while fetching
+    # (live data wins on the same timestamp).
+    key = (sym, tf_sec)
+    with _TF_BG_LOCK:
+        live = list(_TF_CANDLES.get(key, []))
+        by_time = {c["time"]: c for c in dedup}
+        by_time.update({c["time"]: c for c in live})
+        merged = [by_time[t] for t in sorted(by_time)]
+        _TF_CANDLES[key] = merged
+    _web_update_tf(sym, tf_sec, full_resync=True)
+    n = len(merged)
+    ok = _web_tf_validated(_web_pair_name(sym), tf_sec)
+    _tf_set_state(sym, tf_sec, status=("ready" if ok else "loading"),
+                  candles=n, error=None)
+    logmsg(f"[tf:{sym}:{label}] done: {n} candles "
+           f"({'ready' if ok else 'verification-pending'})")
+
 # == ON-DEMAND ASSETS (web dashboard click-to-load) ============================
 # When the user clicks an asset in the dashboard that is NOT part of the
 # startup ASSET_LIST, it is loaded EXACTLY like the default asset:
@@ -5347,8 +5705,8 @@ _WEB_CHART_HTML = r"""<!DOCTYPE html>
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=5.0,user-scalable=yes,viewport-fit=cover">
 <meta name="theme-color" content="#0a0e17">
 <title>PAIR_DISPLAY - Live Chart | QXChart MT4</title>
-<!-- ===== BADI-CHARTS-V2 v2.20.5 WEBGL EDITION (single-file canvas chart) ===== -->
-<script src="https://cdn.jsdelivr.net/gh/salahbadi19/BADI-CHARTS-V2@v2.20.5/chart-webgl.js"></script>
+<!-- ===== BADI-CHARTS-V2 v2.20.6 WEBGL EDITION (single-file canvas chart) ===== -->
+<script src="https://cdn.jsdelivr.net/gh/salahbadi19/BADI-CHARTS-V2@v2.20.6/chart-webgl.js"></script>
 <style>
 CSS_HERE
 html,body{height:100%;width:100%;overflow:hidden;}
@@ -5370,6 +5728,17 @@ body{height:100vh;display:flex;flex-direction:column;overflow:hidden;}
 .price-change{font-size:13px;font-weight:600;font-family:monospace;white-space:nowrap;}
 .price-change.up{color:var(--green);}
 .price-change.down{color:var(--red);}
+.tf-bar{display:flex;align-items:center;gap:6px;margin-left:auto;}
+.tf-btn{background:transparent;color:var(--text-dim);border:1px solid var(--border);
+        border-radius:8px;padding:5px 10px;font-size:12px;font-weight:600;cursor:pointer;
+        display:flex;align-items:center;gap:5px;transition:all 150ms ease;font-family:inherit;}
+.tf-btn:hover{color:#fff;border-color:var(--blue);}
+.tf-btn.active{color:#fff;background:var(--blue);border-color:var(--blue);}
+.tf-dot{width:6px;height:6px;border-radius:50%;background:var(--text-muted);display:inline-block;}
+.tf-dot.ready{background:var(--green);}
+.tf-dot.loading{background:#f59e0b;animation:pulseDot 1s infinite;}
+.tf-dot.error-dot{background:var(--red);}
+@keyframes pulseDot{50%{opacity:0.35;}}
 .chart-wrap{flex:1;position:relative;background:var(--bg-primary);min-height:0;width:100%;overflow:hidden;}
 #chartContainer{position:absolute;inset:0;width:100%;height:100%;}
 #chart{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;}
@@ -5397,6 +5766,14 @@ body{height:100vh;display:flex;flex-direction:column;overflow:hidden;}
     <span class="pair-title" id="pairTitle">PAIR_DISPLAY</span>
     <span class="current-price" id="currentPrice">---</span>
     <span class="price-change" id="priceChange"></span>
+  </div>
+  <!-- v12.0: timeframe switcher (5S / 1M / 5M) + JSON export -->
+  <div class="tf-bar" id="tfBar">
+    <button class="tf-btn" data-sec="5">5S<span class="tf-dot" id="tfDot5" title="5S"></span></button>
+    <button class="tf-btn active" data-sec="60">1M<span class="tf-dot" id="tfDot60" title="1M"></span></button>
+    <button class="tf-btn" data-sec="300">5M<span class="tf-dot" id="tfDot300" title="5M"></span></button>
+    <div class="nav-sep"></div>
+    <button class="tf-btn" id="btnJson" title="Download candles as JSON">JSON</button>
   </div>
 </div>
 <div class="chart-wrap">
@@ -5564,14 +5941,68 @@ function updatePriceHeader(){
   }
 }
 
+// ===== v12.0 multi-timeframe switcher + JSON export =====
+const TF_LIST = [{sec:5,label:"5S"},{sec:60,label:"1M"},{sec:300,label:"5M"}];
+let curTFSec = 60, curTFLabel = "1M";
+const tfDrawn = {};                                    // sec -> drawn once (keepView)
+const TF_FULL_POLL_MS = {5: 2000, 60: 500, 300: 2000}; // full-resync rate per tf
+let lastFullFetch = 0;
+function tfQuery(){ return curTFSec === 60 ? "" : "&tf=" + curTFLabel; }
+function tfNeedsFetch(){
+  const minMs = TF_FULL_POLL_MS[curTFSec] || 500;
+  if(Date.now() - lastFullFetch < minMs - 40) return false;
+  lastFullFetch = Date.now();
+  return true;
+}
+async function pollTfStatus(){
+  try{
+    const r = await fetch("/api/tf-status?pair=" + encodeURIComponent(PAIR_NAME), {cache:"no-store"});
+    if(!r.ok) return;
+    const d = await r.json();
+    (d.timeframes || []).forEach(tf => {
+      const dot = document.getElementById("tfDot" + tf.seconds);
+      if(!dot) return;
+      let cls = "tf-dot";
+      if(tf.state === "ready") cls += " ready";
+      else if(tf.state === "error") cls += " error-dot";
+      else if(tf.state !== "none") cls += " loading";
+      dot.className = cls;
+      dot.title = tf.label + ": " + tf.state + (tf.candles ? " (" + tf.candles + " candles)" : "");
+    });
+  }catch(e){}
+}
+function switchTF(sec){
+  sec = Number(sec);
+  if(!sec || sec === curTFSec) return;
+  curTFSec = sec;
+  curTFLabel = (TF_LIST.find(t => t.sec === sec) || {label: sec < 60 ? sec + "S" : (sec / 60) + "M"}).label;
+  document.querySelectorAll("#tfBar .tf-btn[data-sec]").forEach(b =>
+    b.classList.toggle("active", Number(b.dataset.sec) === sec));
+  candles = [];                       // drop the other timeframe's mirror
+  showVerifying(0);
+  const line = document.getElementById("odStatusLine");
+  if(line) line.textContent = "Loading " + curTFLabel + " timeframe...";
+  const ol = document.getElementById("loadingOverlay");
+  if(ol) ol.style.display = "flex";
+  lastFullFetch = 0;
+  fetchFullCandles();                 // immediate fetch for the new tf
+}
+document.querySelectorAll("#tfBar .tf-btn[data-sec]").forEach(b =>
+  b.addEventListener("click", () => switchTF(b.dataset.sec)));
+document.getElementById("btnJson").addEventListener("click", () => {
+  window.location.href = "/api/export?pair=" + encodeURIComponent(PAIR_NAME) + "&tf=" + curTFLabel;
+});
+
 // ===== data fetching =====
 async function fetchFullCandles(){
   try{
-    const r = await fetch("/api/candles?pair=" + encodeURIComponent(PAIR_NAME), {cache:"no-store"});
+    if(!tfNeedsFetch()) return;       // per-timeframe full-resync rate
+    const r = await fetch("/api/candles?pair=" + encodeURIComponent(PAIR_NAME) + tfQuery(), {cache:"no-store"});
     if(!r.ok){
       // HTTP 404 = this asset has no candles in the bot yet. Trigger the
       // on-demand load (same engine as the default asset) and keep polling.
-      if(!initialized){
+      // (Only the 1M flow uses the on-demand engine.)
+      if(!initialized && curTFSec === 60){
         if(!odRequested) ensureAssetData();
         else if(Date.now() > odDeadline){
           odMode = false;
@@ -5586,7 +6017,7 @@ async function fetchFullCandles(){
     // Server says the candles are not verified yet (history still loading or
     // verification failed) -- do NOT draw them, keep the loading overlay.
     if(data.status === "LOADING" || data.validated === false){
-      if(!initialized) showVerifying(data.candle_count || 0);
+      if(!tfDrawn[curTFSec]) showVerifying(data.candle_count || 0);
       return;
     }
     if(data.status === "OK" && data.candles && data.candles.length > 0){
@@ -5606,7 +6037,7 @@ async function fetchFullCandles(){
       if(candles.length === 0) return;
       // Second client-side check: never hand strange/partial data to the chart.
       if(!candlesLookSane(candles)){
-        if(!initialized) showVerifying(candles.length);
+        if(!tfDrawn[curTFSec]) showVerifying(candles.length);
         return;
       }
 
@@ -5615,7 +6046,7 @@ async function fetchFullCandles(){
       if(!chart){
         if(!createChart(tf)) return;   // library missing -> error overlay shown
       } else if(tf.ms !== chart.timeframe.ms){
-        chart.setTimeframe(tf);        // candle width changed (e.g. sub-second frames)
+        chart.setTimeframe(tf);        // candle width changed (5S / 1M / 5M switch)
       }
       // Keep the price-axis precision in sync with the feed.
       if(curDigits !== digits && typeof chart.setSymbol === "function"){
@@ -5629,9 +6060,10 @@ async function fetchFullCandles(){
       const series = candles.map(c => ({
         time: c.t, open: c.open, high: c.high, low: c.low, close: c.close
       }));
-      // keepView: only the FIRST load resets the viewport; later resyncs
-      // (500ms poll) must not fight the user's zoom/pan position.
-      chart.setData(series, {keepView: initialized});
+      // keepView: the FIRST draw of each timeframe resets the viewport; later
+      // resyncs must not fight the user's zoom/pan position.
+      chart.setData(series, {keepView: !!tfDrawn[curTFSec]});
+      tfDrawn[curTFSec] = true;
 
       // Hide loading overlay
       const ol = document.getElementById("loadingOverlay");
@@ -5639,7 +6071,7 @@ async function fetchFullCandles(){
 
       if(!initialized) initialized = true;
       updatePriceHeader();
-    } else if(!initialized){
+    } else if(!initialized && curTFSec === 60){
       // No data for this asset yet -- ask the bot to load it with the SAME
       // engine as the default asset (stream + history), then keep polling.
       if(!odRequested) ensureAssetData();
@@ -5654,7 +6086,7 @@ async function fetchFullCandles(){
 
 async function fetchLiveTick(){
   try{
-    const r = await fetch("/api/last-tick?pair=" + encodeURIComponent(PAIR_NAME), {cache:"no-store"});
+    const r = await fetch("/api/last-tick?pair=" + encodeURIComponent(PAIR_NAME) + tfQuery(), {cache:"no-store"});
     if(!r.ok) return;
     const d = await r.json();
     if(d.status === "OK" && d.time && d.open){
@@ -5724,13 +6156,16 @@ async function pollAssetStatus(){
   } catch(e){}
 }
 fetchFullCandles();
+pollTfStatus();
 // MAX-SPEED polling (unchanged from v9.0):
 //   - fetchLiveTick: 50ms (20 ticks/sec) — hot path for the live price.
-//   - fetchFullCandles: 500ms — rare full resync; the live tick path handles
-//     99% of updates. BadiCharts.update() is O(1) per tick (batched indicator
-//     recompute once per frame), so 20 ticks/sec is cheap.
+//   - fetchFullCandles: 500ms for 1M / 2000ms for 5S & 5M — rare full resync;
+//     the live tick path handles 99% of updates. BadiCharts.update() is O(1)
+//     per tick (batched indicator recompute once per frame), so 20 ticks/sec is cheap.
+//   - pollTfStatus: 2s — refreshes the 5S/1M/5M switcher dots.
 setInterval(fetchFullCandles, 500);
 setInterval(fetchLiveTick, 50);
+setInterval(pollTfStatus, 2000);
 setInterval(pollAssetStatus, 1500);
 </script>
 </body>
@@ -5797,6 +6232,11 @@ def _build_web_flask_app():
         if not pair:
             return Response(json.dumps({"status": "ERROR", "error": "Missing pair", "candles": []}),
                             content_type="application/json", status=400)
+        # ===== v12.0: optional timeframe (5S / 1M / 5M...) =====
+        tf_label_req = (flask_request.args.get("tf") or "").strip()
+        tf_sec_req = _tf_seconds_from_label(tf_label_req) if tf_label_req else None
+        if tf_sec_req is not None and tf_sec_req != 60:
+            return _tf_serve_candles(pair, tf_sec_req)
         with _web_candle_lock:
             data = _web_candle_store.get(pair)
             if data is None:
@@ -5845,6 +6285,168 @@ def _build_web_flask_app():
         resp.headers["Access-Control-Allow-Origin"] = "*"
         return resp
 
+    def _tf_serve_candles(pair, tf_sec):
+        """v12.0: serve a background timeframe (5S/5M) from _web_tf_store.
+        Same LOADING/OK contract as the M1 gate. Serves at most TF_SERVE_MAX
+        candles to keep the 500ms poll light (full set via /api/export)."""
+        tf_sec = int(tf_sec)
+        label = _tf_label(tf_sec)
+        with _web_candle_lock:
+            data = _web_tf_store.get(_tf_store_key(pair, tf_sec))
+            if data is None:
+                pair_lower = pair.lower()
+                for k, v in _web_tf_store.items():
+                    if k.endswith(f"|{tf_sec}") and k.split("|")[0].lower() == pair_lower:
+                        data = v
+                        break
+        if data is None:
+            result = {
+                "status": "LOADING", "pair": pair,
+                "timeframe": label, "periodSeconds": tf_sec,
+                "validated": False,
+                "reason": "timeframe not loaded yet (background loader)",
+                "candle_count": 0, "candles": [],
+            }
+            resp = Response(json.dumps(result, separators=(",", ":")), content_type="application/json")
+            resp.headers["Cache-Control"] = "no-cache"
+            resp.headers["Access-Control-Allow-Origin"] = "*"
+            return resp
+        candles = data.get("candles", [])
+        if CHART_VALIDATE_ENABLED and not data.get("validated"):
+            result = {
+                "status": "LOADING", "pair": pair,
+                "timeframe": label, "periodSeconds": tf_sec,
+                "validated": False,
+                "reason": data.get("validateReason") or "validating",
+                "candle_count": len(candles), "candles": [],
+            }
+            resp = Response(json.dumps(result, separators=(",", ":")), content_type="application/json")
+            resp.headers["Cache-Control"] = "no-cache"
+            resp.headers["Access-Control-Allow-Origin"] = "*"
+            return resp
+        served = candles[-TF_SERVE_MAX:]
+        chart_candles = [{"t": int(c["time"]), "open": c["open"], "high": c["high"],
+                          "low": c["low"], "close": c["close"]} for c in served]
+        result = {
+            "status": "OK", "pair": pair,
+            "timeframe": label, "periodSeconds": tf_sec,
+            "digits": data.get("digits", 5),
+            "validated": True,
+            "candle_count": len(chart_candles),
+            "totalStored": len(candles),
+            "candles": chart_candles,
+        }
+        resp = Response(json.dumps(result, separators=(",", ":")), content_type="application/json")
+        resp.headers["Cache-Control"] = "no-cache"
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        return resp
+
+    @web_app.route("/api/tf-status")
+    def web_api_tf_status():
+        """v12.0: timeframe load status for the chart page switcher.
+        Returns 1M (main store) + every background tf with its state."""
+        pair = flask_request.args.get("pair", "").strip()
+        if not pair:
+            return Response(json.dumps({"status": "ERROR", "error": "Missing pair"}),
+                            content_type="application/json", status=400)
+        with _web_candle_lock:
+            m1 = _web_candle_store.get(pair)
+            if m1 is None:
+                pair_lower = pair.lower()
+                for k, v in _web_candle_store.items():
+                    if k.lower() == pair_lower:
+                        m1 = v
+                        break
+        m1_validated = bool(m1 and m1.get("validated"))
+        api_sym = _pair_name_to_api(pair)
+        with _TF_BG_LOCK:
+            st = dict(_TF_BG_STATE.get(api_sym, {}) or {})
+        tfs = [{
+            "label": "1M", "seconds": 60,
+            "state": ("ready" if m1_validated else "loading"),
+            "candles": len(m1.get("candles", [])) if m1 else 0,
+            "validated": m1_validated,
+        }]
+        for tf_sec in TF_ACTIVE_SECONDS:
+            sub = st.get(str(tf_sec)) or {}
+            entry_ok = _web_tf_validated(pair, tf_sec)
+            with _web_candle_lock:
+                entry = _web_tf_store.get(_tf_store_key(pair, tf_sec))
+            n_stored = len(entry.get("candles", [])) if entry else 0
+            if entry_ok:
+                state = "ready"
+            else:
+                s = sub.get("status") or ("none" if not st.get("requested") else "queued")
+                state = "error" if s == "error" else "loading"
+            tfs.append({
+                "label": _tf_label(tf_sec), "seconds": tf_sec,
+                "state": state,
+                "candles": n_stored or int(sub.get("candles") or 0),
+                "validated": entry_ok,
+            })
+        result = {
+            "status": "OK", "pair": pair,
+            "m1Validated": m1_validated,
+            "timeframes": tfs,
+        }
+        resp = Response(json.dumps(result, separators=(",", ":")), content_type="application/json")
+        resp.headers["Cache-Control"] = "no-cache"
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        return resp
+
+    @web_app.route("/api/export")
+    def web_api_export():
+        """v12.0: download the FULL candle dataset of a pair+timeframe as a
+        JSON file (Content-Disposition: attachment)."""
+        pair = flask_request.args.get("pair", "").strip()
+        if not pair:
+            return Response(json.dumps({"status": "ERROR", "error": "Missing pair"}),
+                            content_type="application/json", status=400)
+        tf_label_req = (flask_request.args.get("tf") or "1M").strip()
+        tf_sec = _tf_seconds_from_label(tf_label_req) or 60
+        with _web_candle_lock:
+            if tf_sec == 60:
+                entry = _web_candle_store.get(pair)
+                if entry is None:
+                    pair_lower = pair.lower()
+                    for k, v in _web_candle_store.items():
+                        if k.lower() == pair_lower:
+                            entry = v
+                            break
+            else:
+                entry = _web_tf_store.get(_tf_store_key(pair, tf_sec))
+                if entry is None:
+                    pair_lower = pair.lower()
+                    for k, v in _web_tf_store.items():
+                        if k.endswith(f"|{tf_sec}") and k.split("|")[0].lower() == pair_lower:
+                            entry = v
+                            break
+        candles = (entry or {}).get("candles", [])
+        asset_code = _pair_name_to_api(pair)
+        label = _tf_label(tf_sec)
+        payload = {
+            "pair": pair,
+            "asset": asset_code,
+            "timeframe": label,
+            "periodSeconds": tf_sec,
+            "count": len(candles),
+            "firstTime": int(candles[0]["time"]) if candles else None,
+            "lastTime": int(candles[-1]["time"]) if candles else None,
+            "exportedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "digits": (entry or {}).get("digits", 5),
+            "candles": [
+                {"t": int(c["time"]), "open": c["open"], "high": c["high"],
+                 "low": c["low"], "close": c["close"], "volume": c.get("volume", 1)}
+                for c in candles
+            ],
+        }
+        resp = Response(json.dumps(payload, separators=(",", ":")), content_type="application/json")
+        resp.headers["Content-Disposition"] = (
+            f'attachment; filename="{asset_code}_{label}.json"')
+        resp.headers["Cache-Control"] = "no-cache"
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        return resp
+
     @web_app.route("/api/last-tick")
     def web_api_last_tick():
         """Returns only the latest tick for a pair (very lightweight, for real-time updates)."""
@@ -5852,14 +6454,25 @@ def _build_web_flask_app():
         if not pair:
             return Response(json.dumps({"status": "ERROR", "error": "Missing pair"}),
                             content_type="application/json", status=400)
+        tf_label_req = (flask_request.args.get("tf") or "").strip()
+        tf_sec_req = _tf_seconds_from_label(tf_label_req) if tf_label_req else None
         with _web_candle_lock:
-            tick = _web_latest_tick.get(pair)
-            if tick is None:
-                pair_lower = pair.lower()
-                for k, v in _web_latest_tick.items():
-                    if k.lower() == pair_lower:
-                        tick = v
-                        break
+            if tf_sec_req is not None and tf_sec_req != 60:
+                tick = _web_tf_tick.get(_tf_store_key(pair, tf_sec_req))
+                if tick is None:
+                    pair_lower = pair.lower()
+                    for k, v in _web_tf_tick.items():
+                        if k.endswith(f"|{tf_sec_req}") and k.split("|")[0].lower() == pair_lower:
+                            tick = v
+                            break
+            else:
+                tick = _web_latest_tick.get(pair)
+                if tick is None:
+                    pair_lower = pair.lower()
+                    for k, v in _web_latest_tick.items():
+                        if k.lower() == pair_lower:
+                            tick = v
+                            break
         if tick is None:
             return Response(json.dumps({"status": "WAIT"}),
                             content_type="application/json", status=200)
