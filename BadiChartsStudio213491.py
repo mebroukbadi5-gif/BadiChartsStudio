@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
@@ -83,7 +82,7 @@ def qx_print_welcome():
     print()
     print(f"\033[96m{'═' * 62}\033[0m")
     print("\033[97m\033[1m  QX Console — Quotex Candles & Assets\033[0m\033[0m")
-    print("\033[2m  v49 · full 300-candle load restored (proven get_candles one-shot — the unique-event history/load endpoint accepts only ~30min windows and returned ~29 candles) + tick-stream re-subscribe right after every legacy fetch + tick-stale watchdog + saved password anchored to the script dir and auto-loaded in BOTH startup modes · native one-shot fetch for >=60s frames · sub-minute frames keep browser-style walk · candles UNCOMPRESSED ready-built in Python ({time,open,high,low,close,volume}) + ready live price · chart via CDN link · auto-opens at http://127.0.0.1:8899 (assets list + USDDZD_otc default, 300 candles only) · email 2FA + monitors from login (reconnect 1s) · ws://127.0.0.1:8765 + console (--console) · JSON save\033[0m")
+    print("\033[2m  v50 · PAGINATED load — the original's own load_more engine: ~200-candle pages walking backwards via get_candles (the real server truncates any big window to a short recent one: 755 rows ≈ 12.6min per request, which is why the load returned 13 candles) + tick-stream re-subscribe after every page + 1s bridge uses get_candles@1 first (returned 755 rows on the real server while unique-event chunks returned 0) + tick-stale watchdog + saved password anchored to the script dir in BOTH startup modes · one-shot and unique-event kept as fallbacks · sub-minute frames keep browser-style walk · candles UNCOMPRESSED ready-built in Python ({time,open,high,low,close,volume}) + ready live price · chart via CDN link · auto-opens at http://127.0.0.1:8899 (assets list + USDDZD_otc default, 300 candles only) · email 2FA + monitors from login (reconnect 1s) · ws://127.0.0.1:8765 + console (--console) · JSON save\033[0m")
     print(f"\033[96m{'═' * 62}\033[0m")
     print()
 
@@ -4976,7 +4975,7 @@ def _acquire_instance_lock():
         return (True, 0)
 
 # ==============================================================================
-# v49: CANDLE HUB — خادم شموع كاملة غير مضغوطة تُبنى في بايثون + شارت WebGL عبر رابط CDN (الفريمات >= دقيقة عبر get_candles المجرب بطلب واحد كامل + إعادة اشتراك التيك فوراً + حارس توقف التيك + جسر الشموع الأصلية المجمّعة من 1 ثانية على دفعات 500s: النافذة الكاملة استبدالاً وإلحاقاً — بلا شموع مسطحة — ويُدمج قبل التقديم) + كلمة السر المحفوظة بجانب السكربت تُقرأ في الوضعين — بلا إعادة إدخال
+# v50: CANDLE HUB — خادم شموع كاملة غير مضغوطة تُبنى في بايثون + شارت WebGL عبر رابط CDN (الفريمات >= دقيقة عبر الجلب الصفحي — محرك الأصل load_more: صفحات ~200 شمعة تمشي نحو الماضي عبر get_candles لأن الخادم الحقيقي يقصّ النوافذ الكبيرة + إعادة اشتراك التيك بعد كل صفحة + حارس توقف التيك + جسر 1s عبر get_candles@1 أولاً ثم دفعات الحدث الفريد: النافذة الكاملة استبدالاً وإلحاقاً — بلا شموع مسطحة — ويُدمج قبل التقديم) + الصفحة تحفظ موضع السحب عند كل لقطة + كلمة السر المحفوظة بجانب السكربت — بلا إعادة إدخال
 # ==============================================================================
 import collections as _collections
 
@@ -4991,6 +4990,7 @@ HUB_MAX_COUNT = 300                # v39: سقف ثابت — أي اختيار 
 HUB_PERIODS = {5, 10, 15, 30, 60, 120, 180, 300, 600, 900, 1800, 3600, 14400, 86400}
 HUB_MAX_PARALLEL_LOADS = 2         # أقصى عمليات جلب تاريخ متزامنة (حماية من خنق الخادم)
 HUB_LOAD_TIMEOUT = 150             # مهلة محاولة جلب واحدة (ثانية)
+HUB_PAGE_CANDLES = 200             # v50: صفحة الجلب الصفحي (~200 شمعة لكل طلب — محرك الأصل load_more)
 HUB_CACHE_TTL = 600                # حذف السلسلة غير المستخدمة بعد 10 دقائق
 HUB_CLIENT_QUEUE = 2000            # طابور الإرسال لكل عميل (العميل البطيء لا يوقف أحداً)
 HUB_TZ_SECONDS = 0                 # إزاحة زمنية تُضاف لكل t في الرسائل (0 = UTC)
@@ -5229,11 +5229,14 @@ class CandleHub:
         # _fill_missing_slots تسد الثغرات بشموع مسطحة (إغلاق سابق، volume=0).
         # عند الفشل نعود للمسار الحالي — أما <60s فمسارنا الحالي كما هو.
         if period >= 60:
-            # v49: get_candles المجرّبة أولاً (طلب واحد كامل ~300 شمعة كما
-            # v45-v47). طلب history/load الفريد يقبل نافذة صغيرة (~30 دقيقة
-            # فقط — مصمم للترقيم الصفحي) فكان يعيد ~29 شمعة بدل 300.
-            # بعد get_candles نعيد اشتراك التيك فوراً لأنها تقلب فترة قناة
-            # البث (السبب الذي كان يوقف الشموع الحية)، والحدث الفريد احتياط.
+            # v50: الجلب الصفحي أولاً — محرك الأصل نفسه (load_more): الخادم
+            # الحقيقي يقصّ النوافذ الكبيرة ويعيد نافذة حديثة قصيرة فقط،
+            # فكان التحميل يعيد 13 شمعة بدل 300. الصفحات عبر get_candles
+            # (المسار الوحيد الذي رد على الخادم الحقيقي) تمشي نحو الماضي.
+            raw = await self._fetch_paginated(s.asset, period, want)
+            if raw:
+                return _fill_missing_slots(raw, period, max_gap=1440)[-(want + 2):]
+            # احتياط 1: طلب واحد بإزاحة كاملة (أساس v45-v49)
             raw = None
             _gc = getattr(CLIENT, "get_candles", None) if CLIENT is not None else None
             if _gc is not None:
@@ -5243,6 +5246,7 @@ class CandleHub:
                     raw = None
                 if raw:
                     await self._restore_tick_stream(s.asset)
+            # احتياط 2: الحدث الفريد
             if not raw:
                 try:
                     _idx = next(_request_counter)
@@ -5266,6 +5270,59 @@ class CandleHub:
             # v46: السد قبل العرض دائماً — حتى في مسار البديل (كما في الأصل 4272)
             res = _fill_missing_slots(res, period, max_gap=1440)[-(want + 2):]
         return res
+
+    async def _fetch_paginated(self, asset, period, want):
+        """v50: الجلب الصفحي — محرك الأصل نفسه (load_more/get_historical_candles):
+        الخادم الحقيقي يقصّ النوافذ الكبيرة ويعيد نافذة حديثة قصيرة فقط
+        (على خادم المستخدم: 755 صفاً ≈ 12.6 دقيقة لكل طلب مهما كبرت الإزاحة
+        فكان التحميل يعيد 13 شمعة بدل 300). صفحات ~200 شمعة عبر get_candles
+        تمشي نحو الماضي: كل صفحة تنتهي عند أقدم شمعة محمّلة، وتتوقف عند
+        want أو نفاد الخادم (صفحتان بلا شموع أقدم) أو سقف الوقت.
+        تسلسلية — get_candles تستخدم حدثاً مشتركاً فلا تُشغَّل بالتوازي،
+        وبعد كل صفحة تُعاد اشتراك قناة التيك (period=1) لأن get_candles
+        تقلب فترة القناة."""
+        _gc = getattr(CLIENT, "get_candles", None) if CLIENT is not None else None
+        if _gc is None:
+            return None
+        page_sec = HUB_PAGE_CANDLES * period
+        collected = {}
+        cursor = time.time()
+        oldest = None
+        deadline = time.time() + min(float(HUB_LOAD_TIMEOUT), 75.0)
+        empty = 0
+        pages = 0
+        _t0 = time.time()
+        while len(collected) < want and pages < 30 and time.time() < deadline:
+            try:
+                rows = await _gc(asset, cursor, page_sec + period, period)
+            except Exception:
+                rows = None
+            await self._restore_tick_stream(asset)   # القناة قلبت — أعد period=1 فوراً
+            new = {}
+            for c in (rows or []):
+                try:
+                    t = int(c['time'])
+                except Exception:
+                    continue
+                if t <= cursor and (oldest is None or t < oldest):
+                    new[t] = c
+            if not new:
+                empty += 1
+                if empty >= 2:
+                    break            # الخادم نفد — لا شموع أقدم من هذا
+                cursor = (oldest - 1) if oldest is not None else (cursor - page_sec)
+                continue
+            empty = 0
+            pages += 1
+            collected.update(new)
+            oldest = min(collected)
+            cursor = oldest - 1
+        if collected:
+            out = [collected[t] for t in sorted(collected)]
+            logmsg(f"[hub] pages {asset} p={period}: {pages} صفحة → {len(out)} شمعة "
+                   f"في {time.time() - _t0:.1f}s")
+            return out
+        return None
 
     async def _load(self, s):
         key = (s.asset, s.period)
@@ -5703,23 +5760,24 @@ class CandleHub:
         if CLIENT is None or period < 60 or not s.candles:
             return
         _t0 = time.time()
-        # v48: الجلب عبر الدفعات (حدث فريد لكل طلب) — لا يقلب قناة البث الحي
-        # ولا يتشارك حدثاً مع طلبات أخرى. get_candles القديمة كانت تعيد
-        # الاشتراك بفترة 1/الجلب فيقتل تيك البث وتوقف الشموع الحية.
-        try:
-            raw1s = await self._fetch_1s_chunks(s.asset)
-        except Exception as _e1:
-            logmsg(f"[hub] 1s bridge chunks failed {s.asset}: {_e1}")
-            raw1s = []
-        if not raw1s:
-            # احتياط: get_candles القديمة — لكنها تقلب فترة قناة البث،
-            # لذا نعيد اشتراك التيك (period=1) فوراً بعدها
-            _gc = getattr(CLIENT, "get_candles", None)
+        # v50: get_candles بفترة 1 أولاً — على الخادم الحقيقي أعادت 755 صفاً
+        # بينما دفعات الحدث الفريد أعادت صفراً. فترة 1 = فترة تيك البث فلا
+        # قلبَ ضار، وإعادة الاشتراك بعدها أمان لا أكثر.
+        raw1s = None
+        _gc = getattr(CLIENT, "get_candles", None)
+        if _gc is not None:
             try:
-                raw1s = await _gc(s.asset, time.time(), BRIDGE_1S_OFFSET, 1) if _gc else None
+                raw1s = await _gc(s.asset, time.time(), BRIDGE_1S_OFFSET, 1)
             except Exception:
                 raw1s = None
             await self._restore_tick_stream(s.asset)
+        if not raw1s:
+            # احتياط: دفعات الحدث الفريد (500s لكل طلب، بلا لمس قناة البث)
+            try:
+                raw1s = await self._fetch_1s_chunks(s.asset)
+            except Exception as _e1:
+                logmsg(f"[hub] 1s bridge chunks failed {s.asset}: {_e1}")
+                raw1s = []
         logmsg(f"[hub] 1s bridge {s.asset} p={period}: fetched {len(raw1s or [])} raw 1s "
                f"in {time.time() - _t0:.1f}s")
         if not raw1s:
@@ -5970,7 +6028,11 @@ function handle(m){
       if (m.asset !== cur.asset || m.period !== cur.period) return;   // رد قديم
       applyTf(m.period);                            // v44: ضمان الفريم قبل setData
       haveData = m.count > 0;
+      var _vr = chart.timeScale().getVisibleLogicalRange();   // v50: حفظ موضع السحب قبل إعادة العرض
       chart.setData(m.candles || []);               // v40: تصل جاهزة من بايثون
+      if (_vr && m.candles && m.candles.length > 1 && _vr.to < m.candles.length - 1.5) {
+        chart.timeScale().setVisibleLogicalRange(_vr);   // v50: المستخدم سحب بعيداً عن الحافة الحية — لا قفز
+      }
       setTimeout(function(){ try { chart.invalidate(); } catch(e){} }, 60);   // v44: ضمان تفريغ طابور الرسم حتى لو تأخر rAF
       $('wait').style.display = haveData ? 'none' : 'flex';
       if (m.candles && m.candles.length) {
