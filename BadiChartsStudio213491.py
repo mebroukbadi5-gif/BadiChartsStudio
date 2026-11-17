@@ -5326,8 +5326,8 @@ _WEB_CHART_HTML = r"""<!DOCTYPE html>
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=5.0,user-scalable=yes,viewport-fit=cover">
 <meta name="theme-color" content="#0a0e17">
 <title>PAIR_DISPLAY - Live Chart | QXChart MT4</title>
-<!-- ===== BADI-CHARTS-V2 v2.20.1 WEBGL EDITION (single-file canvas chart) ===== -->
-<script src="https://cdn.jsdelivr.net/gh/salahbadi19/BADI-CHARTS-V2@v2.20.1/chart-webgl.js"></script>
+<!-- ===== BADI-CHARTS-V2 v2.20.2 WEBGL EDITION (single-file canvas chart) ===== -->
+<script src="https://cdn.jsdelivr.net/gh/salahbadi19/BADI-CHARTS-V2@v2.20.2/chart-webgl.js"></script>
 <style>
 CSS_HERE
 html,body{height:100%;width:100%;overflow:hidden;}
