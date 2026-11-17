@@ -82,7 +82,7 @@ def qx_print_welcome():
     print()
     print(f"\033[96m{'═' * 62}\033[0m")
     print(f"\033[97m\033[1m  QX Console — Quotex Candles & Assets\033[0m\033[0m")
-    print(f"\033[2m  v33 · interface-name payout table + faster print · browser-style fetch (1s..1D) + candle hub + load_more · ws://127.0.0.1:8765 + console (--console) · JSON save\033[0m")
+    print(f"\033[2m  v35 · identical asset table for console AND app (assets payload + table_text) · browser-style fetch (1s..1D) + candle hub + load_more · ws://127.0.0.1:8765 + console (--console) · JSON save\033[0m")
     print(f"\033[96m{'═' * 62}\033[0m")
     print()
 
@@ -4811,6 +4811,17 @@ def _acquire_instance_lock():
     """v27: قفل نسخة-واحدة (qx_engine.lock يحمل PID).
     يرجع (True, pid) إن نجحنا، أو (False, pid) إن كانت نسخة أخرى حية."""
     lock_path = Path(__file__).resolve().parent / "qx_engine.lock"
+    # v34: إعادة تشغيل تغيير الفريم — العملية الجديدة تعبر القفل دائماً
+    if os.environ.get("QX_REINIT_CHILD") == "1":
+        try:
+            os.environ.pop("QX_REINIT_CHILD")
+        except Exception:
+            pass
+        try:
+            lock_path.unlink()
+        except Exception:
+            pass
+        return (True, os.getpid())
     try:
         for _ in range(3):
             try:
@@ -4842,7 +4853,7 @@ def _acquire_instance_lock():
         return (True, 0)
 
 # ==============================================================================
-# v33: CANDLE HUB — خادم شموع للتطبيق (WebSocket محلي + تمرير للخلف load_more)
+# v35: CANDLE HUB — خادم شموع للتطبيق (WebSocket محلي + تمرير للخلف load_more)
 # ==============================================================================
 import collections as _collections
 
@@ -4929,6 +4940,36 @@ class _HubClient:
             pass
         finally:
             self.dead = True
+
+
+def _payout_table_text(entries):
+    """v35: نص الجدول نفسه الذي يُطبع في الطرفية (النظامي) لكن بلا ألوان —
+    يُرسل في رسالة assets كي تعرضه الواجهة (التطبيق) مطابقاً للنظامي."""
+    open_entries = [e for e in entries if e.get("open")]
+    closed_entries = [e for e in entries if e.get("open") is False]
+    lines = []
+    lines.append("═" * 72)
+    lines.append("  FULL ASSET LIST — PAYOUT % — OPEN/CLOSED")
+    lines.append(f"  Total: {len(entries)}  |  OPEN: {len(open_entries)}  |  "
+                 f"CLOSED: {len(closed_entries)}  |  Domain: {QX_HOST}")
+    lines.append("─" * 72)
+    lines.append(f"  {'ASSET':<20}{'PAYOUT':>7}  {'TURBO':>6}  {'1M':>5}  {'5M':>5}  STATUS")
+    lines.append("─" * 72)
+    for e in entries:
+        name = (e.get("name") or "").strip() or (e.get("asset") or "?")
+        name = name[:20]
+        payout = e.get("payout")
+        turbo = e.get("turbo_payout")
+        p1 = e.get("profit_1m")
+        p5 = e.get("profit_5m")
+        payout_str = f"{payout}%" if isinstance(payout, (int, float)) else "-"
+        turbo_str = f"{turbo}%" if isinstance(turbo, (int, float)) else "-"
+        p1_str = f"{p1}%" if isinstance(p1, (int, float)) else "-"
+        p5_str = f"{p5}%" if isinstance(p5, (int, float)) else "-"
+        status = "OPEN" if e.get("open") else "CLOSED"
+        lines.append(f"  {name:<20}{payout_str:>7}  {turbo_str:>6}  {p1_str:>5}  {p5_str:>5}  {status}")
+    lines.append("═" * 72)
+    return "\n".join(lines)
 
 
 class CandleHub:
@@ -5078,7 +5119,11 @@ class CandleHub:
                     s.pending.clear()
                     s.start_ts = time.time()
                     try:
-                        res = await asyncio.wait_for(self._fetch(s), timeout=HUB_LOAD_TIMEOUT)
+                        # v34: مهلة ديناميكية حسب حجم النافذة المطلوبة — تغيير
+                        # الفريم من التطبيق للفريمات الكبيرة لا يفشل بمهلة ثابتة
+                        _back = int(s.want * s.period * 3) + 3600
+                        _to = max(float(HUB_LOAD_TIMEOUT), min(600.0, 60.0 + _back / 1500.0))
+                        res = await asyncio.wait_for(self._fetch(s), timeout=_to)
                     except asyncio.TimeoutError:
                         res = None
                     if epoch != self.epoch:
@@ -5161,8 +5206,11 @@ class CandleHub:
                 if not await self._wait_alive(10.0):
                     raise RuntimeError("disconnected")
                 try:
+                    # v34: مهلة ديناميكية حسب النافذة (نفس منطق _load)
+                    _back_old = int(count * s.period * 3) + 3600
+                    _to_old = max(float(HUB_LOAD_TIMEOUT), min(600.0, 60.0 + _back_old / 1500.0))
                     res = await asyncio.wait_for(self._fetch_older(s, before_raw, count),
-                                                 timeout=HUB_LOAD_TIMEOUT)
+                                                 timeout=_to_old)
                 except asyncio.TimeoutError:
                     res = None
             # تغيّرت السلسلة أثناء الانتظار (إعادة اتصال/إعادة تحميل) -> أسقط النتيجة
@@ -5245,7 +5293,30 @@ class CandleHub:
             entries = _instruments_snapshot()
         except Exception:
             entries = []
-        return _hub_dumps({"type": "assets", "count": len(entries), "assets": entries})
+        # v35: الواجهة تستلم نفس ما يعرضه الجدول النظامي في الطرفية — اسم
+        # الواجهة (display)، الحالة (OPEN/CLOSED)، الدفعات المنسقة (payouts)،
+        # is_otc — ونص الجدول كاملاً بلا ألوان (table_text) ليعرضه التطبيق
+        # كما هو. الحقول القديمة تبقى كما هي للتوافق مع أي نسخة سابقة.
+        try:
+            for e in entries:
+                _nm = (e.get("name") or "").strip() or (e.get("asset") or "?")
+                e["display"] = _nm
+                e["status"] = "OPEN" if e.get("open") else "CLOSED"
+                _pay, _tb = e.get("payout"), e.get("turbo_payout")
+                _p1, _p5 = e.get("profit_1m"), e.get("profit_5m")
+                e["payouts"] = {"payout": _pay if isinstance(_pay, (int, float)) else None,
+                                "turbo": _tb if isinstance(_tb, (int, float)) else None,
+                                "1m": _p1 if isinstance(_p1, (int, float)) else None,
+                                "5m": _p5 if isinstance(_p5, (int, float)) else None}
+                e["is_otc"] = ("otc" in (e.get("asset") or "").lower()) or ("(OTC)" in _nm)
+        except Exception:
+            pass
+        try:
+            _tbl = _payout_table_text(entries)
+        except Exception:
+            _tbl = ""
+        return _hub_dumps({"type": "assets", "count": len(entries), "assets": entries,
+                           "table_text": _tbl})
 
     def greet(self, cl):
         cl.push(_hub_dumps({"type": "hello", "default_asset": HUB_DEFAULT_ASSET,
@@ -5416,6 +5487,10 @@ async def hub_start():
         await fetch_instruments_now(timeout=15.0)
     except Exception:
         pass
+    try:
+        HUB.broadcast_all(HUB._assets_msg())             # v35: القائمة الكاملة للواجهة فوراً
+    except Exception:
+        pass
     HUB.pin_default()                                    # BRLUSD_otc M1 x1000 تلقائياً
     logmsg(f"[hub] listening ws://{HUB_HOST}:{HUB_PORT}")
 
@@ -5435,7 +5510,16 @@ def run_server_mode():
     if not ok:
         print(f"\n{Colors.RED}[FAILED] Could not connect after all attempts.{Colors.RESET}")
         sys.exit(1)
-    globals()['_ASSET_LIST_PRINTED'] = True              # لا نطبع الجدول الضخم
+    # v34: طباعة قائمة العملات أولاً (بأسماء الواجهة) قبل بدء المراقبة وقبل
+    # hub_start وجلب أي شموع — كانت مضغوطة هنا (العلامة True قبل بدء المراقبة)
+    # فلا تظهر أبداً في وضع التطبيق، والمستخدم يريدها كما في الوضع التفاعلي.
+    try:
+        _fut_list = asyncio.run_coroutine_threadsafe(print_full_asset_list_once(), ASYNC_LOOP)
+        _fut_list.result(timeout=30)
+    except Exception as _e_list:
+        print(f"{Colors.RED}  [asset_list] failed: {_e_list}{Colors.RESET}")
+    if not _ASSET_LIST_PRINTED:
+        print(f"{Colors.YELLOW}  [asset_list] لم تُطبع القائمة بعد — ستحاول مراقبة الدفع جلبها تلقائياً خلال لحظات{Colors.RESET}")
     for coro in (health_monitor(), auto_reconnect(), keepalive_loop(),
                  stale_message_watchdog(), asset_payout_monitor()):
         asyncio.run_coroutine_threadsafe(coro, ASYNC_LOOP)
@@ -6500,7 +6584,19 @@ if __name__ == "__main__":
         print(f"\n{Colors.CYAN}Applying new timeframe settings...{Colors.RESET}")
         sys.stdout.flush()
         time.sleep(1.0)
-        # إعادة تنفيذ البرنامج بشكل نظيف
+        # v34: إصلاح الإغلاق عند تغيير الفريم — execv على ويندوز يشغّل العملية
+        # الجديدة بـPID جديد بينما القديمة ما زال قفلها qx_engine.lock حياً لحظة
+        # الفحص، فيقرأ الجديد القفل ويظنها نسخة أخرى ويُغلق (sys.exit(2)).
+        # الحل: نضع علامة QX_REINIT_CHILD ونحرر القفل قبل إعادة التنفيذ.
+        try:
+            os.environ["QX_REINIT_CHILD"] = "1"
+        except Exception:
+            pass
+        try:
+            (Path(__file__).resolve().parent / "qx_engine.lock").unlink()
+        except Exception:
+            pass
+        # إعادة تنفيذ البرنامج بشكل نظيف (نفس طريقة السكربت المرجعي)
         os.execv(sys.executable, [sys.executable] + sys.argv)
 
     # graceful shutdown
