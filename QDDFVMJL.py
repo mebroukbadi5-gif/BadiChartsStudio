@@ -1452,7 +1452,7 @@ class Quotex:
             prev_size = len(collected)
 
             # دمج الفجوات المتقاربة زمنياً في طلب واحد يقلّص عدد الطلبات كثيراً
-            # عندما تكون الدقائق المفقودة متناثرة، والبدء بالأحدث (الأهم للبث)
+            # عندما تكون الدقائق المفقودة متناثرة.
             holes_sorted = sorted(holes, key=lambda h: h[1], reverse=True)
             groups = []
             cur_a, cur_b = None, None
@@ -1465,6 +1465,15 @@ class Quotex:
                     cur_a, cur_b = a_t, b_t
             if cur_b is not None:
                 groups.append((cur_a, cur_b, False))
+            # v12.0.3: أكبر الفجوات أولاً (والأحدث أولاً عند التساوي).
+            # كان الترتيب "الأحدث أولاً" يترك الفجوات القديمة الكبيرة تُحرم
+            # جوعاً خارج سقف الـ 12 كل جولة: فجوات 1-2 دقيقة (دقائق مفقودة
+            # أصلاً من الخادم، لن تعيد طلبات الإصلاح شيئاً لها) تستهلك كل
+            # الأماكن لأنها أحدث، فلا يُرسل أي طلب للفجوة الكبيرة أبداً
+            # (ظهرت فجوات 31-40 دقيقة متبقية في اختبار المحاكاة harsh).
+            # بالترتيب بالحجم: الكبيرة تؤخذ أولى، والصغيرة المحرومة (≤ 10)
+            # يغطيها ملء FAST_FETCH_GAP_FILL_MAX_SLOTS التجميلي لاحقاً.
+            groups.sort(key=lambda g: (g[1] - g[0], g[1]), reverse=True)
             groups = groups[:12]                   # سقف طلبات الفجوات الداخلية لكل جولة
             if oldest_edge is not None:
                 # حافة الأقدم خارج السقف دائماً — بلاها لا يكتمل العدد المطلوب
@@ -2036,7 +2045,10 @@ M1_1S_BRIDGE_TARGET = 420     # v12.0: خُفّض من 750 -> 420 (=> ~7 شمو�
 # بعد الإصلاح الموجَّه تبقى فقط الدقائق المفقودة فعلاً من الخادم — تُملأ حتى هذا
 # الحد حتى لا يرسم الشارت انقطاعات (نفس فلسفة _fill_missing_slots القديمة).
 # اجعلها 0 لتعطيل الملء التجميلي وترك الفجوات كما هي.
-FAST_FETCH_GAP_FILL_MAX_SLOTS = 90
+# v12.0.2: 90 -> 10 بحسب ملاحظة المستخدم: الشموع المستوية تظهر كشموع حقيقية
+# على الشارت (volume=0 لا يميّزها بصرياً)، وفجوة 90 دقيقة سترسم خطاً مستقيماً
+# طويلاً مضلّلاً. 10 دقائق كحد أقصى تُنظّف الفجوات الصغيرة فقط دون تشويه.
+FAST_FETCH_GAP_FILL_MAX_SLOTS = 10
 M1_BRIDGE_TIMEOUT = 30        # seconds, bounded wait for the 1s fetch
 # v11.0: PARALLEL M1 fetch — user asked why loading takes ~8s instead of 4s.
 # The old flow was strictly sequential: 1s bridge fetch (1-2s) -> sleep(1.0s)
@@ -2050,7 +2062,8 @@ M1_PARALLEL_FETCH = True
 # historical fetch and the bridge fetch inside the parallel coroutine (so we
 # never fire 6 history/load requests in the exact same millisecond).
 # It is also still used as the sequential inter-step delay in the legacy path.
-M1_INTRA_ASSET_DELAY = 0.2    # v11.0: was 1.0 -- now just a stagger in parallel mode
+M1_INTRA_ASSET_DELAY = 0.05   # v12.0.2: was 0.2 -- فقط stagger بين التاريخي والجسر، 0.05 يكفي
+                              # (الطلبات التاريخية نفسها متدرّجة داخلياً i*0.03)
 M1_ASSET_DELAY = 1.0          # v8.11: delay between assets in M1 bridge mode (was 0.1s)
 # v8.13: cap the bridge to the NEWEST N candles only, then REPLACE matching
 # historical candles. User explicitly asked: "نربط 6 شموع الاولى فقط" (only
@@ -3598,8 +3611,19 @@ async def _m1_bridge_and_history_parallel(asset: Asset, idx: int = 1, total: int
         hist_task = asyncio.ensure_future(
             fetch_candles_with_retry(asset, max_retries=MAX_FETCH_RETRIES, idx=idx, total=total)
         )
-        bridge_1m_candles, n_1s = await bridge_task
+        # v12.0.2: انتظر التاريخي أولاً وانشره فور جاهزيته على لوحة الويب،
+        # ثم انتظر الجسر. fetch_candles_with_retry يملأ asset.candles ويحدّث
+        # sync_state بنفسه، فالنشر هنا مجرد دفع اللقطة الكاملة للويب فوراً
+        # بدل انتظار انتهاء الجسر. الحلقة الرئيسية تعيد _web_update_asset
+        # (full_resync=True) بعد عودة الدالة وتدمج الجسر، فلا يضيع شيء.
         candles_count, attempts = await hist_task
+        if asset.candles:
+            asset.price = asset.candles[-1]['close']
+            try:
+                _web_update_asset(asset, full_resync=True)
+            except Exception:
+                pass
+        bridge_1m_candles, n_1s = await bridge_task
     finally:
         globals()['BRIDGE_FETCH_ENABLED'] = saved_flag
     logmsg(
@@ -7649,7 +7673,8 @@ if __name__ == "__main__":
         if FETCH_COOLDOWN_EVERY > 0 and idx > 0 and idx % FETCH_COOLDOWN_EVERY == 0 and idx < total_assets:
             logmsg(f"[fetch_loop] cooldown {FETCH_COOLDOWN_DURATION}s after {idx}/{total_assets} assets")
             time.sleep(FETCH_COOLDOWN_DURATION)
-        else:
+        elif idx < total_assets:
+            # v12.0.2: لا نوم بعد آخر عملة -- كان time.sleep(_asset_delay) دائماً
             # Use 1.0s for sub-minute (server sensitive to period=1), 0.1s for 60s+
             time.sleep(_asset_delay)
 
