@@ -637,15 +637,27 @@ class WebsocketClient:
 
             if isinstance(message, dict):
                 asset = message.get("asset")
-                if asset and (message.get("candles") or message.get("data") or message.get("history")):
-                    self.api.candle_v2_data[asset] = message
-                    self.api.candles.candles_data = message.get("candles") or message.get("data") or message.get("history")
+                # v12.0.4: has_key يفحص وجود المفتاح (وليس امتلاءه) — الرد الفارغ
+                # ("candles": [] = فجوة سوق/نافذة بلا بيانات) ردٌّ حقيقي وليس غياب
+                # رد، فيجب أن يُطلق الحدث المفهرس فوراً وإلا انتظر
+                # _fetch_historical_batch المهلة كاملة (8s) ثم أعاد fetch_window
+                # المحاولة (8s أخرى) — ويحدث هذا بالضبط في مرحلة إصلاح الفجوات
+                # لأن الفجوات الحقيقية لا بيانات فيها.
+                has_key = any(k in message for k in ("candles", "data", "history"))
+                if asset and has_key:
+                    rows = message.get("candles") or message.get("data") or message.get("history")
+                    if rows:
+                        self.api.candle_v2_data[asset] = message
+                        self.api.candles.candles_data = rows
 
-                    asyncio.run_coroutine_threadsafe(
-                        self.api.event_registry.set_event(f'candles_ready_{asset}', message),
-                        loop
-                    )
+                        asyncio.run_coroutine_threadsafe(
+                            self.api.event_registry.set_event(f'candles_ready_{asset}', message),
+                            loop
+                        )
 
+                    # الحدث المفهرس يُطلق حتى لو كان الرد فارغاً — wait_event
+                    # يعيد الرسالة نفسها، وfetch_window يميّز الرد الفارغ
+                    # (raw ليس None) عن انتهاء المهلة الحقيقي (raw=None).
                     index = message.get("index")
                     if index is not None:
                         asyncio.run_coroutine_threadsafe(
@@ -1397,7 +1409,7 @@ class Quotex:
         #
         # كيف يعمل v12.0.1 (نفس سرعة v12.0 — كل الطلبات تخرج معاً):
         #   المرحلة 1 — مسح متوازي: كل طلب يغطي 170 شمعة جديدة + تداخل 30
-        #     (أمان أكبر من التداخل 10 السابق)، ولا يطير أكثر من 4 طلبات معاً
+        #     (أمان أكبر من التداخل 10 السابق)، ولا يطير أكثر من 8 طلبات معاً
         #     (Semaphore + تدرّج 30ms) حتى لا يُرهق الخادم.
         #   المرحلة 2 — إصلاح موجَّه متوازي: بعد الدمج نفحص الفجوات الزمنية
         #     الفعلية ونرسل لكل فجوة طلباً ينتهي عند حافتها الأحدث — الخادم
@@ -1411,6 +1423,7 @@ class Quotex:
         if self.api is None:
             return []
         await self.start_candles_stream(asset, period)
+        _t0 = time.time()                          # v12.0.4: قياس بدل التخمين
 
         step = max(50, server_cap - 30)            # 170 شمعة جديدة لكل طلب (تداخل 30)
         n_req = math.ceil(n_candles / step)        # 1020 -> 6 طلبات، 700 -> 5
@@ -1418,7 +1431,9 @@ class Quotex:
         offset = server_cap * period               # 200 شمعة كحد أقصى للطلب الواحد
 
         collected = {}                             # time -> candle (دمج فوري بإزالة التكرار)
-        sem = asyncio.Semaphore(4)                 # لا أكثر من 4 طلبات في الطيران
+        # v12.0.4: 4 -> 8 — كان 4 يجمّع طلبات المسح (5-6) في جولتين متتاليتين
+        # (n_req = ceil(720/170) = 5 يخرج الخامس فقط بعد انتهاء أحدها)
+        sem = asyncio.Semaphore(8)
 
         async def fetch_window(end_t, win_offset):
             # محاولة + إعادة واحدة؛ الدمج في collected فوراً بإزالة التكرار
@@ -1426,8 +1441,11 @@ class Quotex:
                 raw = await self._fetch_historical_batch(
                     asset, int(end_t), int(win_offset), period,
                     next(_request_counter), timeout, rate_limit=False)
-                got = self._parse_historical_candles(raw) if raw else []
-                if got:
+                # v12.0.4: إعادة المحاولة فقط عند غياب الرد كلياً (raw=None =
+                # مهلة دون أي حدث). الرد الفارغ يُطلق الحدث منذ v12.0.4 فيرجع
+                # فوراً — لا ننتظر 8s إضافية على فجوة لا بيانات فيها أصلاً.
+                if raw is not None:
+                    got = self._parse_historical_candles(raw)
                     for c in got:
                         collected[c['time']] = c
                     return len(got)
@@ -1440,11 +1458,14 @@ class Quotex:
                 await fetch_window(now - i * step * period, offset)
 
         await asyncio.gather(*(sweep(i) for i in range(n_req)))
+        logmsg(f"[fast] sweep done {time.time() - _t0:.2f}s, got {len(collected)}")
 
-        # ── المرحلة 2: الإصلاح الموجَّه للفجوات (متوازي، حتى 6 جولات) ──
+        # ── المرحلة 2: الإصلاح الموجَّه للفجوات (متوازي، جولتان فقط منذ v12.0.4) ──
         prev_size = -1
-        for _round in range(6):
+        for _round in range(2):
             holes, oldest_edge = self._find_candle_holes(collected, period, now, n_candles)
+            logmsg(f"[fast] round {_round}: holes={len(holes)} edge={oldest_edge is not None} "
+                   f"t={time.time() - _t0:.2f}s")
             if not holes and oldest_edge is None:
                 break
             if prev_size == len(collected):
@@ -1488,7 +1509,10 @@ class Quotex:
                     # الطلب ينتهي عند الحافة الأحدث: الخادم يملأ من b_t نحو
                     # الأقدم، والتداخل الزائد تُزيله خريطة collected.
                     # حافة الأقدم تأخذ نافذة أوسع (2x) لتعويض ردود الخادم الناقصة.
-                    extra = 2 * span if is_edge else 5 * period
+                    # v12.0.4: نافذة 3x span (كانت span+5 دقائق للفجوات الداخلية)
+                    # — كبر النافذة لا يكلف طلباً إضافياً ويعيد دقائق أكثر في
+                    # الجولة الواحدة، وهذا ما يجعل جولتين كافيتين بدل 6.
+                    extra = 2 * span
                     await fetch_window(b_t, min(span + extra, offset * 3))
 
             await asyncio.gather(*(repair(g) for g in groups))
@@ -1501,6 +1525,7 @@ class Quotex:
         # قصّ من الجهة الأقدم إلى العدد المطلوب
         if len(candles) > n_candles:
             candles = candles[-n_candles:]
+        logmsg(f"[fast] total {time.time() - _t0:.2f}s, {len(candles)} candles")
         return candles
 
     def prepare_candles(self, asset, period, history=None):
@@ -3617,6 +3642,7 @@ async def _m1_bridge_and_history_parallel(asset: Asset, idx: int = 1, total: int
         # بدل انتظار انتهاء الجسر. الحلقة الرئيسية تعيد _web_update_asset
         # (full_resync=True) بعد عودة الدالة وتدمج الجسر، فلا يضيع شيء.
         candles_count, attempts = await hist_task
+        t_hist = time.time() - _t0               # v12.0.4: قياس منفصل لكل مسار
         if asset.candles:
             asset.price = asset.candles[-1]['close']
             try:
@@ -3624,12 +3650,13 @@ async def _m1_bridge_and_history_parallel(asset: Asset, idx: int = 1, total: int
             except Exception:
                 pass
         bridge_1m_candles, n_1s = await bridge_task
+        t_bridge = time.time() - _t0
     finally:
         globals()['BRIDGE_FETCH_ENABLED'] = saved_flag
     logmsg(
         f"[m1par:{display}] parallel load done in {time.time() - _t0:.1f}s: "
         f"{n_1s} 1s -> {len(bridge_1m_candles)} 1m bridge + {candles_count} historical "
-        f"(was bridge+1.0s sleep+historical sequential = ~8s)"
+        f"| hist ready {t_hist:.2f}s, bridge ready {t_bridge:.2f}s"
     )
     return bridge_1m_candles, n_1s, candles_count, attempts
 
